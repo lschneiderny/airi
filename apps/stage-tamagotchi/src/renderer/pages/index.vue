@@ -15,7 +15,6 @@ import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/com
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { HoloCoupon } from '@proj-airi/stage-ui/components'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
-import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useStageItemPruning } from '@proj-airi/stage-ui/composables/use-stage-item-pruning'
 import { FULLSCREEN_WORKSPACE_FLAG } from '@proj-airi/stage-ui/libs/feature-flags'
 import { useFeatureFlagsStore } from '@proj-airi/stage-ui/stores/feature-flags'
@@ -41,6 +40,7 @@ import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageHostWiring } from '../composables/use-stage-host-wiring'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
+import { useStagePointerHit } from '../composables/use-stage-pointer-hit'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useFullscreenStore } from '../stores/fullscreen'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
@@ -74,25 +74,11 @@ const isOutsideFor250Ms = refDebounced(isOutside, 250)
 // The services and Natural inputs that this page shares with the desktop stage page.
 const { relativeMouseX, relativeMouseY, canUseCursor, cursorPosition, screenPlacement, chatTarget } = useStageHostWiring('index')
 const hostCapabilities = useHostCapabilitiesStore()
-// NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
-// model rapidly, causing flickering effects when checking pixel transparency strictly.
-// Here we use render-target pixel sampling to keep detection aligned with the actual render output.
-const isTransparentByPixels = useCanvasPixelIsTransparentAtPoint(
-  stageCanvas,
-  relativeMouseX,
-  relativeMouseY,
-  { regionRadius: 25 },
-)
 const isTransparentByThree = useThreeSceneIsTransparentAtPoint(
   widgetStageRef,
   relativeMouseX,
   relativeMouseY,
   { regionRadius: 25 },
-)
-const isTransparentByPixelsExact = useCanvasPixelIsTransparentAtPoint(
-  stageCanvas,
-  relativeMouseX,
-  relativeMouseY,
 )
 const isTransparentByThreeExact = useThreeSceneIsTransparentAtPoint(
   widgetStageRef,
@@ -118,40 +104,48 @@ const motionDiagnostics = useMMDMotionDiagnostics()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
-const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
   componentState: componentStateStage.value,
   stageModelRenderer: stageModelRenderer.value,
   stagePaused: stagePaused.value,
 }))
 /**
+ * The canvas pixels under the cursor, re-read while the cursor rests, so her motion and stage items change the answer
+ * without a cursor move. VRM reads its own render target instead (see `isTransparentByThree`).
+ */
+const canvasPointerHit = useStagePointerHit({
+  canvas: stageCanvas,
+  cursorX: relativeMouseX,
+  cursorY: relativeMouseY,
+  active: () => canUseCursor.value && !stagePaused.value && componentStateStage.value === 'mounted',
+  readPixel: () => stageModelRenderer.value !== 'vrm',
+  // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
+  // model rapidly, causing flickering effects when checking pixel transparency strictly, so Auto Hide reads a region.
+  readRegion: () => fadeOnHoverEnabled.value && stageModelRenderer.value !== 'vrm',
+  regionRadius: 25,
+  onReadback: motionDiagnostics.reportReadback,
+  fadeEnabled: fadeOnHoverEnabled,
+  renderer: stageModelRenderer,
+  threeEnabled: () => shouldUseThreeTransparencyHitTest.value,
+  threeTransparent: isTransparentByThree,
+  threeExactTransparent: isTransparentByThreeExact,
+})
+const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
+/**
  * Drives the Auto Hide fade. `true` means "do not fade", so any case without a usable
  * region sampler reports `true` and the stage stays visible.
  */
-const isTransparent = computed(() => {
-  if (!canUseCursor.value || stagePaused.value || componentStateStage.value !== 'mounted' || !fadeOnHoverEnabled.value)
-    return true
-
-  // TresCanvas leaves preserveDrawingBuffer off, so VRM's canvas reads back empty and
-  // has to sample an offscreen render target. Every other renderer keeps its last frame
-  // readable, and a renderer with no canvas samples nothing and stays visible.
-  if (stageModelRenderer.value === 'vrm')
-    return shouldUseThreeTransparencyHitTest.value ? isTransparentByThree.value : true
-
-  return isTransparentByPixels.value
-})
+const isTransparent = canvasPointerHit.isTransparent
 /**
  * Whether the cursor sits on the stage canvas rather than on interface drawn over it.
  *
  * The pixel test can only answer for the canvas, and the canvas draws nothing beneath a
  * DOM overlay, so a button, a toast or a portaled panel floating over blank canvas
- * would read as empty space and lose its clicks. Ask the document what is really under
- * the cursor instead. This is a hit test, not an event, so it still answers while the
- * window is click-through.
+ * would read as empty space and lose its clicks. The hit read asks the document what is
+ * really under the cursor instead. This is a hit test, not an event, so it still answers
+ * while the window is click-through.
  */
-const isPointerOverStageCanvas = computed(() =>
-  canUseCursor.value && document.elementFromPoint(relativeMouseX.value, relativeMouseY.value) === stageCanvas.value,
-)
+const isPointerOverStageCanvas = canvasPointerHit.overCanvas
 /**
  * Drives native click-through, and runs whether or not Auto Hide is on.
  *
@@ -160,26 +154,7 @@ const isPointerOverStageCanvas = computed(() =>
  * guards below are what keep the window interactive when nothing can answer. Godot
  * lands there: it draws a DOM panel and exposes no canvas to read.
  */
-const isTransparentForMouseEvents = computed(() => {
-  if (!canUseCursor.value || stagePaused.value || componentStateStage.value !== 'mounted')
-    return false
-
-  // Load-bearing, not a convenience. A scene swap unmounts the canvas while the state
-  // still reads mounted, and both samplers answer "transparent" without one, which would
-  // hand the whole window away, character included, until the next scene reports itself.
-  if (!stageCanvas.value)
-    return false
-
-  if (!isPointerOverStageCanvas.value)
-    return false
-
-  const readbackStart = performance.now()
-  const transparent = stageModelRenderer.value === 'vrm'
-    ? shouldUseThreeTransparencyHitTest.value && isTransparentByThreeExact.value
-    : isTransparentByPixelsExact.value
-  motionDiagnostics.reportReadback(performance.now() - readbackStart)
-  return transparent
-})
+const isTransparentForMouseEvents = canvasPointerHit.isTransparentForMouseEvents
 
 const { isNearAnyBorder: nativeAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
 const isAroundWindowBorder = computed(() => canUseCursor.value && nativeAroundWindowBorder.value)

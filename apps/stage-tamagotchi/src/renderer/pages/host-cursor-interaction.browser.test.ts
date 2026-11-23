@@ -8,7 +8,7 @@ import { defineComponent, h, nextTick, onScopeDispose } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { useControlsIslandStore } from '../stores/controls-island'
-import { createPageRouter, cursorAvailable, MainPage, mountedStage, outsideWindow, samplerReads, stageCanvas } from './host-screen-placement.fixtures'
+import { createPageRouter, cursorAvailable, MainPage, mountedStage, outsideWindow, samplerReads, stageCanvas, stageFrame } from './host-screen-placement.fixtures'
 
 describe('classic cursor trust', () => {
   it('defers DOM hit testing while the capability snapshot is pending', async () => {
@@ -34,6 +34,14 @@ describe('classic cursor trust', () => {
       cursorAvailable.value = live
       outsideWindow.value = false
       mountedStage.value = true
+      stageCanvas.width = 100
+      stageCanvas.height = 100
+      Object.assign(stageCanvas.style, { position: 'fixed', left: '0', top: '0', width: '100px', height: '100px' })
+      document.body.append(stageCanvas)
+      const gl = stageCanvas.getContext('webgl2', { preserveDrawingBuffer: true })!
+      gl.clearColor(1, 1, 1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      const contextRead = vi.spyOn(stageCanvas, 'getContext')
       const Host = defineComponent({
         setup() {
           const controls = useControlsIslandStore()
@@ -52,20 +60,32 @@ describe('classic cursor trust', () => {
       const view = await render(Host, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' }), createPageRouter()] } })
       onTestFinished(() => {
         hit.mockRestore()
+        contextRead.mockRestore()
+        stageCanvas.remove()
         cursorAvailable.value = true
         return view.unmount()
       })
       await nextTick()
+      for (const timestamp of [0, 1000 / 60, 2000 / 60]) {
+        await new Promise(requestAnimationFrame)
+        gl.finish()
+        stageFrame.value?.({ timestamp, delta: 1000 / 60 })
+        await nextTick()
+      }
       const layer = view.getByTestId('stage-placement').element().parentElement?.parentElement
 
       expect(layer?.classList.contains('op-0')).toBe(live)
       if (live) {
         expect(hit).toHaveBeenCalledWith(20, 30)
-        expect(samplerReads).toContainEqual({ renderer: renderer === 'vrm' ? 'three' : 'canvas', x: 20, y: 30 })
+        if (renderer === 'vrm')
+          expect(samplerReads).toContainEqual({ renderer: 'three', x: 20, y: 30 })
+        else
+          expect(contextRead).toHaveBeenCalledWith('webgl2')
       }
       else {
         expect(hit).not.toHaveBeenCalledWith(20, 30)
         expect(samplerReads).toEqual([])
+        expect(contextRead).not.toHaveBeenCalled()
       }
     })
   })

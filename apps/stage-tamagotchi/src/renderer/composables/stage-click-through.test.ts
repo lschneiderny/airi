@@ -8,6 +8,33 @@ const rect = { x: 100, y: 200, width: 200, height: 560 }
 const onHer = { x: 200, y: 400 }
 const farAway = { x: 900, y: 100 }
 
+it('reuses frame objects while retaining resting and moving read intervals', () => {
+  const state = createStageHitReadState()
+  const cursor = { ...onHer }
+  state.lastCursor = { ...cursor }
+  const previousCursor = state.lastCursor
+  const plan = { read: false, state }
+  const input = { nowMs: 0, cursor, rect, forceCapture: false, forceIgnore: false }
+  expect(planStageHitRead(state, input, plan)).toBe(plan)
+  expect(plan.read).toBe(true)
+  input.nowMs = 99
+  expect(planStageHitRead(state, input, plan)).toBe(plan)
+  expect(plan.read).toBe(false)
+  input.nowMs = 100
+  planStageHitRead(state, input, plan)
+  expect(plan.read).toBe(true)
+  cursor.x++
+  input.nowMs = 149
+  planStageHitRead(state, input, plan)
+  expect(plan.read).toBe(false)
+  input.nowMs = 150
+  planStageHitRead(state, input, plan)
+  expect(plan.read).toBe(true)
+  expect(plan.state).toBe(state)
+  expect(state.lastCursor).toBe(previousCursor)
+  expect(state.lastCursor.x).toBe(cursor.x)
+})
+
 function run(state: StageClickThroughState, input: Partial<StageClickThroughInput> & { nowMs: number }) {
   return resolveStageClickThrough(state, { cursor: onHer, rect, forceCapture: false, forceIgnore: false, ...input })
 }

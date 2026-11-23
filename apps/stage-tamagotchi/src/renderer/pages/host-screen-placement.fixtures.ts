@@ -97,14 +97,6 @@ vi.mock('@proj-airi/stage-ui/components/scenes', () => ({
   }),
 }))
 vi.mock('@proj-airi/stage-ui/components', () => ({ HearingStatus: () => null, HoloCoupon: () => null }))
-vi.mock('@proj-airi/stage-ui/composables/canvas-alpha', () => ({
-  useCanvasPixelIsTransparentAtPoint: (_canvas: unknown, x: MaybeRefOrGetter<number>, y: MaybeRefOrGetter<number>) => computed(() => {
-    samplerReads.push({ renderer: 'canvas', x: toValue(x), y: toValue(y) })
-    return false
-  }),
-  CanvasRegionAlphaReader: class {},
-  isCanvasRegionTransparent: () => false,
-}))
 vi.mock('@proj-airi/stage-ui-three/composables/hit-test', () => ({
   useThreeSceneIsTransparentAtPoint: (_scene: unknown, x: MaybeRefOrGetter<number>, y: MaybeRefOrGetter<number>) => computed(() => {
     samplerReads.push({ renderer: 'three', x: toValue(x), y: toValue(y) })

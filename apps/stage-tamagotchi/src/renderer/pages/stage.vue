@@ -17,7 +17,6 @@ import {
   resolveComponentStateToRuntimePhase,
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
-import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { refDebounced, until, useEventListener, useRafFn } from '@vueuse/core'
 import { isEqual } from 'es-toolkit'
@@ -39,7 +38,7 @@ import {
 } from '../../shared/eventa'
 import { isStageClickThroughUsable } from '../../shared/stage-click-through'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
-import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, trustedStageCursor } from '../composables/stage-click-through'
+import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, StageCanvasHitReader, trustedStageCursor } from '../composables/stage-click-through'
 import { createFollowMeState, followCursor } from '../composables/stage-hand-off'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageHandOff } from '../composables/use-stage-hand-off'
@@ -386,49 +385,15 @@ useEventListener(window, 'pointermove', (event: PointerEvent) => {
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
-// Right after the scene submits its frame, a synchronous readPixels waits for the GPU (4-5 ms measured). On WebGL2
-// the reader copies the pixel asynchronously and answers a frame or two later.
-let alphaReader: { gl: WebGL2RenderingContext, reader: CanvasRegionAlphaReader } | null = null
-onScopeDispose(() => alphaReader?.reader.dispose())
+const hitReader = new StageCanvasHitReader(0, motionDiagnostics.reportReadback)
+onScopeDispose(() => hitReader.dispose())
 
-/**
- * Polls the read in flight and, when `request` is set, starts a read under the cursor. Returns whether her pixel is
- * under the cursor, or `undefined` when no answer arrived this frame. Polling runs every frame a read is in flight, so
- * the answer arrives two or three frames after the request whatever the request interval.
- */
+/** {@link StageCanvasHitReader.read}, where interface drawn over her counts as no hit. */
 function readHit(cursor: { x: number, y: number }, request: boolean): boolean | undefined {
-  const canvas = stageCanvas.value
-  if (componentStateStage.value !== 'mounted' || !canvas)
-    return request ? false : undefined
-  if (request && document.elementFromPoint(cursor.x, cursor.y) !== canvas)
+  const canvas = componentStateStage.value === 'mounted' ? stageCanvas.value : undefined
+  if (request && canvas && document.elementFromPoint(cursor.x, cursor.y) !== canvas)
     return false
-  const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGL2RenderingContext | WebGLRenderingContext | null
-  if (!gl)
-    return request ? false : undefined
-  if (!(gl instanceof WebGL2RenderingContext)) {
-    if (!request)
-      return undefined
-    const bounds = canvas.getBoundingClientRect()
-    const readbackStart = performance.now()
-    const transparent = isCanvasRegionTransparent({ gl, clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 })
-    motionDiagnostics.reportReadback(performance.now() - readbackStart)
-    return !transparent
-  }
-  if (alphaReader?.gl !== gl) {
-    alphaReader?.reader.dispose()
-    alphaReader = { gl, reader: new CanvasRegionAlphaReader(gl) }
-  }
-  const { reader } = alphaReader
-  if (!request && !reader.pending)
-    return undefined
-  const bounds = request ? canvas.getBoundingClientRect() : null
-  const readbackStart = performance.now()
-  const finished = reader.poll()
-  let hit = finished === undefined ? undefined : !finished
-  if (bounds && reader.request({ clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 }) === 'transparent')
-    hit = false
-  motionDiagnostics.reportReadback(performance.now() - readbackStart)
-  return hit
+  return hitReader.read(canvas, cursor, request)
 }
 
 let hitRead = createStageHitReadState()
