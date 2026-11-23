@@ -48,20 +48,28 @@ function storedCatalogModelIds(): string[] {
   return modelIds
 }
 
-/** How many models place the library asset, so a removal confirmation can name them. A document that fails to parse counts as none. */
-export function countModelsPlacingAsset(assetId: string): number {
-  let count = 0
-  for (const modelId of storedCatalogModelIds()) {
-    try {
-      const parsed = parseCuratedCatalogDocument(JSON.parse(localStorage.getItem(`${catalogKeyPrefix}${modelId}`) ?? 'null'))
-      if (parsed.success && parsed.value.items?.some(item => item.assetId === assetId))
-        count++
-    }
-    catch {
-      // Not JSON: the model's own load discards it.
-    }
+/** The stored catalog of a model, loaded or not; `undefined` when there is none or it fails to parse, which the model's own load discards. */
+function storedCatalogDocument(modelId: string): CuratedCatalogDocument | undefined {
+  try {
+    const parsed = parseCuratedCatalogDocument(JSON.parse(localStorage.getItem(`${catalogKeyPrefix}${modelId}`) ?? 'null'))
+    return parsed.success ? parsed.value : undefined
   }
-  return count
+  catch {
+    return undefined
+  }
+}
+
+/** How many models place the library asset, so a removal confirmation can name them. */
+export function countModelsPlacingAsset(assetId: string): number {
+  return storedCatalogModelIds().filter(modelId => storedCatalogDocument(modelId)?.items?.some(item => item.assetId === assetId)).length
+}
+
+/**
+ * How many items a model's stored catalog holds. The settings window reads it while the expression system is off,
+ * because the stage then disposes its store and its snapshot carries no items.
+ */
+export function countStoredItems(modelId: string): number {
+  return modelId ? storedCatalogDocument(modelId)?.items?.length ?? 0 : 0
 }
 
 /**

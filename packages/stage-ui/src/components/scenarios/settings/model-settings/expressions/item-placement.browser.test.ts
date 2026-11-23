@@ -87,7 +87,8 @@ function renderEditor(options: { asset?: StageItemAsset, enabled?: boolean, refu
         onClose,
       }, () => h('div', { 'data-testid': 'fake-preview', 'style': 'width: 100%; height: 100%; background: #eee' })),
     ]),
-  }), { global: { plugins: [i18n] } })
+  // The app runs Vue's real `Transition`, which keeps one slot child; the default stub would pass any number through.
+  }), { global: { plugins: [i18n], stubs: { transition: false } } })
   return { screen, item, onCommand, onDraft, onClose }
 }
 
@@ -197,6 +198,15 @@ describe('item placement editor', () => {
     expect(sent.id).toBe('item:hat')
     expect(sent.patch.placement.x).toBeCloseTo(209)
     drag.release()
+  })
+
+  it('lists her parts under the hide section description once it opens', async () => {
+    const { screen } = renderEditor()
+    await screen.getByRole('button', { name: s('hides.title') }).click()
+    await expect.element(screen.getByText(s('hides.description'), { exact: true })).toBeVisible()
+    const hides = screen.getByTestId('placement-hides')
+    await expect.element(hides.getByRole('switch', { name: 'Body', exact: true })).toBeVisible()
+    await expect.element(hides.getByRole('switch', { name: 'Head', exact: true })).toBeVisible()
   })
 
   it('rebinds to the editor of a reloaded model whose canvas and part count did not change', async () => {

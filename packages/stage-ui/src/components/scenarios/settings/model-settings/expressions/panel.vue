@@ -15,8 +15,11 @@ const props = withDefaults(defineProps<{
   snapshot: ExpressionPanelSnapshot
   /** When false the panel renders the `disabled` slot instead of its controls. */
   enabled?: boolean
+  /** Whether the model keeps item documents while disabled; the snapshot carries none then, and a note says they are only shown while the system is on. */
+  hasStoredItems?: boolean
 }>(), {
   enabled: true,
+  hasStoredItems: false,
 })
 const emit = defineEmits<{
   (e: 'command', command: ExpressionPanelCommand): void
@@ -46,7 +49,7 @@ const showAllExpressions = defineModel<boolean>('showAll', { required: true })
     <slot name="disabled" />
     <!-- Stored items stay stored, but nothing draws them while the expression system is off. -->
     <p
-      v-if="(props.snapshot.items?.length ?? 0) > 0"
+      v-if="props.hasStoredItems"
       role="note"
       :class="['py-2', 'text-xs text-neutral-500 dark:text-neutral-400']"
     >

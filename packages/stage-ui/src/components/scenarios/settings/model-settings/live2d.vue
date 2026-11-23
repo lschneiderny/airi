@@ -12,6 +12,7 @@ import type { ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { createLive2D, useExpressionStore, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { countStoredItems } from '@proj-airi/stage-ui-live2d/stores/expression-catalog-persistence'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, provide, ref, watch } from 'vue'
@@ -197,6 +198,8 @@ const blinkModeOptions = computed(() => [
 ])
 
 const { stageModelSelected } = storeToRefs(useSettingsStageModel())
+// With the expression system off the stage disposes its store, so its snapshot has no items; her stored catalog still says whether she has any.
+const storedItemsWhileOff = computed(() => !live2dExpressionActive.value && countStoredItems(stageModelSelected.value) > 0)
 /** The head area adjustment of the selected stage model; the stage keys it by the same id. */
 const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadScale[stageModelSelected.value] ?? 1)
 
@@ -845,6 +848,7 @@ const showAllExpressions = ref(false)
       v-model:show-all="showAllExpressions"
       :snapshot="expressionSettingsSnapshot"
       :enabled="live2dExpressionActive"
+      :has-stored-items="storedItemsWhileOff"
       @command="applyExpressionSettingsCommand"
       @custom-command="applyExpressionSettingsCommand"
       @item-command="applyExpressionSettingsCommand"
