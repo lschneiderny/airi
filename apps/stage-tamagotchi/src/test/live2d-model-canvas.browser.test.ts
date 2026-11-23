@@ -1,13 +1,15 @@
-import type { Live2DModelItemEditor } from '@proj-airi/stage-ui-live2d/composables/live2d/items/editor'
+import type { Live2DItemEditor, Live2DModelItemEditor } from '@proj-airi/stage-ui-live2d/composables/live2d/items/editor'
 
 import type { Live2DModelFixture } from './live2d-model-fixture'
 
 import JSZip from 'jszip'
 
+import { Live2DScene } from '@proj-airi/stage-ui-live2d/components/scenes'
 import { Live2DModel } from '@proj-airi/stage-ui-live2d/components/scenes/live2d'
 import { createLive2D, provideLive2D } from '@proj-airi/stage-ui-live2d/contexts/live2d'
+import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia } from 'pinia'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
 
 import { createLive2DModelFixture } from './live2d-model-fixture'
@@ -116,5 +118,39 @@ describe('model component canvas accessors', () => {
     // Her head is on the upper center of her canvas; the corner holds no mesh.
     expect(editor.pickPin({ x: center.x, y: editor.canvas.height * 0.2 })?.drawableId).toBeTypeOf('string')
     expect(editor.pickPin({ x: 1, y: 1 })).toBeUndefined()
+  })
+
+  it('publishes her model canvas from the scene and hands out one editor per loaded model', async () => {
+    const pinia = createPinia()
+    const published = vi.spyOn(useExpressionStore(pinia), 'setModelCanvas')
+    const scene = ref<{ itemEditor: () => Live2DItemEditor | undefined }>()
+    const modelSrc = ref(await presetWithLayoutSize(4))
+    const root = document.createElement('div')
+    root.style.cssText = 'width: 400px; height: 600px'
+    document.body.append(root)
+    const host = createApp(defineComponent({
+      setup: () => () => h(Live2DScene, { ref: scene, modelSrc: modelSrc.value }),
+    }))
+    host.use(pinia)
+    host.mount(root)
+    unmountCurrent = () => {
+      host.unmount()
+      root.remove()
+      unmountCurrent = undefined
+    }
+
+    await expect.poll(() => scene.value?.itemEditor(), { timeout: loadTimeoutMs }).toBeDefined()
+    const loaded = scene.value!.itemEditor()!
+    expect(scene.value!.itemEditor()).toBe(loaded)
+    // Layout size 4 doubles the displayed model; the store gets her canvas, the unit items are placed in.
+    await expect.poll(() => published.mock.lastCall?.[0]).toEqual(loaded.canvas)
+
+    // Loading her again, as Reset does, gives the placement editor a new editor to rebind to.
+    modelSrc.value = await presetWithLayoutSize(2)
+    await expect.poll(() => {
+      const next = scene.value?.itemEditor()
+      return next !== undefined && next !== loaded
+    }, { timeout: loadTimeoutMs }).toBe(true)
+    expect(scene.value!.itemEditor()!.canvas).toEqual(loaded.canvas)
   })
 })

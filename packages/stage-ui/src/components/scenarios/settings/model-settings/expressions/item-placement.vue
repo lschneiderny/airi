@@ -188,11 +188,9 @@ function currentPose() {
   return editor.value?.poseOf(draft.value.id) ?? { x: placement.x, y: placement.y, rotation: placement.rotation, scale: placement.scale }
 }
 
+// The scene hands out one editor per loaded model, so a new object means her model loaded again, even the same model.
 function refreshEditor() {
-  const next = props.editorSource()
-  const current = editor.value
-  if (!next || !current || next.canvas.width !== current.canvas.width || next.canvas.height !== current.canvas.height || next.parts.length !== current.parts.length)
-    editor.value = next
+  editor.value = props.editorSource()
 }
 
 useRafFn(() => {
@@ -414,7 +412,7 @@ const pickingMessage = computed(() => {
           @pointerdown.stop="startDrag('rotate', $event)"
         />
       </svg>
-      <!-- Pointer events for the handles are reachable only through the polygon and circles above; the hidden buttons give them names and a keyboard-free fallback for assistive tech. -->
+      <!-- Pointer events for the handles are reachable only through the polygon and circles above; these screen-reader-only labels name them, and the typed fields below are the keyboard path. -->
       <div :class="['sr-only']">
         <span>{{ s('move', { label: item.document.label }) }}</span>
         <span>{{ s('scale-handle', { label: item.document.label }) }}</span>

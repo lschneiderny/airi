@@ -14,7 +14,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { Live2DEyeFocusSource, Live2DTouch } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
-import type { Live2DItemEditor } from '../../composables/live2d/items/editor'
+import type { Live2DItemEditor, Live2DModelItemEditor } from '../../composables/live2d/items/editor'
 import type { Live2DStageItem } from '../../composables/live2d/items/layer'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
 import type { Live2DContext } from '../../contexts/live2d'
@@ -301,6 +301,24 @@ onUnmounted(() => {
     live2d.dispose()
 })
 
+/**
+ * The placement editor's view of the loaded model, in CSS pixels of this scene's canvas. One view per model editor and
+ * canvas element: the model component builds one editor per loaded model, so a reload, even of the same model, hands
+ * out a new view, and the placement editor rebinds by identity.
+ */
+let cachedItemEditor: { source: Live2DModelItemEditor, canvas: HTMLCanvasElement, editor: Live2DItemEditor } | undefined
+function itemEditor(): Live2DItemEditor | undefined {
+  const source = live2dModelRef.value?.itemEditor()
+  const canvas = live2dCanvasRef.value?.canvasElement()
+  if (!source || !canvas)
+    return undefined
+  if (cachedItemEditor?.source !== source || cachedItemEditor.canvas !== canvas) {
+    // The backing store is the renderer's pixel space, as `touchSampleOf` and `modelPointFrom` map it.
+    cachedItemEditor = { source, canvas, editor: viewItemEditor(source, () => canvas.width / Math.max(1, canvas.getBoundingClientRect().width)) }
+  }
+  return cachedItemEditor.editor
+}
+
 watch([componentStateModel, componentStateCanvas], () => {
   componentState.value = (componentStateModel.value === 'mounted' && componentStateCanvas.value === 'mounted')
     ? 'mounted'
@@ -315,15 +333,8 @@ defineExpose({
   captureFrame: () => {
     return live2dCanvasRef.value?.captureFrame()
   },
-  /** The placement editor's view of the loaded model, in CSS pixels of this scene's canvas; `undefined` until a model is loaded. */
-  itemEditor: (): Live2DItemEditor | undefined => {
-    const editor = live2dModelRef.value?.itemEditor()
-    const canvas = live2dCanvasRef.value?.canvasElement()
-    if (!editor || !canvas)
-      return undefined
-    // The backing store is the renderer's pixel space, as `touchSampleOf` and `modelPointFrom` map it.
-    return viewItemEditor(editor, () => canvas.width / Math.max(1, canvas.getBoundingClientRect().width))
-  },
+  /** The placement editor's view of the loaded model; `undefined` until a model is loaded. */
+  itemEditor,
   /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
   gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),

@@ -67,19 +67,19 @@ function stubEditor(): Live2DItemEditor {
   }
 }
 
-function renderEditor(options: { asset?: StageItemAsset, enabled?: boolean, refusal?: 'item-limit' | null, editor?: Live2DItemEditor | undefined } = {}) {
+function renderEditor(options: { asset?: StageItemAsset, enabled?: boolean, refusal?: 'item-limit' | null, editorSource?: () => Live2DItemEditor | undefined } = {}) {
   const onCommand = vi.fn<(command: ExpressionPanelItemCommand) => void>()
   const onDraft = vi.fn<(document: ItemExpressionDocument) => void>()
   const onClose = vi.fn()
   // Reactive, as the runtime snapshot the Live2D section passes is; the editor must clone through the proxy.
   const item = reactive<ExpressionPanelItem>({ document: hatDocument(), available: true, shown: true, state: 'attached' })
-  const editor = 'editor' in options ? options.editor : stubEditor()
+  const editor = stubEditor()
   const screen = render(defineComponent({
     render: () => h('div', { style: 'width: 480px; padding: 8px' }, [
       h(ItemPlacement, {
         item,
         asset: options.asset ?? imageAsset(),
-        editorSource: () => editor,
+        editorSource: options.editorSource ?? (() => editor),
         enabled: options.enabled ?? true,
         refusal: options.refusal ?? null,
         onCommand,
@@ -88,7 +88,29 @@ function renderEditor(options: { asset?: StageItemAsset, enabled?: boolean, refu
       }, () => h('div', { 'data-testid': 'fake-preview', 'style': 'width: 100%; height: 100%; background: #eee' })),
     ]),
   }), { global: { plugins: [i18n] } })
-  return { screen, onCommand, onDraft, onClose }
+  return { screen, item, onCommand, onDraft, onClose }
+}
+
+/**
+ * Presses the item's frame with synthetic pointer events, which dispatch synchronously, unlike the user-event API:
+ * several moves then land inside one animation frame.
+ */
+function pressFrame(container: HTMLElement) {
+  const polygon = container.querySelector('polygon')!
+  const overlay = container.querySelector<HTMLElement>('[data-testid="placement-preview"]')!
+  const box = polygon.getBoundingClientRect()
+  const start = { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  const pointer = (type: string, dx = 0, dy = 0) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, clientX: start.x + dx, clientY: start.y + dy })
+  polygon.dispatchEvent(pointer('pointerdown'))
+  return {
+    move: (dx: number, dy: number) => overlay.dispatchEvent(pointer('pointermove', dx, dy)),
+    release: () => overlay.dispatchEvent(pointer('pointerup')),
+  }
+}
+
+/** Resolves in the next animation frame, after the callbacks the editor scheduled before it. */
+function nextFrame() {
+  return new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 }
 
 function updates(onCommand: ReturnType<typeof vi.fn<(command: ExpressionPanelItemCommand) => void>>) {
@@ -115,7 +137,7 @@ describe('item placement editor', () => {
     vi.restoreAllMocks()
   })
 
-  it('moves the item by the dragged distance in canvas units, one update per frame', async () => {
+  it('moves the item by the dragged distance in canvas units', async () => {
     const { screen, onCommand } = renderEditor()
     await vi.waitFor(() => expect(screen.container.querySelector('polygon')?.getAttribute('points')).toContain('150,150'))
     const polygon = screen.container.querySelector('polygon')!
@@ -137,8 +159,58 @@ describe('item placement editor', () => {
     expect(last.patch.placement.x).toBeCloseTo(210, 0)
     expect(last.patch.placement.y).toBeCloseTo(210, 0)
     expect(last.id).toBe('item:hat')
-    // Several pointer moves land in one drag, yet the queue sends at most one patch per animation frame.
-    expect(updates(onCommand).length).toBeLessThanOrEqual(4)
+  })
+
+  it('sends one update per animation frame however many pointer moves land in it', async () => {
+    const { screen, onCommand } = renderEditor()
+    await vi.waitFor(() => expect(screen.container.querySelector('polygon')).not.toBeNull())
+    const drag = pressFrame(screen.container)
+    drag.move(3, 3)
+    drag.move(6, 6)
+    drag.move(9, 9)
+    expect(updates(onCommand)).toHaveLength(0)
+
+    await nextFrame()
+    expect(updates(onCommand)).toHaveLength(1)
+    const [sent] = updates(onCommand)
+    if (sent.type !== 'update-item' || !sent.patch.placement)
+      throw new Error('expected a placement update')
+    expect(sent.patch.placement.x).toBeCloseTo(209)
+    expect(sent.patch.placement.y).toBeCloseTo(209)
+
+    drag.release()
+    expect(updates(onCommand)).toHaveLength(1)
+  })
+
+  it('sends a pending edit to the item it was made on when the editor switches items', async () => {
+    const { screen, item, onCommand } = renderEditor()
+    await vi.waitFor(() => expect(screen.container.querySelector('polygon')).not.toBeNull())
+    const drag = pressFrame(screen.container)
+    drag.move(9, 9)
+    item.document = { ...hatDocument(), id: 'item:coat', label: 'Coat' }
+
+    await nextFrame()
+    expect(updates(onCommand)).toHaveLength(1)
+    const [sent] = updates(onCommand)
+    if (sent.type !== 'update-item' || !sent.patch.placement)
+      throw new Error('expected a placement update')
+    expect(sent.id).toBe('item:hat')
+    expect(sent.patch.placement.x).toBeCloseTo(209)
+    drag.release()
+  })
+
+  it('rebinds to the editor of a reloaded model whose canvas and part count did not change', async () => {
+    let current = stubEditor()
+    const { screen } = renderEditor({ editorSource: () => current })
+    await screen.getByRole('button', { name: s('hides.title') }).click()
+    const hides = screen.getByTestId('placement-hides')
+    await expect.element(hides.getByRole('switch', { name: 'Head', exact: true })).toBeVisible()
+
+    // A reload of the same model (Reset) hands out a new editor; its renamed parts show which one the editor reads.
+    const reloaded = stubEditor()
+    current = { ...reloaded, parts: reloaded.parts.map(part => ({ ...part, name: part.id === 'PartHead' ? 'Face' : 'Torso' })) }
+    await expect.element(hides.getByRole('switch', { name: 'Face', exact: true })).toBeVisible()
+    expect(hides.getByRole('switch', { name: 'Head', exact: true }).query()).toBeNull()
   })
 
   it('stores a typed rotation in radians and keeps the placement for an unusable number', async () => {
