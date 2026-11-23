@@ -297,7 +297,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         shown: resolved.value.effective.has(document.id),
         state: itemStates.value[document.id] ?? null,
       })),
-      ...modelCanvas.value ? { canvas: { ...modelCanvas.value } } : {},
+      // Her canvas outlives an unloaded model in the scene, but an item can only be added to a loaded one.
+      ...modelId.value && modelCanvas.value ? { canvas: { ...modelCanvas.value } } : {},
     }
   })
 

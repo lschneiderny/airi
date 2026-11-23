@@ -50,7 +50,7 @@ export interface ExpressionPanelSnapshot {
   /** Present only when the renderer supports stage items. */
   items?: ExpressionPanelItem[]
   /**
-   * Her model canvas in canvas units, once the renderer reports it. A new item is placed relative to it; the panel
+   * Her model canvas in canvas units, once the renderer reports it and while a model is loaded. A new item is placed relative to it; the panel
    * offers "Add to this model" only while it is known.
    */
   canvas?: { width: number, height: number }

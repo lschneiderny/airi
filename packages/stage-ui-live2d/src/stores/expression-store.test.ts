@@ -1344,4 +1344,15 @@ describe('stage item entries', () => {
     store.setModelCanvas(null)
     expect(store.settingsSnapshot.canvas).toBeUndefined()
   })
+
+  it('withholds her canvas while no model is loaded, so the panel cannot offer Add to this model', () => {
+    const { store } = setup()
+    store.setModelCanvas({ width: 2400, height: 3200 })
+    store.dispose()
+    expect(store.settingsSnapshot.canvas).toBeUndefined()
+
+    // The scene reports the canvas only when it changes, so the same model loading again shows it again.
+    store.registerDefinitions('a', defs)
+    expect(store.settingsSnapshot.canvas).toEqual({ width: 2400, height: 3200 })
+  })
 })
