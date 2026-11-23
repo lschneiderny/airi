@@ -12,6 +12,7 @@ import { cleanup, render } from 'vitest-browser-vue'
 import { computed, defineComponent, nextTick, shallowRef } from 'vue'
 
 import { applyLive2DExpressionSettingsCommand, applyMMDExpressionSettingsCommand, modelSettingsRuntimeChannelName, modelSettingsRuntimeSnapshotChanged } from '../../shared/model-settings-runtime'
+import { createMainStageModelSettingsSnapshot } from './main-stage-model-settings-snapshot'
 import { useModelSettingsRuntimeOwner } from './model-settings-runtime-owner'
 import { useModelSettingsRuntimeSnapshot } from './model-settings-runtime-snapshot'
 
@@ -283,6 +284,40 @@ describe('model settings runtime channel', () => {
     expect(live2dCommands).not.toHaveBeenCalled()
     expect(ownerLive2DStore.definitions).toEqual([])
     expect(useMMDExpressionStore(settingsPinia).catalog).toEqual([])
+  })
+
+  it('publishes the main stage Live2D model and expressions, and follows a model switch', () => {
+    // ROOT CAUSE:
+    //
+    // An upstream merge removed `modelId` and `live2dExpressions` from the main stage's Live2D snapshot, so the
+    // settings window refused every Live2D expression command and its panel edited the settings window's own store.
+    const pinia = createPinia()
+    const live2dExpressionStore = useExpressionStore(pinia)
+    const mmdExpressionStore = useMMDExpressionStore(pinia)
+    live2dExpressionStore.registerDefinitions('model-a', expressionDefinitions)
+    const input = {
+      ownerInstanceId: 'stage-owner',
+      renderer: 'live2d',
+      hasModel: true,
+      componentState: 'mounted',
+      scenePhase: 'pending',
+      sceneMutationLocked: false,
+      live2dExpressionStore,
+      mmdExpressionStore,
+    } as const
+
+    const snapshot = createMainStageModelSettingsSnapshot(input)
+    expect(snapshot).toMatchObject({ renderer: 'live2d', modelId: 'model-a', controlsLocked: false })
+    expect(snapshot.live2dExpressions?.entries).toMatchObject([{ id: 'happy.exp3.json', active: false }])
+    expect(snapshot.mmdExpressions).toBeUndefined()
+
+    live2dExpressionStore.registerDefinitions('model-b', [])
+    const switched = createMainStageModelSettingsSnapshot(input)
+    expect(switched.modelId).toBe('model-b')
+    expect(switched.live2dExpressions?.entries).toEqual([])
+
+    const noModel = createMainStageModelSettingsSnapshot({ ...input, hasModel: false, componentState: 'pending' })
+    expect(noModel).toMatchObject({ phase: 'no-model', controlsLocked: false, previewAvailable: false })
   })
 
   // https://github.com/moeru-ai/airi/issues/2450
