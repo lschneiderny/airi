@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
-
 import type { FullscreenGlideCurve, FullscreenMode } from '../../shared/eventa'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -16,10 +14,6 @@ import { useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage
 import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/composables/hit-test'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { HoloCoupon } from '@proj-airi/stage-ui/components'
-import {
-  createEmptyModelSettingsRuntimeSnapshot,
-  resolveComponentStateToRuntimePhase,
-} from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useStageItemPruning } from '@proj-airi/stage-ui/composables/use-stage-item-pruning'
@@ -40,6 +34,7 @@ import WindowResizeBorder from '../components/window-resize-border.vue'
 
 import { defaultFullscreenSurface, electronFullscreenExit, electronFullscreenSetMode, electronMainPageMounted, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronOpenSettings } from '../../shared/eventa'
 import { fullscreenHostPages, fullscreenSurfaceOf } from '../components/fullscreen/surfaces'
+import { createMainStageModelSettingsSnapshot } from '../composables/main-stage-model-settings-snapshot'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { useFullscreenHost } from '../composables/use-fullscreen-host'
 import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
@@ -214,98 +209,16 @@ function openMenuFromCharacter(event: MouseEvent) {
   controlsIslandRef.value?.openMenu()
 }
 
-const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
-  const hasModel = !!stageModelSelectedUrl.value
-
-  if (stageModelRenderer.value === 'live2d') {
-    const phase = resolveComponentStateToRuntimePhase(componentStateStage.value, { hasModel })
-
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      renderer: 'live2d',
-      phase,
-      controlsLocked: hasModel ? phase !== 'mounted' : false,
-      previewAvailable: hasModel,
-      canCapturePreview: false,
-      updatedAt: Date.now(),
-    })
-  }
-
-  if (stageModelRenderer.value === 'vrm') {
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      renderer: 'vrm',
-      phase: hasModel ? scenePhase.value : 'no-model',
-      controlsLocked: hasModel
-        ? (!stageMounted.value || sceneMutationLocked.value)
-        : false,
-      previewAvailable: hasModel,
-      canCapturePreview: false,
-      updatedAt: Date.now(),
-    })
-  }
-
-  if (stageModelRenderer.value === 'spine') {
-    const phase = resolveComponentStateToRuntimePhase(componentStateStage.value, { hasModel })
-
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      renderer: 'spine',
-      phase,
-      controlsLocked: hasModel ? phase !== 'mounted' : false,
-      previewAvailable: hasModel,
-      canCapturePreview: false,
-      updatedAt: Date.now(),
-    })
-  }
-
-  if (stageModelRenderer.value === 'tachie') {
-    const phase = resolveComponentStateToRuntimePhase(componentStateStage.value, { hasModel })
-
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      renderer: 'tachie',
-      phase,
-      controlsLocked: hasModel ? phase !== 'mounted' : false,
-      previewAvailable: hasModel,
-      canCapturePreview: false,
-      updatedAt: Date.now(),
-    })
-  }
-
-  if (stageModelRenderer.value === 'mmd') {
-    const phase = resolveComponentStateToRuntimePhase(componentStateStage.value, { hasModel })
-
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      modelId: mmdExpressionStore.modelId,
-      renderer: 'mmd',
-      phase,
-      controlsLocked: hasModel ? phase !== 'mounted' : false,
-      previewAvailable: hasModel,
-      canCapturePreview: false,
-      mmdExpressions: mmdExpressionStore.settingsSnapshot,
-      updatedAt: Date.now(),
-    })
-  }
-
-  if (stageModelRenderer.value === 'godot') {
-    return createEmptyModelSettingsRuntimeSnapshot({
-      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-      renderer: 'godot',
-      phase: hasModel ? 'mounted' : 'no-model',
-      controlsLocked: false,
-      previewAvailable: false,
-      canCapturePreview: false,
-      updatedAt: Date.now(),
-    })
-  }
-
-  return createEmptyModelSettingsRuntimeSnapshot({
-    ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
-    updatedAt: Date.now(),
-  })
-})
+const modelSettingsRuntimeSnapshot = computed(() => createMainStageModelSettingsSnapshot({
+  ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+  renderer: stageModelRenderer.value,
+  hasModel: !!stageModelSelectedUrl.value,
+  componentState: componentStateStage.value,
+  scenePhase: scenePhase.value,
+  sceneMutationLocked: sceneMutationLocked.value,
+  live2dExpressionStore: expressionStore,
+  mmdExpressionStore,
+}))
 
 const fullscreen = useFullscreenStore()
 const { phase: fullscreenPhase, active: fullscreenActive } = storeToRefs(fullscreen)
