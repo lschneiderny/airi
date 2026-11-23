@@ -9,6 +9,7 @@ import type { Live2DItemInsertion } from './insertion'
 import type { Live2DCanvasScale, Live2DItemPinResolution } from './pin'
 import type { Live2DItemPose } from './pose'
 
+import { errorMessageFrom } from '@moeru/std'
 import { BaseTexture, Texture } from '@pixi/core'
 import { Container } from '@pixi/display'
 import { Matrix, Point } from '@pixi/math'
@@ -60,7 +61,10 @@ interface ItemRecord {
   /** Set once a Live2D item loaded; its model is a child of the layer's root. */
   live2d?: Live2DItemModel
   resolved?: Live2DItemPinResolution
-  pose?: Live2DItemPose
+  /** Where it drew last frame; one object per record, rewritten in place every frame. Valid only while `drawn`. */
+  pose: Live2DItemPose
+  /** Set by the frame that solves its pose; `place` clears it, so a re-placed item counts as not drawn until then. */
+  drawn: boolean
   /** Item-clock time when it began to show; a GIF plays from its first frame then. */
   shownAtMs: number
   state?: Live2DItemRenderState
@@ -81,8 +85,10 @@ interface LoadedDisplay {
  * The layer installs the model's `itemInsertions` hook only while at least one
  * item draws and removes it at zero, so her frame without items is exactly the
  * upstream draw. In the hook, which runs after her update in the same frame, it
- * reads her current vertices, solves each item's pose, and splits her drawables
- * around the items. Items therefore follow her mesh without lag, pass through
+ * reads her current vertices, solves each item's pose into the item's own pose
+ * object, and splits her drawables around the items. The split is cached and
+ * rebuilt only when the items change or a motion moves the render order of a
+ * drawable an item draws above, so a steady frame allocates nothing. Items therefore follow her mesh without lag, pass through
  * her filters, and write none of her parameters.
  *
  * At her `beforeModelUpdate`, after pose and before her core update, it sets the
@@ -107,6 +113,13 @@ export class Live2DItemLayer {
   private readonly records = new Map<string, ItemRecord>()
   private insertions: Live2DItemInsertion[] = []
   private readonly hook: Live2DItemInsertions = { segments: () => this.segments() }
+  /** The draw segments a steady frame returns as is; rebuilt only when `planStale` or an anchor's render order moved. */
+  private plan: readonly Live2DItemDrawSegment[] = []
+  /** Set by `refresh`, which changes the insertions the plan is built from. */
+  private planStale = true
+  /** The drawables that `above` items name, and their render orders when the plan was built. */
+  private readonly anchorIndices: number[] = []
+  private readonly anchorOrders: number[] = []
   private readonly modelFilterArea: Rectangle
   private readonly partIndexById = new Map<string, number>()
   /** Her part opacities when the layer attached, which a part gets back once no item hides it. */
@@ -210,7 +223,7 @@ export class Live2DItemLayer {
    */
   outfitAt(point: { x: number, y: number }): boolean {
     for (const record of this.records.values()) {
-      if (record.kind !== 'outfit' || !record.pose)
+      if (record.kind !== 'outfit' || !record.drawn)
         continue
       if (record.live2d?.contains(point))
         return true
@@ -239,12 +252,18 @@ export class Live2DItemLayer {
       this.release(id)
     this.records.clear()
     this.insertions = []
+    this.plan = []
     this.install(false)
-    // Her model outlives the layer when only the items unmount; a swapped-out model is already destroyed.
+    // Her model outlives the layer when only the items unmount; a swapped-out model is already destroyed. Parts that
+    // `refresh` released but no `beforeModelUpdate` restored yet, as while the stage is paused, are restored here too.
     if (!this.model.destroyed) {
-      for (const index of this.hiddenParts)
-        this.internalModel.coreModel.setPartOpacityByIndex(index, this.partBaseline[index])
+      for (const parts of [this.hiddenParts, this.partsToRestore]) {
+        for (const index of parts)
+          this.internalModel.coreModel.setPartOpacityByIndex(index, this.partBaseline[index])
+      }
     }
+    this.hiddenParts.clear()
+    this.partsToRestore.clear()
     this.root.destroy()
   }
 
@@ -282,12 +301,14 @@ export class Live2DItemLayer {
       link: item.document.link,
       placement: item.document.placement,
       hides: item.document.hides,
+      pose: { x: 0, y: 0, rotation: 0, scale: 1, alpha: 1, visible: true, held: false },
+      drawn: false,
       shownAtMs: this.clockMs,
       removed: false,
     }
     this.records.set(id, record)
 
-    this.loadDisplay(record).then((display) => {
+    this.loadDisplay(id, record).then((display) => {
       if (record.removed) {
         destroyDisplay(display)
         return
@@ -302,13 +323,13 @@ export class Live2DItemLayer {
         this.root.addChild(object)
       this.place(record, record.placement)
       this.refresh()
-    }, () => {
+    }, (error) => {
       if (!record.removed)
-        this.fail(record)
+        this.fail(id, record, error)
     })
   }
 
-  private async loadDisplay(record: ItemRecord): Promise<LoadedDisplay> {
+  private async loadDisplay(id: string, record: ItemRecord): Promise<LoadedDisplay> {
     if (record.format === 'live2d-zip') {
       const live2d = await Live2DItemModel.load(record.url, {
         linked: record.link === 'parameters',
@@ -318,25 +339,28 @@ export class Live2DItemLayer {
       return { live2d }
     }
     if (record.format === 'gif') {
-      const gif = await this.loadGif(record)
+      const gif = await this.loadGif(id, record)
       return { sprite: new Sprite(gif.texture), gif }
     }
     const image = await loadImage(record.url)
-    return { sprite: new Sprite(new Texture(new BaseTexture(image))), opaque: opaqueBoxOf(image) }
+    // Measured before the texture exists, so a failed measurement leaves nothing to release.
+    const opaque = opaqueBoxOf(image)
+    return { sprite: new Sprite(new Texture(new BaseTexture(image))), opaque }
   }
 
-  private async loadGif(record: ItemRecord) {
+  private async loadGif(id: string, record: ItemRecord) {
     const response = await fetch(record.url)
     if (!response.ok)
       throw new Error(`The GIF item could not be read (HTTP ${response.status}).`)
-    return Live2DGifTexture.open(await response.arrayBuffer(), () => {
+    return Live2DGifTexture.open(await response.arrayBuffer(), (error) => {
       if (!record.removed)
-        this.fail(record)
+        this.fail(id, record, error)
     })
   }
 
-  /** A failed item stops drawing and keeps its `failed` state until it is removed. */
-  private fail(record: ItemRecord) {
+  /** A failed item logs why, stops drawing, and keeps its `failed` state until it is removed. */
+  private fail(id: string, record: ItemRecord, error: unknown) {
+    console.warn('[live2d-items] Item failed:', id, errorMessageFrom(error))
     this.releaseDisplay(record)
     record.state = 'failed'
     this.refresh()
@@ -348,7 +372,7 @@ export class Live2DItemLayer {
       return
     record.sprite?.anchor.set(placement.anchor.x, placement.anchor.y)
     record.resolved = placement.pin ? resolveLive2DItemPin(placement.pin, this.internalModel.coreModel, this.scale) : undefined
-    record.pose = undefined
+    record.drawn = false
     record.state = this.stateOf(record)
   }
 
@@ -387,6 +411,7 @@ export class Live2DItemLayer {
     for (const index of hidden)
       this.partsToRestore.delete(index)
     this.hiddenParts = hidden
+    this.planStale = true
     this.install(this.insertions.length > 0)
 
     const serialized = JSON.stringify(states)
@@ -436,8 +461,8 @@ export class Live2DItemLayer {
       const { sprite, live2d, placement } = record
       if (!sprite && !live2d)
         continue
-      const pose = solveLive2DItemPose(placement, record.resolved, coreModel, this.scale, record.pose)
-      record.pose = pose
+      const pose = solveLive2DItemPose(placement, record.resolved, coreModel, this.scale, record.pose, record.drawn ? record.pose : undefined)
+      record.drawn = true
       live2d?.place(pose, placement)
       if (sprite) {
         sprite.position.set(pose.x, pose.y)
@@ -452,10 +477,37 @@ export class Live2DItemLayer {
     this.root.updateTransform()
     this.root.disableTempParent(parent)
 
-    const plan = resolveInsertionSegments(this.insertions, coreModel.getDrawableRenderOrders(), id => coreModel.getDrawableIndex(id))
-    return plan.segments.map(segment => segment.kind === 'model'
+    const renderOrders = coreModel.getDrawableRenderOrders()
+    if (this.planStale || this.anchorsMoved(renderOrders))
+      this.rebuildPlan(coreModel, renderOrders)
+    return this.plan
+  }
+
+  /** Whether a motion changed the render order of a drawable an `above` item draws after since the plan was built. */
+  private anchorsMoved(renderOrders: ArrayLike<number>) {
+    for (let at = 0; at < this.anchorIndices.length; at++) {
+      if (renderOrders[this.anchorIndices[at]] !== this.anchorOrders[at])
+        return true
+    }
+    return false
+  }
+
+  /** Builds the segments and their insert closures once, for every frame until the insertions or an anchor's order change. */
+  private rebuildPlan(coreModel: Cubism4InternalModel['coreModel'], renderOrders: ArrayLike<number>) {
+    const { segments } = resolveInsertionSegments(this.insertions, renderOrders, id => coreModel.getDrawableIndex(id))
+    this.plan = segments.map(segment => segment.kind === 'model'
       ? segment
       : { kind: 'insert', render: (renderer: Renderer) => this.renderItems(segment.itemIds, renderer) })
+    this.anchorIndices.length = 0
+    this.anchorOrders.length = 0
+    for (const { layer } of this.insertions) {
+      const index = layer.kind === 'above' ? coreModel.getDrawableIndex(layer.drawableId) : -1
+      if (index >= 0) {
+        this.anchorIndices.push(index)
+        this.anchorOrders.push(renderOrders[index])
+      }
+    }
+    this.planStale = false
   }
 
   private renderItems(ids: readonly string[], renderer: Renderer) {
@@ -467,9 +519,13 @@ export class Live2DItemLayer {
     }
   }
 
-  /** Where an item drew last frame, for the placement editor's handles; `undefined` while nothing draws for it. */
+  /**
+   * Where an item drew last frame, for the placement editor's handles; `undefined` while nothing draws for it. The
+   * object is rewritten in place by every frame, so read it right away and do not keep it.
+   */
   poseOf(id: string): Live2DItemPose | undefined {
-    return this.records.get(id)?.pose
+    const record = this.records.get(id)
+    return record?.drawn ? record.pose : undefined
   }
 }
 

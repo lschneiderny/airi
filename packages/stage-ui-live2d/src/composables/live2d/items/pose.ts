@@ -72,22 +72,27 @@ const collapsedAreaShare = 0.05
  * `previous` rotation and scale, or the placement's without one, and reports
  * `held`. A pin whose drawable is missing draws at its stored model point.
  *
- * Runs every frame: it reads the core's vertex buffer in place and allocates
- * nothing but the returned pose.
+ * Runs every frame: it reads the core's vertex buffer in place, writes every
+ * field of `out`, and returns `out`, so it allocates nothing. `out` may be
+ * `previous`; the held values are read before anything is written.
  */
 export function solveLive2DItemPose(
   placement: Live2DItemPlacement,
   resolved: Live2DItemPinResolution | undefined,
   source: Live2DItemPoseSource,
   scale: Live2DCanvasScale,
+  out: Live2DItemPose,
   previous?: Pick<Live2DItemPose, 'rotation' | 'scale'>,
 ): Live2DItemPose {
+  const heldRotation = previous?.rotation ?? placement.rotation
+  const heldScale = previous?.scale ?? placement.scale
+
   if (!placement.pin || !resolved)
-    return { x: placement.x, y: placement.y, rotation: placement.rotation, scale: placement.scale, alpha: 1, visible: true, held: false }
+    return writePose(out, placement.x, placement.y, placement.rotation, placement.scale, 1, true, false)
 
   if (resolved.state === 'missing-drawable') {
     const { modelPoint } = placement.pin
-    return { x: modelPoint.x, y: modelPoint.y, rotation: placement.rotation, scale: placement.scale, alpha: 1, visible: true, held: false }
+    return writePose(out, modelPoint.x, modelPoint.y, placement.rotation, placement.scale, 1, true, false)
   }
 
   const { index, pin } = resolved
@@ -120,17 +125,8 @@ export function solveLive2DItemPose(
   const determinant = currentDeterminant / referenceDeterminant
 
   // Negated so a degenerate reference (NaN or infinite ratio) holds as well.
-  if (!(determinant > 0) || !(determinant >= collapsedAreaShare) || !Number.isFinite(determinant)) {
-    return {
-      x,
-      y,
-      rotation: previous?.rotation ?? placement.rotation,
-      scale: previous?.scale ?? placement.scale,
-      alpha,
-      visible,
-      held: true,
-    }
-  }
+  if (!(determinant > 0) || !(determinant >= collapsedAreaShare) || !Number.isFinite(determinant))
+    return writePose(out, x, y, heldRotation, heldScale, alpha, visible, true)
 
   const inverse = 1 / referenceDeterminant
   const i00 = r11 * inverse
@@ -144,5 +140,16 @@ export function solveLive2DItemPose(
   const meshRotation = Math.atan2(a10 - a01, a00 + a11)
   const meshScale = Math.min(maximumMeshScale, Math.max(minimumMeshScale, Math.sqrt(determinant)))
 
-  return { x, y, rotation: placement.rotation + meshRotation, scale: placement.scale * meshScale, alpha, visible, held: false }
+  return writePose(out, x, y, placement.rotation + meshRotation, placement.scale * meshScale, alpha, visible, false)
+}
+
+function writePose(out: Live2DItemPose, x: number, y: number, rotation: number, scale: number, alpha: number, visible: boolean, held: boolean) {
+  out.x = x
+  out.y = y
+  out.rotation = rotation
+  out.scale = scale
+  out.alpha = alpha
+  out.visible = visible
+  out.held = held
+  return out
 }

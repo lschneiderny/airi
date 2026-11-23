@@ -3,6 +3,7 @@ import type { StageItemAsset } from '../../../../../database/repos/stage-items.r
 import type { StageItemImportRefusal } from '../../../../../stores/stage-item-library'
 import type { ExpressionPanelItemCommand, ExpressionPanelSnapshot } from './source'
 
+import { errorMessageFrom } from '@moeru/std'
 import { countModelsPlacingAsset, MAX_MODEL_ITEMS } from '@proj-airi/stage-ui-live2d/stores/expression-catalog-persistence'
 import { Alert, Button, Skeleton } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -56,6 +57,9 @@ async function loadThumbnail(id: string) {
     }
     thumbnails.value = { ...thumbnails.value, [id]: url }
   }
+  catch (error) {
+    console.warn('[stage-items] Failed to read a thumbnail:', id, errorMessageFrom(error))
+  }
   finally {
     loading.delete(id)
   }
@@ -90,6 +94,7 @@ function detail(asset: StageItemAsset) {
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 const importing = ref(false)
 const refusals = ref<{ name: string, reason: StageItemImportRefusal }[]>([])
+const importFailed = ref(false)
 
 async function importChosen(event: Event) {
   const input = event.target as HTMLInputElement
@@ -99,9 +104,14 @@ async function importChosen(event: Event) {
   if (files.length === 0)
     return
   importing.value = true
+  importFailed.value = false
   try {
     const results = await library.importFiles(files)
     refusals.value = results.flatMap(result => result.ok ? [] : [{ name: result.name, reason: result.reason }])
+  }
+  catch (error) {
+    console.warn('[stage-items] Failed to import files:', errorMessageFrom(error))
+    importFailed.value = true
   }
   finally {
     importing.value = false
@@ -194,6 +204,17 @@ function addToModel(asset: StageItemAsset) {
           {{ t(`${prefix}.refused`, { name: refusal.name, reason: t(`${prefix}.refusals.${refusal.reason}`) }) }}
         </li>
       </ul>
+    </Alert>
+
+    <Alert
+      v-if="importFailed"
+      tone="danger"
+      live="assertive"
+      dismissible
+      :dismiss-label="t(`${prefix}.refused-dismiss`)"
+      @dismiss="importFailed = false"
+    >
+      {{ t(`${prefix}.import-failed`) }}
     </Alert>
 
     <Alert v-if="error" tone="danger">

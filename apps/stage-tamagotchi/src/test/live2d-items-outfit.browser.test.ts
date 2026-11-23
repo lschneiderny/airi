@@ -1,6 +1,6 @@
 import type { Renderer } from '@pixi/core'
 import type { ItemExpressionDocument, StageItemPlacement } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DItemRenderState, Live2DStageItem } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
+import type { Live2DStageItem } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
 import type { Live2DCanvasScale } from '@proj-airi/stage-ui-live2d/composables/live2d/items/pin'
 import type { StageItemFormat } from '@proj-airi/stage-ui-live2d/utils/stage-item-validator'
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4'
@@ -21,7 +21,7 @@ import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp, effectScope, h, nextTick, shallowRef } from 'vue'
 
-import { createLive2DModelFixture } from './live2d-model-fixture'
+import { createLive2DModelFixture, itemStateLog } from './live2d-model-fixture'
 
 import '@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration'
 
@@ -34,7 +34,6 @@ const signalTimeoutMs = 10_000
 /** The preset model, served by the browser project; loaded as the item it is also her model. */
 const itemUrl = new URL('../../../../packages/stage-ui/src/assets/live2d/models/hiyori_free_zh.zip', import.meta.url).href
 
-type States = Readonly<Record<string, Live2DItemRenderState>>
 type Her = Live2DModel<Cubism4InternalModel>
 
 function placement(overrides: Partial<StageItemPlacement>): StageItemPlacement {
@@ -98,38 +97,6 @@ async function opfsEntryNames() {
   return names.sort()
 }
 
-/** Records the state reports of a layer or the scene component, and waits on them. */
-function stateLog() {
-  let latest: States = {}
-  const listeners = new Set<(states: States) => void>()
-  return {
-    report(states: States) {
-      latest = states
-      for (const listener of listeners)
-        listener(states)
-    },
-    until(accept: (states: States) => boolean) {
-      if (accept(latest))
-        return Promise.resolve(latest)
-      return new Promise<States>((resolve, reject) => {
-        let timeout: ReturnType<typeof setTimeout> | undefined
-        const listener = (states: States) => {
-          if (!accept(states))
-            return
-          clearTimeout(timeout)
-          listeners.delete(listener)
-          resolve(states)
-        }
-        timeout = setTimeout(() => {
-          listeners.delete(listener)
-          reject(new Error(`No matching item states within ${signalTimeoutMs} ms; last report: ${JSON.stringify(latest)}`))
-        }, signalTimeoutMs)
-        listeners.add(listener)
-      })
-    },
-  }
-}
-
 describe('live2D items, hide lists, and parameter mirroring', () => {
   let fixture: Live2DModelFixture
   let renderer: Renderer
@@ -158,7 +125,7 @@ describe('live2D items, hide lists, and parameter mirroring', () => {
   }
 
   function attachLayer(model: Her) {
-    const log = stateLog()
+    const log = itemStateLog(signalTimeoutMs)
     const layer = new Live2DItemLayer(model, renderer.screen, states => log.report(states))
     layers.push(layer)
     return { layer, until: log.until }
@@ -304,6 +271,25 @@ describe('live2D items, hide lists, and parameter mirroring', () => {
     frame(her, layer)
     expect(coreModel.getPartOpacityByIndex(partFace)).toBe(0.5)
     coreModel.setPartOpacityByIndex(partFace, baseline)
+  })
+
+  it('restores a released hidden part when the layer goes before her next update', async () => {
+    const { layer, until } = attachLayer(her)
+    const coreModel = her.internalModel.coreModel
+    const partFace = coreModel.getModel().parts.ids.indexOf('PartFace')
+    frame(her, layer)
+    const baseline = coreModel.getPartOpacityByIndex(partFace)
+    const badge = (hides: string[]) => stageItem('badge', solidPng(), 'image', { kind: 'prop', hides, placement: placement({ x: 100, y: 100 }) })
+    layer.setItems([badge(['PartFace'])])
+    await until(states => states['item:badge'] === 'attached')
+    frame(her, layer)
+    expect(coreModel.getPartOpacityByIndex(partFace)).toBe(0)
+
+    // The item stops hiding the part while the stage is paused, so no update restores it before the layer goes.
+    layer.setItems([badge([])])
+    layer.destroy()
+
+    expect(coreModel.getPartOpacityByIndex(partFace)).toBe(baseline)
   })
 
   it('leaves her parameters, parts, and vertices exactly as without a layer when no item shows', async () => {
@@ -643,7 +629,7 @@ describe('live2D items, hide lists, and parameter mirroring', () => {
 
   it('freezes a Live2D item while the app is paused and does not integrate the paused time on resume', async () => {
     const item = loadedItems()
-    const log = stateLog()
+    const log = itemStateLog(signalTimeoutMs)
     const root = document.createElement('div')
     document.body.append(root)
     const host = createApp({
@@ -686,7 +672,7 @@ describe('live2D items, hide lists, and parameter mirroring', () => {
     const sharedListeners = Ticker.shared.count
     const item = loadedItems()
     const destroyed = vi.spyOn(Live2DItemModel.prototype, 'destroy')
-    const log = stateLog()
+    const log = itemStateLog(signalTimeoutMs)
     const model = shallowRef<Her>(her)
     const root = document.createElement('div')
     document.body.append(root)

@@ -1,6 +1,6 @@
 import type { Renderer } from '@pixi/core'
 import type { StageItemPin, StageItemPlacement } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DItemRenderState, Live2DStageItem } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
+import type { Live2DStageItem } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
 import type { Live2DCanvasScale } from '@proj-airi/stage-ui-live2d/composables/live2d/items/pin'
 import type { StageItemFormat } from '@proj-airi/stage-ui-live2d/utils/stage-item-validator'
 import type { Cubism4InternalModel, Live2DModel } from 'pixi-live2d-display/cubism4'
@@ -11,12 +11,13 @@ import { Filter, Texture } from '@pixi/core'
 import { Sprite } from '@pixi/sprite'
 import { Live2DItems } from '@proj-airi/stage-ui-live2d/components/scenes/live2d'
 import { Live2DGifTexture } from '@proj-airi/stage-ui-live2d/composables/live2d/items/gif-texture'
+import { Live2DItemLayer } from '@proj-airi/stage-ui-live2d/composables/live2d/items/layer'
 import { live2DUnitToCanvasX, live2DUnitToCanvasY, pickLive2DItemPin } from '@proj-airi/stage-ui-live2d/composables/live2d/items/pin'
 import { ScreenAmbientLightFilter } from '@proj-airi/stage-ui-live2d/filters/screen-ambient-light'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, shallowRef } from 'vue'
 
-import { createLive2DModelFixture } from './live2d-model-fixture'
+import { createLive2DModelFixture, itemStateLog } from './live2d-model-fixture'
 
 const width = 768
 const height = 512
@@ -28,8 +29,6 @@ const magenta: Rgb = [255, 0, 255]
 const cyan: Rgb = [0, 255, 255]
 /** Bounds every wait on an emitted state or a decoded frame. */
 const signalTimeoutMs = 10_000
-
-type States = Readonly<Record<string, Live2DItemRenderState>>
 
 function pixelIndex(x: number, y: number) {
   // `readPixels` returns the bottom row first.
@@ -166,6 +165,7 @@ describe('live2D stage items render', () => {
   let modelFilterArea: Live2DModel['filterArea']
   const blobUrls: string[] = []
   let unmountCurrent: (() => void) | undefined
+  const layers: Live2DItemLayer[] = []
 
   function canvasToScreen() {
     return model.worldTransform.clone().append(model.internalModel.localTransform)
@@ -191,8 +191,7 @@ describe('live2D stage items render', () => {
   function mountItems(initial: Live2DStageItem[]) {
     const items = shallowRef<readonly Live2DStageItem[]>(initial)
     const itemModel = shallowRef<Live2DModel>(model)
-    let latest: States = {}
-    const listeners = new Set<(states: States) => void>()
+    const log = itemStateLog(signalTimeoutMs)
     const root = document.createElement('div')
     document.body.append(root)
     const host = createApp({
@@ -200,11 +199,7 @@ describe('live2D stage items render', () => {
         app: fixture.app,
         model: itemModel.value,
         items: items.value,
-        onStates: (states: States) => {
-          latest = states
-          for (const listener of listeners)
-            listener(states)
-        },
+        onStates: log.report,
       }),
     })
     host.mount(root)
@@ -214,31 +209,15 @@ describe('live2D stage items render', () => {
       unmountCurrent = undefined
     }
     unmountCurrent = unmount
-    return {
-      items,
-      model: itemModel,
-      unmount,
-      /** Resolves with the first report, the current one included, that satisfies `accept`. */
-      until(accept: (states: States) => boolean) {
-        if (accept(latest))
-          return Promise.resolve(latest)
-        return new Promise<States>((resolve, reject) => {
-          let timeout: ReturnType<typeof setTimeout> | undefined
-          const listener = (states: States) => {
-            if (!accept(states))
-              return
-            clearTimeout(timeout)
-            listeners.delete(listener)
-            resolve(states)
-          }
-          timeout = setTimeout(() => {
-            listeners.delete(listener)
-            reject(new Error(`No matching item states within ${signalTimeoutMs} ms; last report: ${JSON.stringify(latest)}`))
-          }, signalTimeoutMs)
-          listeners.add(listener)
-        })
-      },
-    }
+    return { items, model: itemModel, unmount, until: log.until }
+  }
+
+  /** A layer on her model driven by hand, without the component's ticker; `afterEach` destroys it. */
+  function attachLayer() {
+    const log = itemStateLog(signalTimeoutMs)
+    const layer = new Live2DItemLayer(model, renderer.screen, log.report)
+    layers.push(layer)
+    return { layer, until: log.until }
   }
 
   /** Resolves when a texture re-uploads its source, which a GIF does once per presented frame. */
@@ -288,6 +267,8 @@ describe('live2D stage items render', () => {
 
   afterEach(() => {
     unmountCurrent?.()
+    for (const layer of layers.splice(0))
+      layer.destroy()
     vi.restoreAllMocks()
     model.filters = []
     model.itemInsertions = undefined
@@ -608,5 +589,75 @@ describe('live2D stage items render', () => {
     expect(countMismatches(render(), withoutItems)).toBe(0)
     expect(managedTextures()).toBe(baseline)
     expect(closed).toHaveBeenCalledTimes(opened.mock.calls.length)
+  })
+
+  it('returns the same segments and pose objects on a steady frame and rebuilds the segments only on a change', async () => {
+    const coreModel = model.internalModel.coreModel
+    const renderOrders = coreModel.getDrawableRenderOrders()
+    // A drawable in the middle of her draw order, so its position can move down by one.
+    const anchor = renderOrders.indexOf(Math.floor(drawableCount / 2))
+    const anchorOrder = renderOrders[anchor]
+    const veil = stageItem('veil', solidPng(red), 'image', placement({ x: screenToCanvas(60, 120).x, y: screenToCanvas(60, 120).y, scale: scaleForScreen(20), layer: { kind: 'above', drawableId: coreModel.getDrawableId(anchor) } }))
+    const dot = stageItem('dot', solidPng(green), 'image', placement({ x: screenToCanvas(60, 400).x, y: screenToCanvas(60, 400).y, scale: scaleForScreen(20) }))
+    const { layer, until } = attachLayer()
+    layer.setItems([veil, dot])
+    await until(states => states['item:veil'] === 'attached' && states['item:dot'] === 'attached')
+    const hook = model.itemInsertions!
+    const segments = () => hook.segments(model.internalModel, renderer)
+
+    render()
+    const steady = segments()
+    const pose = layer.poseOf('item:veil')
+    expect(pose).toBeDefined()
+    render()
+    expect(segments()).toBe(steady)
+    expect(layer.poseOf('item:veil')).toBe(pose)
+    expect(steady).toContainEqual({ kind: 'model', from: 0, to: anchorOrder + 1 })
+
+    // A motion moves her anchor drawable down one position: the item follows it, and back.
+    renderOrders[anchor] = anchorOrder - 1
+    const moved = segments()
+    renderOrders[anchor] = anchorOrder
+    expect(moved).not.toBe(steady)
+    expect(moved).toContainEqual({ kind: 'model', from: 0, to: anchorOrder })
+    const restored = segments()
+    expect(restored).not.toBe(moved)
+    expect(segments()).toBe(restored)
+
+    // Placing an item again refreshes the layer, which rebuilds them.
+    layer.setItems([veil, { ...dot, document: { ...dot.document, placement: { ...dot.document.placement } } }])
+    const refreshed = segments()
+    expect(refreshed).not.toBe(restored)
+    expect(segments()).toBe(refreshed)
+
+    // Hiding an item between frames drops its insert from the next frame's segments.
+    layer.setItems([dot])
+    const hidden = segments()
+    expect(hidden).not.toBe(refreshed)
+    expect(hidden.filter(segment => segment.kind === 'insert')).toHaveLength(1)
+    const pixels = render()
+    expect(countPixels(pixel => isColor(pixels, pixel, red))).toBe(0)
+    expect(colorAt(pixels, 60, 400)).toEqual([...green, 255])
+  })
+
+  it('holds a GIF at its first frame under reduced motion and resumes from the item clock', async () => {
+    const opened = vi.spyOn(Live2DGifTexture, 'open')
+    const position = screenToCanvas(60, 120)
+    const { layer, until } = attachLayer()
+    layer.setItems([stageItem('flag', gifUrl([0, 1, 2], [10, 20, 10]), 'gif', placement({ x: position.x, y: position.y, scale: scaleForScreen(20, 2) }))])
+    await until(states => states['item:flag'] === 'attached')
+    const gif = await opened.mock.results[0].value as Live2DGifTexture
+    const shown = vi.spyOn(gif, 'show')
+
+    // Frames last 100, 200, and 100 ms of item time.
+    layer.advance(150, true)
+    expect(shown).toHaveBeenLastCalledWith(1)
+    layer.advance(100, false)
+    expect(shown).toHaveBeenLastCalledWith(0)
+    layer.advance(100, false)
+    expect(shown).toHaveBeenLastCalledWith(0)
+    // At 360 ms of item time the third frame shows; a clock that restarted would show the first.
+    layer.advance(10, true)
+    expect(shown).toHaveBeenLastCalledWith(2)
   })
 })

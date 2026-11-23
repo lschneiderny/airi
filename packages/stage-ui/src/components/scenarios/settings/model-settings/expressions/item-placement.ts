@@ -125,6 +125,16 @@ export function itemFrame(
   })
 }
 
+/** Below this distance in view pixels a frame corner counts as unmoved, so a still item does not re-render the editor. */
+const frameMoveEpsilonPx = 0.01
+
+/** Whether the editor's frame moved: a point count changed, or a point moved more than {@link frameMoveEpsilonPx}. */
+export function viewFrameMoved(previous: readonly PlanePoint[], next: readonly PlanePoint[]): boolean {
+  if (previous.length !== next.length)
+    return true
+  return next.some((point, index) => Math.abs(point.x - previous[index].x) > frameMoveEpsilonPx || Math.abs(point.y - previous[index].y) > frameMoveEpsilonPx)
+}
+
 /** Pins the item where the user clicked; the item's anchor then follows that point of the mesh. */
 export function pinnedPlacement(placement: StageItemPlacement, pin: StageItemPin): StageItemPlacement {
   return { ...placement, pin, x: pin.modelPoint.x, y: pin.modelPoint.y }

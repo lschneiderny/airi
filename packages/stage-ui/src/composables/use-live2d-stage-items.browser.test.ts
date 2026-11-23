@@ -1,6 +1,8 @@
 import type { ItemExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
 import type { Pinia } from 'pinia'
 
+import type { StageItemAsset } from '../database/repos/stage-items.repo'
+
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -26,7 +28,7 @@ async function png(name: string): Promise<File> {
 }
 
 /** The stage window's wiring: the library, its pruning of expression documents, and the scene's items. */
-async function openStage() {
+async function openStage(active: () => boolean = () => true) {
   pinia = createPinia()
   setActivePinia(pinia)
   const library = useStageItemLibraryStore(pinia)
@@ -35,7 +37,7 @@ async function openStage() {
   scope = effectScope()
   const stage = scope.run(() => {
     useStageItemPruning()
-    return useLive2DStageItems({ active: () => true })
+    return useLive2DStageItems({ active })
   })!
   return { library, expressions, items: stage.items }
 }
@@ -61,7 +63,55 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/** Writes a library entry without its file; the library lists entries, and only drawing reads files. */
+async function seedEntry(id: string, format: StageItemAsset['format']) {
+  const asset: StageItemAsset = { id, name: `${id}.bin`, format, mime: format === 'live2d-zip' ? 'application/zip' : 'image/png', width: 8, height: 8, importedAt: 0 }
+  await storage.setItemRaw(`stage-items:entries:${id}`, asset)
+}
+
 describe('useLive2DStageItems', () => {
+  it('tells the store every library asset and, apart, the Live2D ones, and forwards the scene states', async () => {
+    await seedEntry('asset-picture', 'image')
+    await seedEntry('asset-animation', 'gif')
+    await seedEntry('asset-model', 'live2d-zip')
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const library = useStageItemLibraryStore(pinia)
+    await library.load()
+    const expressions = useExpressionStore(pinia)
+    const available = vi.spyOn(expressions, 'setAvailableItemAssets')
+    const reported = vi.spyOn(expressions, 'reportItemStates')
+    scope = effectScope()
+    const stage = scope.run(() => useLive2DStageItems({ active: () => true }))!
+
+    expect(available).toHaveBeenLastCalledWith(new Set(['asset-picture', 'asset-animation', 'asset-model']), new Set(['asset-model']))
+
+    const states = { 'item:hat': 'attached', 'item:dress': 'missing-part' } as const
+    stage.reportStates(states)
+    expect(reported).toHaveBeenCalledTimes(1)
+    expect(reported).toHaveBeenCalledWith(states)
+  })
+
+  it('draws nothing while inactive, revokes the URLs when it turns inactive, and opens them again after', async () => {
+    const active = shallowRef(true)
+    const { library, expressions, items } = await openStage(() => active.value)
+    const hatAsset = await importAsset(library, 'hat.png')
+    expressions.registerDefinitions('model-a', [])
+    const hat = expressions.applySettingsCommand({ type: 'create-item', item: { assetId: hatAsset, label: 'Hat', kind: 'prop', mappings: [], placement } }) as string
+    expressions.activate(hat)
+    await until(items).toMatch(list => list.length === 1, { timeout: 5000, throwOnTimeout: true })
+    const url = items.value[0].url
+    const revoked = vi.spyOn(URL, 'revokeObjectURL')
+
+    active.value = false
+
+    expect(items.value).toEqual([])
+    expect(revoked).toHaveBeenCalledWith(url)
+    active.value = true
+    await until(items).toMatch(list => list.length === 1, { timeout: 5000, throwOnTimeout: true })
+    expect(items.value[0].url).not.toBe(url)
+  })
+
   it('opens one URL per shown asset and revokes it when the item hides, the model swaps, the asset leaves, and the stage goes', async () => {
     const created = vi.spyOn(URL, 'createObjectURL')
     const revoked = vi.spyOn(URL, 'revokeObjectURL')
