@@ -15,9 +15,11 @@ import { Live2DItemLayer } from '@proj-airi/stage-ui-live2d/composables/live2d/i
 import { Live2DItemModel } from '@proj-airi/stage-ui-live2d/composables/live2d/items/live2d-item'
 import { live2DUnitToCanvasX, live2DUnitToCanvasY } from '@proj-airi/stage-ui-live2d/composables/live2d/items/pin'
 import { canvasAlignedPlacement } from '@proj-airi/stage-ui-live2d/composables/live2d/items/pose'
+import { live2DTouchRegionAt, live2DVisibleBounds } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-regions'
+import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { createApp, h, shallowRef } from 'vue'
+import { createApp, effectScope, h, nextTick, shallowRef } from 'vue'
 
 import { createLive2DModelFixture } from './live2d-model-fixture'
 
@@ -54,6 +56,17 @@ function solidPng() {
   const context = canvas.getContext('2d')!
   context.fillStyle = 'rgb(0,255,0)'
   context.fillRect(0, 0, 4, 4)
+  return canvas.toDataURL('image/png')
+}
+
+/** An 8 x 8 image whose only opaque pixels are its 4 x 4 center, so its opaque box is a quarter of it. */
+function framedPng() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 8
+  canvas.height = 8
+  const context = canvas.getContext('2d')!
+  context.fillStyle = 'rgb(0,255,0)'
+  context.fillRect(2, 2, 4, 4)
   return canvas.toDataURL('image/png')
 }
 
@@ -433,6 +446,115 @@ describe('live2D items, hide lists, and parameter mirroring', () => {
         gl.disable(gl.SCISSOR_TEST)
         gl.deleteFramebuffer(stray)
       }
+    })
+  })
+
+  describe('one body under Natural touch and the classic window hit test', () => {
+    /** Her regions as Natural measures them, without a head box: a point outside her drawn bounds is not on her. */
+    function herRegions(model: Her) {
+      return { head: undefined, body: live2DVisibleBounds(model.internalModel) }
+    }
+
+    /** The classic window's exact hit test (`isTransparentForMouseEvents`) at a point of her model canvas. */
+    async function transparentForMouseAt(model: Her, canvasPoint: { x: number, y: number }) {
+      const world = model.worldTransform.clone().append(model.internalModel.localTransform).apply(canvasPoint)
+      const canvas = fixture.app.view as HTMLCanvasElement
+      const bounds = canvas.getBoundingClientRect()
+      const scope = effectScope()
+      const transparent = scope.run(() => useCanvasPixelIsTransparentAtPoint(canvas, bounds.left + world.x, bounds.top + world.y))!
+      // The canvas bounds arrive on the next tick.
+      await nextTick()
+      const value = transparent.value
+      scope.stop()
+      return value
+    }
+
+    it('counts a point on a shown outfit\'s body mesh as her body while her own body parts are hidden', async () => {
+      const model = await freshHer()
+      const { layer, until } = attachLayer(model)
+      const item = loadedItems()
+      const dress = outfit('dress', { hides: ['PartBody', 'PartArmA', 'PartNeck'] })
+      layer.setItems([dress])
+      await until(states => states['item:dress'] === 'attached')
+      frame(model, layer)
+      const onOutfit = (point: { x: number, y: number }) => layer.outfitAt(point)
+      const regions = herRegions(model)
+
+      // A point on the outfit's mesh, mapped to her canvas through the canvas-aligned placement, on a drawable that the
+      // hide list hid in her (the outfit is her own model, so drawable indices match) and that her own drawn bounds no
+      // longer cover.
+      const herCore = model.internalModel.coreModel
+      const itemInternal = (await item()).model.internalModel
+      const itemCore = itemInternal.coreModel
+      const { x, y, scale: itemScale, anchor } = dress.document.placement
+      let found: { x: number, y: number } | undefined
+      for (let index = 0; index < itemCore.getDrawableCount() && !found; index++) {
+        if (herCore.getDrawableOpacity(index) !== 0 || !itemCore.getDrawableDynamicFlagIsVisible(index) || itemCore.getDrawableOpacity(index) <= 0)
+          continue
+        const vertices = itemInternal.getDrawableVertices(index)
+        const triangles = itemCore.getDrawableVertexIndices(index)
+        for (let at = 0; at + 2 < triangles.length; at += 3) {
+          const [a, b, c] = [triangles[at] * 2, triangles[at + 1] * 2, triangles[at + 2] * 2]
+          if (Math.abs((vertices[b] - vertices[a]) * (vertices[c + 1] - vertices[a + 1]) - (vertices[b + 1] - vertices[a + 1]) * (vertices[c] - vertices[a])) < 1)
+            continue
+          const point = {
+            x: x + ((vertices[a] + vertices[b] + vertices[c]) / 3 - anchor.x * itemInternal.originalWidth) * itemScale,
+            y: y + ((vertices[a + 1] + vertices[b + 1] + vertices[c + 1]) / 3 - anchor.y * itemInternal.originalHeight) * itemScale,
+          }
+          if (live2DTouchRegionAt(point, regions) === null) {
+            found = point
+            break
+          }
+        }
+      }
+      expect(found).toBeDefined()
+      expect(live2DTouchRegionAt(found!, regions, onOutfit)).toBe('body')
+
+      // Hidden again, the outfit no longer takes the touch.
+      layer.setItems([])
+      await until(states => !('item:dress' in states))
+      expect(live2DTouchRegionAt(found!, regions, onOutfit)).toBeNull()
+    })
+
+    it('takes no touch on an item that is not an outfit, and only an image outfit\'s opaque box', async () => {
+      const { layer, until } = attachLayer(her)
+      const onOutfit = (point: { x: number, y: number }) => layer.outfitAt(point)
+      const regions = herRegions(her)
+      const center = { x: 60, y: 60 }
+      // The image spans 80 canvas units around `center`; its opaque box is the middle 40.
+      const margin = { x: center.x - 30, y: center.y - 30 }
+      expect(live2DTouchRegionAt(center, regions)).toBeNull()
+      const badge = (kind: ItemExpressionDocument['kind']) => stageItem('badge', framedPng(), 'image', { kind, placement: placement({ ...center, scale: 10 }) })
+
+      layer.setItems([badge('prop')])
+      await until(states => states['item:badge'] === 'attached')
+      frame(her, layer)
+      expect(live2DTouchRegionAt(center, regions, onOutfit)).toBeNull()
+
+      layer.setItems([badge('outfit')])
+      frame(her, layer)
+      expect(live2DTouchRegionAt(center, regions, onOutfit)).toBe('body')
+      expect(live2DTouchRegionAt(margin, regions, onOutfit)).toBeNull()
+    })
+
+    it('reads an item pixel outside her as captured by the classic window, and as click-through once the item hides', async () => {
+      const { layer, until } = attachLayer(her)
+      const onItem = { x: 60, y: 60 }
+      const empty = { x: 60, y: 200 }
+      expect(live2DTouchRegionAt(onItem, herRegions(her))).toBeNull()
+      frame(her, layer)
+      expect(await transparentForMouseAt(her, onItem)).toBe(true)
+
+      layer.setItems([stageItem('badge', framedPng(), 'image', { kind: 'prop', placement: placement({ ...onItem, scale: 10 }) })])
+      await until(states => states['item:badge'] === 'attached')
+      frame(her, layer)
+      expect(await transparentForMouseAt(her, onItem)).toBe(false)
+      expect(await transparentForMouseAt(her, empty)).toBe(true)
+
+      layer.setItems([])
+      await until(states => !('item:badge' in states))
+      frame(her, layer)
+      expect(await transparentForMouseAt(her, onItem)).toBe(true)
     })
   })
 

@@ -42,4 +42,21 @@ describe('live2d touch regions', () => {
     expect(live2DTouchRegionAt({ x: 150, y: 150 }, regions)).toBeNull()
     expect(live2DTouchRegionAt({ x: 50, y: 10 }, { head: undefined, body: regions.body })).toBe('body')
   })
+
+  it('counts a point outside her boxes as her body only when it is on a shown outfit', () => {
+    const regions = {
+      head: { x: 40, y: 0, width: 20, height: 20 },
+      body: undefined,
+    }
+    const asked: { x: number, y: number }[] = []
+    const onOutfit = (point: { x: number, y: number }) => {
+      asked.push(point)
+      return point.y > 100
+    }
+    expect(live2DTouchRegionAt({ x: 50, y: 150 }, regions, onOutfit)).toBe('body')
+    expect(live2DTouchRegionAt({ x: 50, y: 50 }, regions, onOutfit)).toBeNull()
+    // Her own head wins, and the outfit is not asked about a point on her.
+    expect(live2DTouchRegionAt({ x: 50, y: 10 }, regions, onOutfit)).toBe('head')
+    expect(asked).toEqual([{ x: 50, y: 150 }, { x: 50, y: 50 }])
+  })
 })

@@ -11,7 +11,7 @@ import type { Live2DItemPose } from './pose'
 
 import { BaseTexture, Texture } from '@pixi/core'
 import { Container } from '@pixi/display'
-import { Matrix } from '@pixi/math'
+import { Matrix, Point } from '@pixi/math'
 import { Sprite } from '@pixi/sprite'
 import { MAX_SHOWN_LIVE2D_ITEMS } from '@proj-airi/stage-shared/expression-performance'
 import { Cubism4InternalModel } from 'pixi-live2d-display/cubism4'
@@ -33,15 +33,30 @@ export interface Live2DStageItem {
 /** How a shown item attached to her model; see `ItemRenderState`. */
 export type Live2DItemRenderState = ItemRenderState
 
+/** A box in an image's own pixels. */
+interface ImageBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Longest side of the copy on which an image item's opaque box is measured. */
+const opaqueScanSize = 256
+
 interface ItemRecord {
   url: string
   format: StageItemFormat
+  /** Read at touch time; a kind change needs no reload. */
+  kind: ItemExpressionDocument['kind']
   link: ItemExpressionDocument['link']
   placement: StageItemPlacement
   hides: readonly string[]
   /** Set once an image or GIF loaded; the sprite is a child of the layer's root. */
   sprite?: Sprite
   gif?: Live2DGifTexture
+  /** An image's box around its pixels that are not fully transparent; `null` when it has none. GIFs use their frame. */
+  opaque?: ImageBox | null
   /** Set once a Live2D item loaded; its model is a child of the layer's root. */
   live2d?: Live2DItemModel
   resolved?: Live2DItemPinResolution
@@ -56,6 +71,7 @@ interface ItemRecord {
 interface LoadedDisplay {
   sprite?: Sprite
   gif?: Live2DGifTexture
+  opaque?: ImageBox | null
   live2d?: Live2DItemModel
 }
 
@@ -87,6 +103,7 @@ export class Live2DItemLayer {
   /** Holds the item display objects in her model canvas units; never part of the stage. */
   private readonly root = new Container()
   private readonly canvasToWorld = new Matrix()
+  private readonly hitPoint = new Point()
   private readonly records = new Map<string, ItemRecord>()
   private insertions: Live2DItemInsertion[] = []
   private readonly hook: Live2DItemInsertions = { segments: () => this.segments() }
@@ -158,9 +175,12 @@ export class Live2DItemLayer {
       if (!record) {
         this.load(id, item)
       }
-      else if (record.placement !== item.document.placement || record.hides !== item.document.hides) {
-        record.hides = item.document.hides
-        this.place(record, item.document.placement)
+      else {
+        record.kind = item.document.kind
+        if (record.placement !== item.document.placement || record.hides !== item.document.hides) {
+          record.hides = item.document.hides
+          this.place(record, item.document.placement)
+        }
       }
     }
     this.refresh()
@@ -181,6 +201,36 @@ export class Live2DItemLayer {
         record.gif.show(animated ? gifFrameAt(record.gif.frameDurationsMs, this.clockMs - record.shownAtMs) : 0)
       record.live2d?.advance(deltaMs)
     }
+  }
+
+  /**
+   * Whether a point in her model canvas units lies on a shown outfit as it was last drawn: on a visible drawable of a
+   * Live2D outfit, or inside the opaque box of an image outfit (a GIF outfit's whole frame). Other kinds never count,
+   * and neither does an item not drawn since it was placed.
+   */
+  outfitAt(point: { x: number, y: number }): boolean {
+    for (const record of this.records.values()) {
+      if (record.kind !== 'outfit' || !record.pose)
+        continue
+      if (record.live2d?.contains(point))
+        return true
+      if (record.sprite && this.spriteContains(record, record.sprite, point))
+        return true
+    }
+    return false
+  }
+
+  private spriteContains(record: ItemRecord, sprite: Sprite, point: { x: number, y: number }) {
+    if (!sprite.visible || sprite.alpha <= 0)
+      return false
+    const box = record.gif ? { x: 0, y: 0, width: sprite.texture.width, height: sprite.texture.height } : record.opaque
+    if (!box)
+      return false
+    // Her canvas to the sprite's own pixels, whose origin is its anchor.
+    const local = sprite.localTransform.applyInverse(point, this.hitPoint)
+    const x = local.x + sprite.anchor.x * sprite.texture.width
+    const y = local.y + sprite.anchor.y * sprite.texture.height
+    return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height
   }
 
   destroy() {
@@ -215,6 +265,7 @@ export class Live2DItemLayer {
     const display: LoadedDisplay = { sprite: record.sprite, gif: record.gif, live2d: record.live2d }
     record.sprite = undefined
     record.gif = undefined
+    record.opaque = undefined
     record.live2d = undefined
     if (display.sprite)
       this.root.removeChild(display.sprite)
@@ -227,6 +278,7 @@ export class Live2DItemLayer {
     const record: ItemRecord = {
       url: item.url,
       format: item.format,
+      kind: item.document.kind,
       link: item.document.link,
       placement: item.document.placement,
       hides: item.document.hides,
@@ -242,6 +294,7 @@ export class Live2DItemLayer {
       }
       record.sprite = display.sprite
       record.gif = display.gif
+      record.opaque = display.opaque
       record.live2d = display.live2d
       record.shownAtMs = this.clockMs
       const object = display.sprite ?? display.live2d?.model
@@ -268,7 +321,8 @@ export class Live2DItemLayer {
       const gif = await this.loadGif(record)
       return { sprite: new Sprite(gif.texture), gif }
     }
-    return { sprite: new Sprite(await loadImageTexture(record.url)) }
+    const image = await loadImage(record.url)
+    return { sprite: new Sprite(new Texture(new BaseTexture(image))), opaque: opaqueBoxOf(image) }
   }
 
   private async loadGif(record: ItemRecord) {
@@ -421,10 +475,44 @@ function destroyDisplay({ sprite, gif, live2d }: LoadedDisplay) {
   live2d?.destroy()
 }
 
-/** Loads an image into a texture of its own, outside Pixi's texture cache, so two items never share one. */
-async function loadImageTexture(url: string): Promise<Texture> {
+/** Loads an image for a texture of its own, outside Pixi's texture cache, so two items never share one. */
+async function loadImage(url: string): Promise<HTMLImageElement> {
   const image = new Image()
   image.src = url
   await image.decode()
-  return new Texture(new BaseTexture(image))
+  return image
+}
+
+/**
+ * The box around an image's pixels that are not fully transparent, in image pixels, or `null` when it has none.
+ * It is measured on a copy at most {@link opaqueScanSize} pixels on its longest side, so it rounds outward.
+ */
+function opaqueBoxOf(image: HTMLImageElement): ImageBox | null {
+  const factor = Math.min(1, opaqueScanSize / Math.max(image.naturalWidth, image.naturalHeight))
+  const width = Math.max(1, Math.round(image.naturalWidth * factor))
+  const height = Math.max(1, Math.round(image.naturalHeight * factor))
+  const context = new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })
+  if (!context)
+    throw new Error('The image item could not be measured: no 2D canvas context.')
+  context.drawImage(image, 0, 0, width, height)
+  const alpha = context.getImageData(0, 0, width, height).data
+  let left = width
+  let top = height
+  let right = -1
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (alpha[(y * width + x) * 4 + 3] === 0)
+        continue
+      left = Math.min(left, x)
+      right = Math.max(right, x)
+      top = Math.min(top, y)
+      bottom = Math.max(bottom, y)
+    }
+  }
+  if (right < 0)
+    return null
+  const scaleX = image.naturalWidth / width
+  const scaleY = image.naturalHeight / height
+  return { x: left * scaleX, y: top * scaleY, width: (right + 1 - left) * scaleX, height: (bottom + 1 - top) * scaleY }
 }

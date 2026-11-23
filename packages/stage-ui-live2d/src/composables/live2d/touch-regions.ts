@@ -63,12 +63,18 @@ function contains(rect: Live2DModelCanvasRect | undefined, point: { x: number, y
   return !!rect && point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height
 }
 
-/** The head wins where the two boxes overlap; a point outside both is not on the model. */
+/**
+ * The head wins where the two boxes overlap. A point outside both is her body when `onOutfit` places it on a shown
+ * outfit, which stands in for the parts of her it hides; otherwise it is not on the model.
+ */
 export function live2DTouchRegionAt(
   point: { x: number, y: number },
   regions: { head: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined },
+  onOutfit?: (point: { x: number, y: number }) => boolean,
 ): NaturalTouchRegion | null {
   if (contains(regions.head, point))
     return 'head'
-  return contains(regions.body, point) ? 'body' : null
+  if (contains(regions.body, point))
+    return 'body'
+  return onOutfit?.(point) ? 'body' : null
 }

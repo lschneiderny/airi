@@ -4,11 +4,12 @@ import type { StageItemPlacement } from '@proj-airi/stage-shared/expression-perf
 import type { Live2DParameterReader } from './mirror'
 import type { Live2DItemPose } from './pose'
 
-import { Matrix } from '@pixi/math'
+import { Matrix, Point } from '@pixi/math'
 import { Cubism4InternalModel, Live2DFactory, Live2DModel } from 'pixi-live2d-display/cubism4'
 
 import { disableLive2DSdkBreath } from '../motion-manager'
 import { readLive2DRigProfile } from '../natural-motion/rig-profile'
+import { isPointInLive2DMesh } from '../touch'
 import { Live2DParameterMirror } from './mirror'
 
 /** The longest step an item model integrates at once, as the stage ticker clamps a frame; a longer undrawn gap counts as this. */
@@ -40,6 +41,7 @@ export class Live2DItemModel {
   private mirror?: Live2DParameterMirror
   private readonly layoutToCanvas: Matrix
   private readonly local = new Matrix()
+  private readonly hitPoint = new Point()
 
   private constructor(readonly model: Live2DModel<Cubism4InternalModel>, options: Live2DItemModelOptions) {
     const internalModel = model.internalModel
@@ -109,6 +111,31 @@ export class Live2DItemModel {
 
   render(renderer: Renderer) {
     this.model.render(renderer)
+  }
+
+  /**
+   * Whether `point`, in her model canvas units, lies on a visible drawable of the item as it was last placed. Its hit
+   * areas, which authors draw with transparent textures, do not count.
+   */
+  contains(point: { x: number, y: number }): boolean {
+    const { model } = this
+    if (!model.visible || model.alpha <= 0)
+      return false
+    const internalModel = model.internalModel
+    const coreModel = internalModel.coreModel
+    // Her canvas to the item's layout box, then to the item's canvas, where its drawables are measured.
+    const local = internalModel.localTransform.applyInverse(model.localTransform.applyInverse(point, this.hitPoint), this.hitPoint)
+    const hitAreas = new Set(Object.values(internalModel.hitAreas).map(area => area.index))
+    for (let index = 0; index < coreModel.getDrawableCount(); index++) {
+      if (hitAreas.has(index) || !coreModel.getDrawableDynamicFlagIsVisible(index) || coreModel.getDrawableOpacity(index) <= 0)
+        continue
+      const bounds = internalModel.getDrawableBounds(index)
+      if (local.x < bounds.x || local.x > bounds.x + bounds.width || local.y < bounds.y || local.y > bounds.y + bounds.height)
+        continue
+      if (isPointInLive2DMesh(local, internalModel.getDrawableVertices(index), coreModel.getDrawableVertexIndices(index)))
+        return true
+    }
+    return false
   }
 
   destroy() {

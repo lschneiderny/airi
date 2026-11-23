@@ -272,6 +272,8 @@ let naturalPetHand: { x: number, y: number } | null = null
 let naturalPetGranted = false
 const touchGestures = new NaturalTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
+/** Her stage items; under Natural, a touch on a shown outfit off her own drawables is her body. */
+const itemsRef = ref<InstanceType<typeof Live2DItems>>()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
 let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, source: Live2DTouchDebugSource, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
@@ -1748,7 +1750,7 @@ function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Natura
     timeMs: event.timeStamp,
     x: point.x,
     y: point.y,
-    region: live2DTouchRegionAt(point, regions),
+    region: live2DTouchRegionAt(point, regions, outfitPoint => itemsRef.value?.outfitAt(outfitPoint) ?? false),
     scale: regions.head?.width ?? regions.body?.width ?? current.internalModel.originalWidth,
     // Offset from the scaled head center in head widths, so the gesture can allow its margin zone.
     head: head && {
@@ -2124,7 +2126,7 @@ import.meta.hot?.dispose(() => {
     :load="expressionLoader!"
   />
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
-  <Live2DItems v-if="pixiApp" :app="pixiApp" :model="model" :items="items" @states="states => emits('itemStates', states)" />
+  <Live2DItems v-if="pixiApp" ref="itemsRef" :app="pixiApp" :model="model" :items="items" @states="states => emits('itemStates', states)" />
   <TouchDebugOverlay v-if="touchOverlay" :overlay="touchOverlay" />
   <ReviewCaption v-if="reviewCaption" :lines="reviewCaption" />
   <slot />
