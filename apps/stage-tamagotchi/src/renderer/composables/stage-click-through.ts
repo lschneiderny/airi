@@ -1,5 +1,7 @@
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
+import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
+
 /** The padding around the character rect inside which the stage reads pixels back, in DIP. */
 export const stageClickThroughPaddingDip = 8
 
@@ -75,18 +77,90 @@ export function createStageHitReadState(): StageHitReadState {
  * character rect (click-through, see {@link resolveStageClickThrough}). Otherwise a still cursor re-reads every
  * {@link stageRestingReadIntervalMs} and a moving one at most every {@link stageMovingReadIntervalMs}; between reads
  * the click-through state keeps the last answer.
+ * Passing `reuse` opts into updating that result and its state in place; initialize `state.lastCursor` once when
+ * the caller needs an allocation-free frame path. Callers without `reuse` retain immutable state transitions.
  */
-export function planStageHitRead(state: StageHitReadState, input: Pick<StageClickThroughInput, 'nowMs' | 'cursor' | 'rect' | 'forceCapture' | 'forceIgnore'>): { read: boolean, state: StageHitReadState } {
+export function planStageHitRead(state: StageHitReadState, input: Pick<StageClickThroughInput, 'nowMs' | 'cursor' | 'rect' | 'forceCapture' | 'forceIgnore'>, reuse?: { read: boolean, state: StageHitReadState }): { read: boolean, state: StageHitReadState } {
   const { cursor, nowMs } = input
+  if (reuse)
+    reuse.read = false
   if (input.forceIgnore || input.forceCapture || !cursor || !isInsidePaddedRect(cursor, input.rect))
-    return { read: false, state }
+    return reuse ?? { read: false, state }
   if (state.lastReadMs !== null && state.lastCursor) {
     const moved = state.lastCursor.x !== cursor.x || state.lastCursor.y !== cursor.y
     const interval = moved ? stageMovingReadIntervalMs : stageRestingReadIntervalMs
     if (nowMs - state.lastReadMs < interval)
-      return { read: false, state }
+      return reuse ?? { read: false, state }
+  }
+  if (reuse) {
+    state.lastReadMs = nowMs
+    state.lastCursor ??= { x: 0, y: 0 }
+    state.lastCursor.x = cursor.x
+    state.lastCursor.y = cursor.y
+    reuse.read = true
+    return reuse
   }
   return { read: true, state: { lastReadMs: nowMs, lastCursor: { x: cursor.x, y: cursor.y } } }
+}
+
+/** The alpha at or above which a stage pixel counts as drawn. */
+const hitAlphaThreshold = 10
+
+/**
+ * Reads whether she is drawn within `radius` DIP of the cursor, for a page that plans its reads with
+ * {@link planStageHitRead}.
+ *
+ * Right after the scene submits its frame, a synchronous readPixels waits for the GPU (4-5 ms measured). On WebGL2
+ * the reader copies the region asynchronously and answers a frame or two later; WebGL1 falls back to a synchronous
+ * read. The canvas must keep its drawing buffer. Call `dispose` when the page goes away.
+ */
+export class StageCanvasHitReader {
+  private alpha: { gl: WebGL2RenderingContext, reader: CanvasRegionAlphaReader } | null = null
+
+  constructor(private readonly radius: number, private readonly onReadback: (durationMs: number) => void) {}
+
+  /**
+   * Polls the read in flight and, when `request` is set, starts a read under the cursor, in window DIP. Returns
+   * whether her pixel is there, or `undefined` when no answer arrived this frame. A request without a canvas or context
+   * answers no hit. Call it every frame while a read is in flight, so the answer arrives two or three frames after the
+   * request whatever the request interval.
+   */
+  read(canvas: HTMLCanvasElement | undefined, cursor: { x: number, y: number }, request: boolean): boolean | undefined {
+    if (!canvas)
+      return request ? false : undefined
+    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGL2RenderingContext | WebGLRenderingContext | null
+    if (!gl)
+      return request ? false : undefined
+    if (!(gl instanceof WebGL2RenderingContext)) {
+      if (!request)
+        return undefined
+      const bounds = canvas.getBoundingClientRect()
+      const readbackStart = performance.now()
+      const transparent = isCanvasRegionTransparent({ gl, clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: this.radius, threshold: hitAlphaThreshold })
+      this.onReadback(performance.now() - readbackStart)
+      return !transparent
+    }
+    if (this.alpha?.gl !== gl) {
+      this.alpha?.reader.dispose()
+      this.alpha = { gl, reader: new CanvasRegionAlphaReader(gl) }
+    }
+    const { reader } = this.alpha
+    if (!request && !reader.pending)
+      return undefined
+    const bounds = request ? canvas.getBoundingClientRect() : null
+    const readbackStart = performance.now()
+    const finished = reader.poll()
+    let hit = finished === undefined ? undefined : !finished
+    if (bounds && reader.request({ clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: this.radius, threshold: hitAlphaThreshold }) === 'transparent')
+      hit = false
+    this.onReadback(performance.now() - readbackStart)
+    return hit
+  }
+
+  dispose(): void {
+    this.alpha?.reader.dispose()
+    this.alpha = null
+  }
 }
 
 export function createStageClickThroughState(): StageClickThroughState {
