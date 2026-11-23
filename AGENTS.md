@@ -93,7 +93,7 @@ Use workspace `package.json` names with pnpm filters, for example `@proj-airi/st
 Checks. [Testing and QA](docs/ai/context/testing.md) says what each check proves and which checks a change needs:
 - Inner loop: the narrowest project of the package, `pnpm -F <package> exec vitest run --project <node or browser> <path>`, with `<path>` relative to the package.
 - After each change: `pnpm verify`. It lints the changed files, typechecks the changed packages and their dependents, and runs the tests related to the changed code in each changed package and its dependents. To keep working while it runs, start `pnpm verify --detach`, then block once with `pnpm verify --wait` under a 10-minute tool timeout.
-- Before landing a branch: `pnpm verify --gate`. It also runs the smoke and motion QA the changed paths need, and lists what remains.
+- Pull requests and branches need `pnpm verify` and the checks [Testing and QA](docs/ai/context/testing.md) lists for the change. Do not run `pnpm verify --gate` for them. Before a desktop release, run `pnpm release`.
 - Platforms: only macOS and Linux KDE Wayland are checked. Windows, sway, and X11 are planned, not checked.
 
 Use root `pnpm lint`, `pnpm typecheck`, or `pnpm test:run` (every package's whole test suite, cached by Turbo) only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
