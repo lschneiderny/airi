@@ -5,10 +5,8 @@ import type { BodyArmForm, BodyGestureForm, BodyRigTraits } from './contracts'
 import type { HandShape } from './hand-shapes'
 
 import { solveArmKey } from './arm-key'
-import { DEFAULT_ARM_REST_POSE } from './arms'
 import { ARM_START, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision, KEY_HEADROOM } from './collision'
-import { HAND_SHAPES } from './hand-shapes'
 import { BodySkeleton } from './skeleton'
 
 export type SpeechGestureForm = Exclude<BodyGestureForm, BodyArmForm>
@@ -100,9 +98,6 @@ export function gestureTempo(energy: number): number {
 /** Arm and hand channels of one side: 26 values in `BODY_CHANNELS` order from that side's `ClavElev`. */
 export type ArmPose = Float64Array
 
-/** The rest pose's thumb opposition, degrees (`BodyArms` rest). */
-const REST_OPPOSITION = 10
-const OPPOSED_THUMB = 40
 const PUSH_STEPS = 8
 const PUSH_STEP = 0.02
 const PATH_SAMPLES = 10
@@ -149,26 +144,6 @@ const UNTWISTED_PRONATION = 55 * DEG
 const HAND_ROLL_STEP = 10 * DEG
 /** How far the thinking hand's palm may roll from facing the head: across, palm down to palm up. */
 const FINGERTIP_ROLL = 90 * DEG
-
-/** Writes a 4a hand shape's finger curls, spread and thumb opposition into a side's pose. */
-export function writeHandShape(shape: HandShape, pose: ArmPose): void {
-  const spec = HAND_SHAPES[shape]
-  const curls = DEFAULT_ARM_REST_POSE.fingerCurl
-  pose[9] = spec.thumb * DEG
-  pose[10] = pose[11] = 0
-  for (let finger = 0; finger < 4; finger++) {
-    // `scaled` keeps the rest pose's proportions between the index and the other fingers.
-    const ratio = curls[finger + 1][0] / curls[1][0]
-    for (let joint = 0; joint < 3; joint++) {
-      const curl = finger === 0 || spec.others === 'same'
-        ? spec.index[joint]
-        : spec.others === 'scaled' ? spec.index[joint] * ratio : spec.others[joint]
-      pose[12 + finger * 3 + joint] = curl * DEG
-    }
-  }
-  pose[24] = spec.spread * DEG
-  pose[25] = (spec.thumbAcross ? OPPOSED_THUMB : REST_OPPOSITION) * DEG
-}
 
 /**
  * Per-rig gesture keys (architecture 4a, 6.3). A key is solved by two-bone IK into the 3f arm angles. When the pose

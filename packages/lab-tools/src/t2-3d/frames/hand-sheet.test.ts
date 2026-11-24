@@ -30,7 +30,7 @@ describe('hand sheet', () => {
     const inHand = (i: number) => (['left', 'right'] as const).some(side => i >= channelIndex(`${side}Pron`) && i <= channelIndex(`${side}Opposition`))
     expect(changedAt(REST, fist).every(inHand)).toBe(true)
     for (const side of ['left', 'right'] as const) {
-      expect(fist[channelIndex(`${side}Index1`)]).toBeCloseTo(HAND_SHAPES.fist.index[1] * DEG, 6)
+      expect(fist[channelIndex(`${side}Index1`)]).toBeCloseTo(HAND_SHAPES.fist.fingers[0][1] * DEG, 6)
       expect(fist[channelIndex(`${side}Wflex`)]).toBe(0)
       expect(fist[channelIndex(`${side}Elbow`)]).toBe(REST[channelIndex(`${side}Elbow`)])
     }
