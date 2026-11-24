@@ -240,6 +240,65 @@ describe('canonical geometry', () => {
     expect(jerk).toBeLessThan(speed / 2)
   })
 
+  it.each(fixtureRigs)('keeps the push\'s speed continuous when the deepest contact moves from the forearm to the upper arm on $name', ({ traits }) => {
+    const legs = traits.legs
+    if (!legs)
+      throw new TypeError('The fixture rigs have leg joints')
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const pose = (flex: number, elbow: number) => {
+      const channels = rest.slice()
+      channels[channelIndex('leftFlex')] = flex
+      channels[channelIndex('leftElbow')] = elbow
+      channels[channelIndex('leftAbduct')] = 14 * DEG
+      return channels
+    }
+    // Two bodies behind the hip, as a tail is: a large one where the wrist goes 10 degrees into the back swing, and a
+    // small one where the upper arm goes at 40.
+    const { upperArm, forearm } = traits.arms.left
+    const length = Math.hypot(upperArm.x, upperArm.y, upperArm.z) + Math.hypot(forearm.x, forearm.y, forearm.z)
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(rest)
+    const wrist = skeleton.arm('left', pose(-10 * DEG, 3 * DEG)).wrist
+    const swung = skeleton.arm('left', pose(-40 * DEG, 3 * DEG))
+    const upper = { x: (swung.shoulder.x + 3 * swung.elbow.x) / 4, y: (swung.shoulder.y + 3 * swung.elbow.y) / 4, z: (swung.shoulder.z + 3 * swung.elbow.z) / 4 }
+    const ball = (at: { x: number, y: number, z: number }, radius: number): BodyCollider => ({ bone: 'hips', shape: 'sphere', radius, centre: { x: at.x - traits.hips.x, y: at.y - traits.hips.y, z: at.z - traits.hips.z }, rotation: { yaw: 0, pitch: 0, roll: 0 } })
+    const rig = { ...traits, colliders: [...proxyColliders(traits), ball(wrist, 0.24 * length), ball(upper, 0.01 * length)] }
+    const collision = new BodyCollision(rig, rest)
+    const gait = { weight: 1, support: 0, mode: 'walking' as const, walkForm: true, channels: rest, ankles: { left: legs.left.ankle, right: legs.right.ankle } }
+    const arm = [2, 3, 4, 5].map(j => ARM_START.left + j)
+    const ease = (u: number) => u * u * (3 - 2 * u)
+    // The arm swings 34 degrees back into both bodies in 0.4 s, then the elbow bends 40 degrees in 0.83 s, which carries
+    // the forearm forward out of its body while the upper arm stays in its own.
+    const input: number[][] = []
+    const output: number[][] = []
+    const deepest: string[] = []
+    for (let tick = 0; tick < 160; tick++) {
+      const channels = pose(4 * DEG - 34 * DEG * ease(Math.min(1, tick / 48)), 3 * DEG + 40 * DEG * ease(Math.min(1, Math.max(0, (tick - 60) / 100))))
+      input.push(arm.map(index => channels[index]))
+      collision.correct(channels, tick + 1, gait)
+      expect(collision.penetration.left).toBe(0)
+      output.push(arm.map(index => channels[index]))
+      collision.prepare(channels, gait)
+      // The gait's skin, `SKIN`: the deepest contact the projection pushes.
+      const contact = collision.measure('left', channels, 0.1)
+      deepest.push(contact.depth > 0 ? (contact.forearm ? 'forearm' : 'upper arm') : 'none')
+    }
+    expect(deepest.indexOf('forearm')).toBeGreaterThan(0)
+    expect(deepest.lastIndexOf('upper arm')).toBeGreaterThan(deepest.lastIndexOf('forearm'))
+    const jerk = (series: number[][]) => {
+      let most = 0
+      for (let t = 62; t < series.length; t++)
+        most = Math.max(most, ...arm.map((_, j) => Math.abs(series[t][j] - 2 * series[t - 1][j] + series[t - 2][j])))
+      return most
+    }
+    expect(collision.corrector).toEqual({ capHits: 0, guardScans: 0 })
+    expect(collision.collisions.count).toBe(0)
+    // While the elbow bends, the arm's speed changes no faster than twice the request's own. Pushing the deepest contact
+    // alone changed it four to five times as fast in the tick the deepest moved to the upper arm, whose shorter lever
+    // asks a larger turn for the same depth.
+    expect(jerk(output)).toBeLessThan(2 * jerk(input))
+  })
+
   it.each(fixtureRigs)('carries leg bodies to where the leg IK puts the leg the gait carries on $name', ({ traits }) => {
     const legs = traits.legs
     if (!legs)
