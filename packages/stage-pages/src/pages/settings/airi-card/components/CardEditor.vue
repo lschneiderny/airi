@@ -9,7 +9,7 @@ import type { Ref } from 'vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
-import { GAIT_BASELINE_PRESET_NAMES, GAIT_BASELINE_PRESETS, gaitBaselinePresetOf, withGaitBaselineValue } from '@proj-airi/stage-shared/character-state'
+import { GAIT_BASELINE_PRESET_NAMES, GAIT_BASELINE_PRESETS, gaitBaselinePresetOf, normalizePep, pepOf, withGaitBaselineValue } from '@proj-airi/stage-shared/character-state'
 import { useMMDMotionDiagnostics, walkPreviewGoalX } from '@proj-airi/stage-ui-mmd/stores'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettingsSearchReveal } from '@proj-airi/stage-ui/composables/use-settings-search'
@@ -172,6 +172,13 @@ const startingStageOptions = computed(() => startingStages.map(stage => ({
   value: stage,
   label: t(`settings.pages.card.character_profile.stages.${stage}`),
 })))
+
+// Pep in [0, 1]; 0 is the calm default and stores nothing.
+function setPep(value: number) {
+  const { pep: _previous, ...rest } = selectedCharacter.value
+  const pep = normalizePep(value)
+  selectedCharacter.value = pep === undefined ? rest : { ...rest, pep }
+}
 
 // Walking baseline: each value in [-1, 1], the range of `GaitBaselineSchema`; 0 is the neutral walk.
 const gaitFields = [
@@ -1158,6 +1165,16 @@ function handleBack() {
                     :label="t('settings.pages.card.character_profile.starting_stage')"
                     :description="t('settings.pages.card.character_profile.starting_stage_help')"
                     :options="startingStageOptions"
+                  />
+                  <FieldRange
+                    :model-value="pepOf(selectedCharacter)"
+                    :min="0"
+                    :max="1"
+                    :step="characterRestingStep"
+                    :label="t('settings.pages.card.character_profile.pep')"
+                    :description="t('settings.pages.card.character_profile.pep_help')"
+                    :format-value="formatRestingValue"
+                    @update:model-value="setPep"
                   />
                   <div :class="['flex flex-col gap-1']">
                     <h4 :class="['text-sm font-medium']">
