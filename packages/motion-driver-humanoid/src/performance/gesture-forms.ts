@@ -6,7 +6,7 @@ import type { HandShape } from './hand-shapes'
 
 import { solveArmKey } from './arm-key'
 import { DEFAULT_ARM_REST_POSE } from './arms'
-import { ARM_START, DEG, JOINT_LIMITS } from './channels'
+import { ARM_START, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision, KEY_HEADROOM } from './collision'
 import { HAND_SHAPES } from './hand-shapes'
 import { BodySkeleton } from './skeleton'
@@ -134,10 +134,19 @@ const LIMIT_MARGIN = 2 * DEG
 /** The corrector's capsule radius as a share of its segment: the hand is the extended forearm's capsule. */
 const HAND_RADIUS = 0.15
 /**
+ * The clasp's wrists, hand lengths out from the hips' midline: from half a hand (the hands overlap whole) out to
+ * `out` (the fingers still overlap by a fifth of a hand) in `outStep` steps. The right hand lies `layer` of the forearm
+ * in front of the left one: a hand's thickness, the corrector's hand capsule radius less its margin (`HAND_RADIUS`).
+ * Both hands point across the body, tilted down from level by as little as the wrists allow, up to `tilt`.
+ */
+const CLASP = { out: 0.9, outStep: 0.1, layer: 0.12, tilt: 60 * DEG, tiltStep: 15 * DEG } as const
+/**
  * A rig without forearm twist bones holds pronation inside 60 degrees (the performer clamps it there); keys stay 5
  * degrees inside, the active forearm follower's overshoot (zeta 0.7, about 5 % of a 90 degree turn).
  */
 const UNTWISTED_PRONATION = 55 * DEG
+/** The step in which a contact hand rolls about its direction away from its preferred palm (`orientHand`). */
+const HAND_ROLL_STEP = 10 * DEG
 
 /** Writes a 4a hand shape's finger curls, spread and thumb opposition into a side's pose. */
 export function writeHandShape(shape: HandShape, pose: ArmPose): void {
@@ -184,6 +193,8 @@ export class GestureKeys {
   private headSize: { readonly top: number, readonly breadth: number } | null | undefined
   /** The hair tuck's solved keys (arm joints flex to wrist deviation), which depend only on the rig and its rest trunk. */
   private readonly tucked = new Map<`${BodySide}:${BodyArmForm}`, Float64Array>()
+  /** The clasp's solved keys (arm joints flex to wrist deviation), searched once for both sides. */
+  private readonly solved = new Map<`${BodySide}:${BodyArmForm}`, Float64Array>()
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -231,20 +242,27 @@ export class GestureKeys {
    *   arm's own side and up, and a two-hand form's wrist half a hand length further to its own side.
    * - The key: from the anchor (the thinking hand `short` of it) the hand backs off along the approach in 0.01 A
    *   steps, and at each step the elbow swings out from the form's swivel to 80 degrees. A key counts when every joint
-   *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies; the first
-   *   step with one wins, with the swivel that leaves the most limit margin.
+   *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies' margin (a
+   *   contact form touches the body, so it takes no settling headroom); the first step with one wins, with the swivel
+   *   that leaves the most limit margin.
+   * - The clasp solves both hands together (`clasp`), and the hair tuck its two keys (`tuck`).
    *
-   * False when no step within 0.2 A of the anchor has such a key.
+   * False when no step within 0.2 A of the anchor has such a key. Solved and refused forms are kept per side.
    */
   armForm(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
     if (this.unreachable.has(`${side}:${form}`))
       return false
     const spec = ARM_FORMS[form]
-    if (spec.seed === 'tragion') {
-      if (this.tuck(side, form, pose))
-        return true
-      this.unreachable.add(`${side}:${form}`)
-      return false
+    const known = this.solved.get(`${side}:${form}`)
+    if (known) {
+      pose.set(known, 2)
+      return true
+    }
+    const special = spec.seed === 'tragion' ? this.tuck(side, form, pose) : form === 'clasp' ? this.clasp(side, pose) : null
+    if (special !== null) {
+      if (!special)
+        this.unreachable.add(`${side}:${form}`)
+      return special
     }
     const length = this.lengths[side].upper + this.lengths[side].forearm
     const shoulder = this.skeleton.arm(side, this.rest).shoulder
@@ -279,7 +297,7 @@ export class GestureKeys {
         if (!this.solveOnce(side, { hand, swivel: candidate, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose))
           continue
         const inside = this.limitMargin(side, pose)
-        if (inside >= LIMIT_MARGIN && inside > margin && this.deepest(side, pose, this.restArms[side], KEY_HEADROOM) === null) {
+        if (inside >= LIMIT_MARGIN && inside > margin && this.deepest(side, pose, this.restArms[side]) === null) {
           margin = inside
           swivel = candidate
         }
@@ -288,6 +306,132 @@ export class GestureKeys {
         return this.solveOnce(side, { hand, swivel, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose)
     }
     this.unreachable.add(`${side}:${form}`)
+    return false
+  }
+
+  /**
+   * The clasp (6.3's two-hand contact at the front-low anchor), solved for both arms together so the hands meet: each
+   * wrist stands `out` hand lengths to its own side of the hips' midline, from half a hand length (the hands overlap
+   * whole) out to `CLASP.out`, and each hand points across the body past the midline, palm toward the body, turned at
+   * the wrist and tilted down from level by the least of 0, 15, 30, 45 and 60 degrees that both wrists reach. The left hand lies on a plane at the body's surface (the hand point marched in
+   * at each wrist, the outer of the two) and the right one a hand's thickness (`CLASP.layer`) in front of it, so it lies
+   * over the left; both planes back off together. The first spacing, then back-off step, at which both arms have a key
+   * clear of the margin with its path from rest, inside the limits, wins, each by limit margin among swivels; both keys
+   * are kept. False without leg joints or without such a pair.
+   */
+  private clasp(side: BodySide, pose: ArmPose): boolean {
+    const { traits } = this
+    const legs = traits.legs
+    if (!legs)
+      return false
+    const y = (legs.left.hip.y + legs.right.hip.y) / 2 + FRONT_LOW_HEIGHT * traits.legLength
+    const hand = (traits.arms.left.handLength + traits.arms.right.handLength) / 2
+    const forearm = (this.lengths.left.forearm + this.lengths.right.forearm) / 2
+    const length = (this.lengths.left.upper + this.lengths.right.upper) / 2 + forearm
+    const reach = HAND_RADIUS * forearm + ANCHOR.clearance * length
+    const surfaceAt = (x: number) => {
+      for (let z = traits.hips.z + ANCHOR.start * length; z > traits.hips.z; z -= ANCHOR.step * length) {
+        if (this.collision.distance(x, y, z) <= reach)
+          return z
+      }
+      return traits.hips.z
+    }
+    const palm = { x: 0, y: 0, z: -1 }
+    const keys = { left: pose.slice(), right: pose.slice() }
+    for (const s of SIDES)
+      keys[s].set(this.restArms[s].subarray(0, 2))
+    for (let out = 0.5; out <= CLASP.out + 1e-9; out += CLASP.outStep) {
+      const plane = Math.max(surfaceAt(traits.hips.x + out * hand), surfaceAt(traits.hips.x - out * hand))
+      for (let back = 0; back <= ANCHOR.backOff + 1e-9; back += ANCHOR.backOffStep) {
+        let solved = false
+        for (let tilt = 0; tilt <= CLASP.tilt + 1e-9 && !solved; tilt += CLASP.tiltStep) {
+          solved = SIDES.every((s) => {
+            const sigma = s === 'left' ? 1 : -1
+            const wrist = { x: traits.hips.x + sigma * out * hand, y, z: plane + back * length + (s === 'right' ? CLASP.layer * forearm : 0) }
+            return this.claspKey(s, wrist, { x: -sigma * Math.cos(tilt), y: -Math.sin(tilt), z: 0 }, palm, keys[s])
+          })
+        }
+        if (solved) {
+          for (const s of SIDES)
+            this.solved.set(`${s}:clasp`, keys[s].slice(2, 9))
+          pose.set(keys[side].subarray(2, 9), 2)
+          return true
+        }
+      }
+    }
+    this.unreachable.add(`${side === 'left' ? 'right' : 'left'}:clasp`)
+    return false
+  }
+
+  /** One arm's clasp key at `wrist`, the hand along `direction` with the palm toward `palm`: the swivel with the most limit margin whose pose and path from rest clear the margin. */
+  private claspKey(side: BodySide, wrist: Readonly<Vec3>, direction: Readonly<Vec3>, palm: Readonly<Vec3>, pose: ArmPose): boolean {
+    const spec = ARM_FORMS.clasp
+    const length = this.lengths[side].upper + this.lengths[side].forearm
+    const shoulder = this.skeleton.arm(side, this.rest).shoulder
+    const sigma = side === 'left' ? 1 : -1
+    const key: ArmKey = { hand: [sigma * (wrist.x - shoulder.x) / length, (wrist.y - shoulder.y) / length, (wrist.z - shoulder.z) / length], swivel: spec.swivel, pron: 0, wflex: 0, wdev: 0 }
+    let best: Float64Array | null = null
+    let margin = LIMIT_MARGIN
+    for (let swivel = spec.swivel; swivel <= ANCHOR.swivel + 1e-9; swivel += ANCHOR.swivelStep) {
+      if (!this.solveOnce(side, { ...key, swivel }, pose) || !this.orientHand(side, pose, direction, palm))
+        continue
+      const inside = this.limitMargin(side, pose)
+      if (inside >= margin && this.deepest(side, pose, this.restArms[side]) === null) {
+        margin = inside
+        best = pose.slice(2, 9)
+      }
+    }
+    if (best)
+      pose.set(best, 2)
+    return best !== null
+  }
+
+  /**
+   * Turns the hand of `pose` at the wrist (pronation, palmar flexion and deviation) so that it points along the unit
+   * `direction` with the palm toward `palm`, or rolled about the direction from it in 10 degree steps, nearest first, as
+   * far as `roll`; the first roll whose three angles stand 2 degrees inside their limits wins. False without one. With F
+   * the forearm's frame before pronation and H the hand's (it points along its -y and its palm faces its -sigma x),
+   * `BodySkeleton.arm` poses F^T H = Ry(-sigma pron) Rz(-sigma wflex) Rx(wdev), whose Y-Z-X Euler angles are solved here.
+   */
+  private orientHand(side: BodySide, pose: ArmPose, direction: Readonly<Vec3>, palm: Readonly<Vec3>, roll = 0): boolean {
+    const sigma = side === 'left' ? 1 : -1
+    const along = palm.x * direction.x + palm.y * direction.y + palm.z * direction.z
+    const px = palm.x - along * direction.x
+    const py = palm.y - along * direction.y
+    const pz = palm.z - along * direction.z
+    const n = Math.hypot(px, py, pz)
+    if (n < 1e-6)
+      return false
+    // The palm's normal and the axis across the hand, both perpendicular to the direction.
+    const [nx, ny, nz] = [px / n, py / n, pz / n]
+    const [bx, by, bz] = [direction.y * nz - direction.z * ny, direction.z * nx - direction.x * nz, direction.x * ny - direction.y * nx]
+    pose[6] = pose[7] = pose[8] = 0
+    this.load(side, pose, pose, 0)
+    const f = this.skeleton.arm(side, this.scratch).forearm
+    const start = ARM_START[side]
+    const pronLimit = this.traits.arms[side].twist ? JOINT_LIMITS[start + 6] : [-UNTWISTED_PRONATION, UNTWISTED_PRONATION] as const
+    const limits = [pronLimit, JOINT_LIMITS[start + 7], JOINT_LIMITS[start + 8]]
+    for (let step = 0; step <= Math.round(roll / HAND_ROLL_STEP) * 2; step++) {
+      const turn = (step % 2 === 0 ? 1 : -1) * Math.ceil(step / 2) * HAND_ROLL_STEP
+      const [cx, cy, cz] = [nx * Math.cos(turn) + bx * Math.sin(turn), ny * Math.cos(turn) + by * Math.sin(turn), nz * Math.cos(turn) + bz * Math.sin(turn)]
+      // The hand frame's axes: x = -sigma palm, y = -direction, z = x cross y.
+      const [xx, xy, xz] = [-sigma * cx, -sigma * cy, -sigma * cz]
+      const [yx, yy, yz] = [-direction.x, -direction.y, -direction.z]
+      const [zx, zy, zz] = [xy * yz - xz * yy, xz * yx - xx * yz, xx * yy - xy * yx]
+      // M = F^T H, by rows of F's columns against H's columns.
+      const m00 = f[0] * xx + f[3] * xy + f[6] * xz
+      const m10 = f[1] * xx + f[4] * xy + f[7] * xz
+      const m20 = f[2] * xx + f[5] * xy + f[8] * xz
+      const m11 = f[1] * yx + f[4] * yy + f[7] * yz
+      const m12 = f[1] * zx + f[4] * zy + f[7] * zz
+      const angles = [-sigma * Math.atan2(-m20, m00), -sigma * Math.asin(Math.max(-1, Math.min(1, m10))), Math.atan2(-m12, m11)]
+      if (angles.every((angle, k) => angle - limits[k][0] >= LIMIT_MARGIN && limits[k][1] - angle >= LIMIT_MARGIN)) {
+        pose[6] = angles[0]
+        pose[7] = angles[1]
+        pose[8] = angles[2]
+        return true
+      }
+    }
     return false
   }
 

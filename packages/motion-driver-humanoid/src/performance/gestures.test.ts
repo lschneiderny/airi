@@ -784,7 +784,7 @@ describe('co-speech gestures', () => {
     }
   })
 
-  it.each(fixtureRigs)('meets both hands at the front-low anchor, clear and 2 degrees inside every limit, on $name', ({ traits: rig }) => {
+  it.each(fixtureRigs)('lays one hand over the other at the front-low anchor, clear and 2 degrees inside every limit, on $name', ({ traits: rig }) => {
     const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
     const keys = new GestureKeys(rig, rest)
     const channels = rest.slice()
@@ -803,10 +803,17 @@ describe('co-speech gestures', () => {
     }
     const skeleton = new BodySkeleton(rig)
     skeleton.update(channels)
-    const left = { ...skeleton.arm('left', channels).wrist }
-    const right = { ...skeleton.arm('right', channels).wrist }
     const arm = rig.arms.left
-    const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+    const forearm = Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)
+    const length = Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + forearm
+    const hands = SIDES.map((side) => {
+      const pose = skeleton.arm(side, channels)
+      const h = pose.hand
+      const sigma = side === 'left' ? 1 : -1
+      // The hand points along its frame's -y and its palm faces its -sigma x.
+      return { wrist: { ...pose.wrist }, tip: { x: h[9] - arm.handLength * h[1], y: h[10] - arm.handLength * h[4], z: h[11] - arm.handLength * h[7] }, palm: -sigma * h[6] }
+    })
+    const [left, right] = hands
     // Just below the waist: the wrists one hand breadth under ANSUR II's female waist (omphalion) height, in the rig's
     // leg lengths by the women's waist, trochanterion and lateral malleolus heights and hand breadth (Gordon et al. 2014).
     const legs = rig.legs
@@ -814,13 +821,17 @@ describe('co-speech gestures', () => {
       throw new Error('a fixture rig has leg joints')
     const hipJoint = (legs.left.hip.y + legs.right.hip.y) / 2
     const height = hipJoint + (98.01 - 84.54 - 7.82) / (84.54 - 6.27) * rig.legLength
-    // The wrists one hand length apart across the hips' midline, at that height, side by side.
-    expect(Math.abs(left.x - right.x - arm.handLength) / arm.handLength).toBeLessThan(0.05)
-    expect(Math.abs((left.x + right.x) / 2 - rig.hips.x) / length).toBeLessThan(0.02)
-    expect(Math.abs(left.y - height) / length).toBeLessThan(0.02)
-    expect(Math.abs(right.y - height) / length).toBeLessThan(0.02)
-    expect(Math.abs(left.z - right.z) / length).toBeLessThan(0.02)
-    expect(Math.min(left.z, right.z)).toBeGreaterThan(rig.hips.z)
+    for (const hand of hands) {
+      expect(Math.abs(hand.wrist.y - height) / length).toBeLessThan(0.02)
+      expect(hand.wrist.z).toBeGreaterThan(rig.hips.z)
+      // The palm faces the body.
+      expect(hand.palm).toBeLessThan(-0.99)
+    }
+    expect(Math.abs((left.wrist.x + right.wrist.x) / 2 - rig.hips.x) / length).toBeLessThan(0.02)
+    // The hands cross the midline, each past the other's wrist side, and the right one lies a hand's thickness in front.
+    expect(left.tip.x).toBeLessThan(rig.hips.x)
+    expect(right.tip.x).toBeGreaterThan(rig.hips.x)
+    expect(Math.abs(right.wrist.z - left.wrist.z - 0.12 * forearm) / length).toBeLessThan(0.005)
   })
 
   it('reports the clasp capability on a rig whose arms reach the front-low anchor, and not on one whose arms cannot', () => {
