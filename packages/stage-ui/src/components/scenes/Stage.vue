@@ -66,7 +66,7 @@ import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
 import { useCharacterMindStore } from '../../stores/character-mind'
-import { useCharacterStateStore } from '../../stores/character-state'
+import { characterProfileOf, useCharacterStateStore } from '../../stores/character-state'
 import { useAvatarTouchStore } from '../../stores/character/avatar-touch'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
@@ -286,6 +286,8 @@ function resetAssistantSpeechSurface(source: string) {
 }
 
 const { activeCardId: selectedCharacterId, activeCard, selectedAvatarModel, ready: cardsReady } = storeToRefs(useAiriCardStore())
+/** The active card's walking baseline, which her MMD walk starts from before her mood moves it. */
+const walkBaseline = computed(() => characterProfileOf(activeCard.value?.extensions.airi.modules.character).gait)
 const { stageModelUnavailable } = storeToRefs(useSettingsStageModel())
 // Before the card store is ready, no card owns the Stage yet, so an empty Stage is not a missing model.
 // `missing`: the card has no model. `unavailable`: this device cannot load the model of the card.
@@ -1321,6 +1323,7 @@ defineExpose({
         :chat-target="chatTarget"
         :chat-activity="chatActivity"
         :stage-world="stageWorld"
+        :walk-baseline="walkBaseline"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"
