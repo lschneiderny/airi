@@ -31,14 +31,16 @@ const OFFSETS: Partial<Record<MotionTraceBone, [number, number, number]>> = {
 
 /** Strides per second: 1.4 steps per second at 1 L/s, so a step of 1 / 1.4 L. */
 const STRIDE_HZ = 0.7
+/** The spine, chest and upper chest each pitch 9 degrees back (positive is forward); an unsigned lean would read it forward. */
+const LEAN = -9 * DEG
 /** The P95 - P5 spread of a sine of unit amplitude sampled over whole cycles. */
 const SINE_SPREAD = 2 * Math.sin(0.45 * Math.PI)
 
 /**
  * 1 s of starting (mode 2), then walking at 1 L/s along +z to 20 s, a 90 degree turn under way over 3 s, and walking
  * along +x to 40 s. The thighs swing 25 degrees each way with the knee bent 30 degrees, the pelvis twists 10 degrees
- * each way, the upper arms swing 15 degrees each way with the elbows bent 20 degrees, the neck is pitched 10 degrees
- * forward, and the hips bob 0.02 L each way twice a stride.
+ * each way, the upper arms swing 15 degrees each way with the elbows bent 20 degrees, the spine, chest and upper chest
+ * are pitched 9 degrees back, the neck 10 degrees forward, and the hips bob 0.02 L each way twice a stride.
  */
 function walk() {
   const radius = 3 / (Math.PI / 2)
@@ -58,6 +60,8 @@ function walk() {
     const side = bone.startsWith('left') ? 1 : -1
     if (bone === 'hips')
       return rotY(heading(t) + twist(t))
+    if (bone === 'spine' || bone === 'chest' || bone === 'upperChest')
+      return multiply(yaw, rotX(LEAN))
     if (bone === 'neck' || bone === 'head')
       return multiply(yaw, rotX(10 * DEG))
     if (bone.endsWith('UpperLeg'))
@@ -85,7 +89,7 @@ describe('walk-style measures', () => {
     expect(reading.spans[1].from).toBeGreaterThan(23)
   })
 
-  it('reads the walk\'s stride, bounce, pelvis, arms, head and knee in leg lengths and degrees', () => {
+  it('reads the walk\'s stride, bounce, pelvis, arms, trunk, head and knee in leg lengths and degrees', () => {
     const m = reading.measures
     expect(m.speed).toBeCloseTo(1, 2)
     expect(m.cadence).toBeCloseTo(2 * STRIDE_HZ, 2)
@@ -97,6 +101,8 @@ describe('walk-style measures', () => {
     expect(m.width).toBeCloseTo(0.2 * Math.cos(10 * DEG), 3)
     expect(m.armSwing).toBeCloseTo(15 * SINE_SPREAD, 0)
     expect(m.elbow).toBeCloseTo(20, 1)
+    // The hip midpoint sits 0.05 L under the hips joint and the spine joint 0.1 L over it; three 0.1 L segments lean.
+    expect(m.trunk).toBeCloseTo(Math.atan2(0.3 * Math.sin(LEAN), 0.15 + 0.3 * Math.cos(LEAN)) / DEG, 1)
     expect(m.head).toBeCloseTo(10, 1)
     expect(m.kneeSwing).toBeCloseTo(30, 1)
   })

@@ -51,7 +51,7 @@ export const WALK_STYLE_MEASURES: Readonly<Record<WalkStyleKey, { readonly label
   width: { label: 'step width', unit: 'L', digits: 3, range: [0.02, 0.38], measure: 'median lateral distance between the ankles at consecutive heel strikes', source: `${SET1}: feminine 0.02 to giant 0.38` },
   armSwing: { label: 'arm swing', unit: 'deg', digits: 1, range: [8, 103], measure: 'P95 - P5 of the shoulder-to-wrist line\'s sagittal angle, mean of both arms', source: `${SET1} and set 2: not-confident 8 to 103` },
   elbow: { label: 'elbow carry', unit: 'deg', digits: 1, range: [14, 79], measure: 'mean elbow flexion, mean of both arms', source: `${SET1}: normal 14 to proud 79` },
-  trunk: { label: 'trunk lean', unit: 'deg', digits: 1, range: [2, 19], measure: 'mean tilt of the hip-midpoint-to-neck line from vertical (unsigned)', source: `${SET1}: normal 2 to old 19` },
+  trunk: { label: 'trunk lean', unit: 'deg', digits: 1, range: [-2.9, 18.9], measure: 'mean pitch of the hip-midpoint-to-neck line along the travel heading, positive forward; compare within one rig only', source: `${SET1}, all 15 styles measured with this report's measures on 2026-11-24: feminine -2.9 to old 18.9` },
   head: { label: 'head carriage', unit: 'deg', digits: 1, range: [-17, 37], measure: 'mean pitch of the neck-to-head line along the travel heading, positive forward; compare within one source only', source: `${SET1}: proud -17 to tired 37` },
   lift: { label: 'foot lift', unit: 'L', digits: 3, range: [0.13, 0.20], measure: 'P97 - P3 of the ankle height, mean of both feet', source: `${SET1}: sad 0.13 to active 0.20` },
   kneeSwing: { label: 'knee swing', unit: 'deg', digits: 1, range: [70, 79], measure: 'median peak knee flexion from toe-off to the same foot\'s next heel strike', source: 'Bandai Namco Research Motiondataset 2, seven walk styles, plan walk-style.md section 1: 70 to 79' },
@@ -251,7 +251,12 @@ export function walkStyleReading(run: LoadedRun): WalkStyleReading {
     width: widths.length ? median(widths) : null,
     armSwing: sides(side => spread(over(f => sagittal(J[`${side}sh`], J[`${side}wr`], f)), 0.05)),
     elbow: frames.length ? sides(side => mean(over(f => angle(sub(J[`${side}el`][f], J[`${side}sh`][f]), sub(J[`${side}wr`][f], J[`${side}el`][f]))))) : null,
-    trunk: frames.length ? mean(over(f => angle(sub(J.neck[f], hips[f]), [0, 1, 0]))) : null,
+    trunk: frames.length
+      ? mean(over((f) => {
+          const d = sub(J.neck[f], hips[f])
+          return Math.atan2(forward(d, f), d[1]) * DEG
+        }))
+      : null,
     head: frames.length
       ? mean(over((f) => {
           const d = sub(J.head[f], J.neck[f])
