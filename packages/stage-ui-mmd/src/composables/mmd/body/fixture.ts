@@ -13,14 +13,14 @@ import { MMDBody } from './index'
  * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
  * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` (default true) adds
  * A-pose arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
- * and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
+ * `hand` replaces those chains with a whole hand (`FixtureHand`), and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
 /** Natural fixates the cursor at `point`; the camera sits ahead of the fixture's head. */
 export function cursorAt(intent: MMDBodyInput['intent'], point: Vector3): Pick<MMDBodyInput, 'intent' | 'points'> {
   return { intent: { ...intent, gaze: { ...intent.gaze, on: 'cursor' } }, points: { cursor: point, chat: null, camera: new Vector3(0, 21, 40) } }
 }
 
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, hand?: FixtureHand, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -45,7 +45,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   ]
   // The body performer needs both arms, as every humanoid MMD rig has; `arms: false` builds a rig without them.
   if (options.arms ?? true) {
-    for (const entry of armDefinitions()) {
+    for (const entry of armDefinitions(options.hand)) {
       const parent = definitions.findIndex(({ name }) => name === entry.parent)
       definitions.push({ name: entry.name, parent, position: entry.position })
     }
@@ -171,17 +171,65 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   return { mmd, mesh, bones, bone, mixer, pipeline, body, rig, input, setInput, setRootX, identity: new Quaternion() }
 }
 
+/**
+ * A whole bind hand for the fixture: five fingers with tip bones, built along the forearm with the index finger forward
+ * and the palm facing down and in, then bent and turned at bind by these angles in radians. `wrist` flexes the hand
+ * toward the palm, `roll` turns it about its own axis, `tilt` flexes every finger at its knuckle, and `fan` turns the
+ * index finger toward the thumb and the ring and little fingers away by one and two times it.
+ */
+export interface FixtureHand {
+  wrist?: number
+  roll?: number
+  tilt?: number
+  fan?: number
+}
+
+/** Wrist-relative bind points of a `FixtureHand` on the left side: chains from the wrist, each ending at its tip bone. */
+function handChains(hand: FixtureHand, forearm: Vector3): Array<{ names: string[], points: Vector3[] }> {
+  // Hand axes: x along the forearm, z forward (the index side of the left hand), the palm toward -y.
+  const z = new Vector3(0, 0, 1)
+  const y = z.clone().cross(forearm)
+  const turn = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), hand.roll ?? 0).multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, -1), hand.wrist ?? 0))
+  const place = (p: Vector3) => {
+    const local = p.clone().applyQuaternion(turn)
+    return forearm.clone().multiplyScalar(local.x).addScaledVector(y, local.y).addScaledVector(z, local.z)
+  }
+  const finger = (stem: string, across: number, spread: number) => {
+    const direction = new Vector3(1, 0, 0).applyAxisAngle(new Vector3(0, 0, -1), hand.tilt ?? 0).applyAxisAngle(new Vector3(0, -1, 0), spread)
+    const knuckle = new Vector3(1, 0, across)
+    return { names: ['１', '２', '３', '３先'].map(joint => `${stem}${joint}`), points: [0, 0.4, 0.7, 0.9].map(at => place(knuckle.clone().addScaledVector(direction, at))) }
+  }
+  const fan = hand.fan ?? 0
+  return [
+    { names: ['親指０', '親指１', '親指２', '親指２先'], points: [[0.2, -0.1, 0.4], [0.5, -0.2, 0.6], [0.75, -0.3, 0.7], [0.95, -0.35, 0.75]].map(([px, py, pz]) => place(new Vector3(px, py, pz))) },
+    finger('人指', 0.25, fan),
+    finger('中指', 0, 0),
+    finger('薬指', -0.2, -fan),
+    finger('小指', -0.4, -2 * fan),
+  ]
+}
+
 /** Bind offsets of the A-pose arms: 3-unit segments 36 degrees below horizontal on both sides. */
-function armDefinitions(): Array<{ name: string, parent: string, position: [number, number, number] }> {
+function armDefinitions(hand?: FixtureHand): Array<{ name: string, parent: string, position: [number, number, number] }> {
   const segment: [number, number, number] = [3 * Math.cos(0.2 * Math.PI), -3 * Math.sin(0.2 * Math.PI), 0]
   return (['左', '右'] as const).flatMap((prefix) => {
     const sign = prefix === '左' ? 1 : -1
     const mirror = ([x, y, z]: [number, number, number]): [number, number, number] => [sign * x, y, z]
-    return [
+    const arm = [
       { name: `${prefix}肩`, parent: '上半身2', position: mirror([0.5, 1, 0]) },
       { name: `${prefix}腕`, parent: `${prefix}肩`, position: mirror([1, 0, 0]) },
       { name: `${prefix}ひじ`, parent: `${prefix}腕`, position: mirror(segment) },
       { name: `${prefix}手首`, parent: `${prefix}ひじ`, position: mirror(segment) },
+    ]
+    if (hand) {
+      return [...arm, ...handChains(hand, new Vector3(...segment).normalize()).flatMap(({ names, points }) => names.map((name, k) => ({
+        name: `${prefix}${name}`,
+        parent: k === 0 ? `${prefix}手首` : `${prefix}${names[k - 1]}`,
+        position: mirror(points[k].clone().sub(k === 0 ? new Vector3() : points[k - 1]).toArray()),
+      })))]
+    }
+    return [
+      ...arm,
       { name: `${prefix}親指０`, parent: `${prefix}手首`, position: mirror([0.2, -0.1, 0.2]) },
       { name: `${prefix}親指１`, parent: `${prefix}親指０`, position: mirror([0.3, -0.1, 0.3]) },
       { name: `${prefix}親指２`, parent: `${prefix}親指１`, position: mirror([0.2, -0.1, 0.3]) },

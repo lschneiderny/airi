@@ -4,6 +4,7 @@ import type { HumanoidFingerBoneName } from '@proj-airi/motion-driver-humanoid/t
 import type { Bone } from 'three'
 
 import type { MMDCleanPose } from '../frame-pipeline'
+import type { MMDHandCalibration, MMDVec3 } from '../rig'
 import type { MMDBodyPose } from './pose'
 
 import { BODY_CHANNELS, BODY_TICK, channelIndex, createBodyPerformer, spineWeights } from '@proj-airi/motion-driver-humanoid/performance'
@@ -55,6 +56,45 @@ interface Target {
   readonly index: number
 }
 
+/**
+ * How far each of the index, middle, ring and little fingers turns about the palm normal per unit of the spread
+ * channel, toward the thumb: the fan opens evenly about the middle finger, one spread angle between neighbours.
+ */
+const SPREAD_FAN = [1, 0, -1, -2] as const
+/**
+ * The thumb's opposition at channel 0, radians, measured as `MMDThumbCalibration.opposition`. Library rigs bind the
+ * thumb at 42 to 56 degrees, so the rest channel (10) holds about the bind thumb and the opposed thumb (40) tucks it
+ * under the palm.
+ */
+const THUMB_OPPOSITION_ZERO = 40 * Math.PI / 180
+
+/**
+ * The share of each finger joint's own bind bend that curl 0 takes off; the rest comes off the whole finger, at the
+ * knuckle, as its knuckle-to-tip line's flexion (`MMDFingerCalibration.chord`). Bone centres sit off the mesh's
+ * centreline on some rigs: rendered against the meshes of ten library rigs, the per-joint bend alone kinks straight
+ * fingers (Vivian's knuckles read 11 to 16 flexed and the next joints 8 to 13 bent back; Carlotta's and Sigrika's
+ * fingertips read 11 to 18 bent back), and the whole-finger line alone leaves Chisa's authored bent-back tips. Half of
+ * each halves the larger error on every rig. The thumb's inner joints take the same share of their own bend.
+ */
+const BIND_BEND_SHARE = 0.5
+
+/** One calibrated finger: its bind curl axis, the bind bend curl 0 takes off each joint, and the turn that brings its bind spread to 0. */
+interface FingerWrite {
+  readonly axis: Vector3
+  readonly bend: readonly [number, number, number]
+  readonly spreadOffset: number
+}
+
+/** A side's calibrated hand write (`MMDHandCalibration`); null keeps the uncalibrated write. */
+interface HandWrite {
+  /** Swings the bind hand onto the forearm line, under the wrist channels. */
+  readonly align: Quaternion
+  /** `sigma * normal`: a positive turn about it moves a finger toward the thumb. */
+  readonly spreadAxis: Vector3
+  readonly fingers: readonly FingerWrite[]
+  readonly thumb: { readonly axis: Vector3, readonly bend: readonly [number, number, number], readonly oppositionAxis: Vector3, readonly oppositionOffset: number } | null
+}
+
 interface ArmTargets {
   readonly sigma: 1 | -1
   readonly start: number
@@ -67,6 +107,47 @@ interface ArmTargets {
   readonly upperBind: Quaternion
   readonly forearmBind: Quaternion
   readonly thumbAxis: Vector3 | null
+  readonly calibrated: HandWrite | null
+}
+
+const vector = (v: MMDVec3) => new Vector3(v[0], v[1], v[2])
+
+/**
+ * The calibrated write of one hand. A finger without its own calibration curls about the palm's knuckle axis from its
+ * bind pose. The fan's reference is the middle finger's bind spread, or the mean of the measured fingers without one,
+ * so spread 0 sets the fingers parallel without turning the hand.
+ */
+function handWrite(calibration: MMDHandCalibration, sigma: 1 | -1, forearm: { x: number, y: number, z: number }): HandWrite {
+  const axis = vector(calibration.axis)
+  const normal = vector(calibration.normal)
+  const knuckleAxis = axis.clone().cross(normal)
+  const measured = Object.values(calibration.fingers).filter(finger => finger !== null)
+  const reference = calibration.fingers.middle?.spread ?? (measured.length ? measured.reduce((sum, finger) => sum + finger.spread, 0) / measured.length : 0)
+  const thumb = calibration.thumb
+  return {
+    align: new Quaternion().setFromUnitVectors(axis, new Vector3(forearm.x, forearm.y, forearm.z).normalize()),
+    spreadAxis: normal.clone().multiplyScalar(sigma),
+    fingers: (['index', 'middle', 'ring', 'little'] as const).map((name) => {
+      const finger = calibration.fingers[name]
+      return finger
+        ? {
+            axis: vector(finger.curlAxis),
+            bend: [
+              BIND_BEND_SHARE * finger.bend[0] + (1 - BIND_BEND_SHARE) * finger.chord,
+              BIND_BEND_SHARE * finger.bend[1],
+              BIND_BEND_SHARE * finger.bend[2],
+            ] as const,
+            spreadOffset: reference - finger.spread,
+          }
+        : { axis: knuckleAxis, bend: [0, 0, 0] as const, spreadOffset: 0 }
+    }),
+    thumb: thumb && {
+      axis: vector(thumb.curlAxis),
+      bend: [0, BIND_BEND_SHARE * thumb.bend[1], BIND_BEND_SHARE * thumb.bend[2]] as const,
+      oppositionAxis: axis.clone().multiplyScalar(sigma),
+      oppositionOffset: THUMB_OPPOSITION_ZERO - thumb.opposition,
+    },
+  }
 }
 
 /**
@@ -154,6 +235,7 @@ export class MMDBodyPerformer {
         upperBind: bind(traits.arms[side].upperArm),
         forearmBind: bind(traits.arms[side].forearm),
         thumbAxis: axis ? new Vector3(...axis) : null,
+        calibrated: rig.hands[side] && handWrite(rig.hands[side], side === 'left' ? 1 : -1, traits.arms[side].forearm),
       }
     }
     this.arms = { left: arm('left'), right: arm('right') }
@@ -393,8 +475,10 @@ export class MMDBodyPerformer {
   /**
    * Clavicles, arms, hands and fingers. The canonical channels hang a straight-down arm with the palm toward the thigh;
    * `upperBind` and `forearmBind` carry that reference onto the bind arm, so the posed segment directions equal the
-   * performer's own forward kinematics, which its collision corrector cleared. Pronation stays on the hand and twist on
-   * the upper arm, as the contract fixes for this slice; twist helper bones are not written.
+   * performer's own forward kinematics, which its collision corrector cleared. A calibrated hand (`HandWrite`) is first
+   * swung onto the forearm line, so the posed hand direction also equals the forward kinematics' hand; the hand keeps
+   * its bind roll about that line. Pronation stays on the hand and twist on the upper arm, as the contract fixes for
+   * this slice; twist helper bones are not written.
    */
   applyArms(clean: MMDCleanPose, weights: MMDBodyWeights, channels: ArrayLike<number> = this.display): void {
     for (const side of sides) {
@@ -417,15 +501,35 @@ export class MMDBodyPerformer {
       this.delta.multiply(this.q1.setFromEuler(this.euler.set(0, 0, -sigma * channels[start + 7], 'YXZ')))
       this.delta.multiply(this.q1.setFromEuler(this.euler.set(channels[start + 8], 0, 0, 'YXZ')))
       this.delta.premultiply(arm.forearmBind).multiply(this.q2.copy(arm.forearmBind).invert())
+      if (arm.calibrated)
+        this.delta.multiply(arm.calibrated.align)
       this.write(arm.hand, clean, this.delta, owned, group)
       const fingerOwned = weights[`${side}Fingers`]
+      const hand = arm.calibrated
       for (let j = 0; j < arm.fingers.length; j++) {
         const angle = channels[start + 9 + j]
-        // Curls bend toward the palm, which faces down at bind; the thumb curls about the rig's measured axis.
-        if (j < 3 && arm.thumbAxis)
+        const joint = j % 3
+        const finger = hand && j >= 3 ? hand.fingers[(j - 3) / 3 | 0] : null
+        if (finger) {
+          // Curl 0 is the joint straight along the palm, so the bind bend comes off first. The first joint also turns
+          // about the palm normal from the bind spread to the fan's.
+          this.delta.setFromAxisAngle(finger.axis, angle - finger.bend[joint])
+          if (joint === 0)
+            this.delta.premultiply(this.q1.setFromAxisAngle(hand!.spreadAxis, SPREAD_FAN[(j - 3) / 3] * channels[start + 24] + finger.spreadOffset))
+        }
+        else if (j < 3 && hand?.thumb) {
+          // The thumb curls about its own axis; its first joint then folds the thumb across the palm.
+          this.delta.setFromAxisAngle(hand.thumb.axis, angle - hand.thumb.bend[joint])
+          if (joint === 0)
+            this.delta.premultiply(this.q1.setFromAxisAngle(hand.thumb.oppositionAxis, channels[start + 25] + hand.thumb.oppositionOffset))
+        }
+        else if (j < 3 && arm.thumbAxis) {
           this.delta.setFromAxisAngle(arm.thumbAxis, angle)
-        else
+        }
+        else {
+          // Without a calibration, curls bend toward a palm assumed to face down at bind.
           this.delta.setFromAxisAngle(this.axisZ, -sigma * angle)
+        }
         this.write(arm.fingers[j], clean, this.delta, fingerOwned, `${side}Fingers`)
       }
     }

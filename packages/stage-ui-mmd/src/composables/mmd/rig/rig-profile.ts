@@ -95,7 +95,7 @@ export interface MMDRigProfile {
   restForearmAngles: Record<'left' | 'right', number | null>
   /**
    * Per-side thumb curl axis, `normalize(thumbDir_bind x palmNormal)` in model axes with the palm facing down; null
-   * without thumb bones.
+   * without thumb bones. The performer curls the thumb about it only on a side without a hand calibration.
    */
   thumbAxis: Record<'left' | 'right', MMDVec3 | null>
   /**
