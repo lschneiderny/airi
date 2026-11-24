@@ -18,7 +18,7 @@ existing settings and motion inputs.
 
 This private, Node-only package runs repository QA checks: headless body motion for MMD (`qa:motion3d`) and Live2D (`qa:live2d-rig`), rendered Electron app sessions, desktop stage gates, and perf reports. Motion quality scoring, LLM evaluation, and the character-state simulator are in [`@proj-airi/lab-tools`](../lab-tools/README.md). Product packages must not depend on it.
 
-Body-motion contracts live under `src/t2-3d/`: `scenarios.ts` exports the nine
+Body-motion contracts live under `src/t2-3d/`: `scenarios.ts` exports the
 deterministic `motion3dScenarios`, and `read-trace.ts` exports `readTrace(path)`
 and `parseTrace(input)`. Both return `{ trace, rot, root, channels }` with the
 validated header and decoded float32 blocks. `MotionTraceRefusal.name` identifies
@@ -80,6 +80,14 @@ and stops keep every turn: 8 turns in 60 s (the gate's `gait.headLeadMs` needs
 8 turn episodes), which `walk-form` checks at report time. Only a seeded
 `observe-walk` marker depends on the seed. Versions 1 and 2 are no longer
 selectable; `qa:stage capture --scenario walk` replays the same version 3 goals.
+`walk-mood-arc` (version 1, walk class, for visual review of walk styles) defaults
+to 150 s, also its cap: `walk`'s long first leg, 0 to +19.5 leg lengths, walked
+out and back once every 30 s at walk pace, while `mood` cues (the mood the body
+reads, as `--mood` holds one; recorded as `mood:<valence>,<arousal>,<tension>`
+markers) and `energy` cues move halfway through each leg from calm to happy,
+sad, angry, tired (energy 0.05) and calm again, so every change eases in while
+she walks. A `mood` cue replaces `--mood` from its time on. `lab:motion3d report
+walk-style` measures it; its frames and clips replay it like any scenario.
 Touch is reported only and has no human reference.
 
 `sleepy-no-clip` (C004 of goal 4, idle class) assigns no stance clip. Its
@@ -828,9 +836,9 @@ load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
 `idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`,
-`touch` and `sleepy-no-clip`. Seed defaults to 1;
+`walk-mood-arc`, `touch` and `sleepy-no-clip`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s, except for the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
+Scored duration is capped at 120 s, except for `walk-mood-arc` (150 s) and the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
 `sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
 600 s run is about five times a 120 s run in wall time and output size.
 Relative paths resolve against `INIT_CWD`.
@@ -864,7 +872,7 @@ compares against; it is recorded as `acts: 'off'` in the trace source detail, an
 that record.
 `--walk-style key=value,...` walks with that `GaitStyle` instead of the one her mood gives (keys as in
 `GaitStyle`, angles in degrees, unnamed keys neutral, a value outside `GAIT_STYLE_BOUNDS` refused). `--mood=valence,arousal,tension`
-holds the mood the body reads for the whole run (use the `=` form, since a negative value would read as a flag), and
+holds the mood the body reads until the scenario's first `mood` cue (use the `=` form, since a negative value would read as a flag), and
 `--energy <0-1>` sets the user energy until the scenario's first `energy` cue. Each is recorded in the trace source
 detail when set, and each leaves the trace byte-identical when absent. They exist to review walk styles.
 An existing output directory is refused with exit 2.

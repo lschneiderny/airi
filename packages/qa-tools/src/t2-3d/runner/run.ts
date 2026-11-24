@@ -87,7 +87,7 @@ export interface Motion3dRunOptions {
   readonly acts: 'on' | 'off'
   /** A walk style the body walks with instead of its own; recorded in the trace source when set. */
   readonly walkStyle?: GaitStyle | null
-  /** A mood the body reads instead of Natural's, held for the whole run; recorded in the trace source when set. */
+  /** A mood the body reads instead of Natural's until a scenario's first `mood` cue; recorded in the trace source when set. */
   readonly mood?: { readonly valence: number, readonly arousal: number, readonly tension: number } | null
   /** The user energy until the scenario's first `energy` cue; recorded in the trace source when set. */
   readonly energy?: number | null
@@ -181,21 +181,25 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     let cursor: { x: number, y: number } | null = null
     const body = new MMDBody(mmd, rig, {
       modelKey,
-      input: () => ({
-        enabled: true,
-        rootMotion: true,
-        frame: natural.bodyFrame.frame,
-        intent: options.mood ? { ...natural.bodyFrame.intent, mood: options.mood } : natural.bodyFrame.intent,
-        energy: cues.energy,
-        ...options.walkStyle ? { walkStyle: options.walkStyle } : {},
-        stance: stance.intent?.stance,
-        rest: stance.intent?.rest,
-        points,
-        disableFootContact: false,
-        disableLookAt: false,
-        stanceClips: stance.baseClips,
-        dragging: false,
-      }),
+      input: () => {
+        // A scenario's `mood` cue replaces `--mood` from its time on.
+        const mood = cues.bodyMood ?? options.mood
+        return {
+          enabled: true,
+          rootMotion: true,
+          frame: natural.bodyFrame.frame,
+          intent: mood ? { ...natural.bodyFrame.intent, mood } : natural.bodyFrame.intent,
+          energy: cues.energy,
+          ...options.walkStyle ? { walkStyle: options.walkStyle } : {},
+          stance: stance.intent?.stance,
+          rest: stance.intent?.rest,
+          points,
+          disableFootContact: false,
+          disableLookAt: false,
+          stanceClips: stance.baseClips,
+          dragging: false,
+        }
+      },
       root: { setPose: (x, yaw) => {
         mmd.mesh.position.x = x
         mmd.mesh.rotation.y = yaw

@@ -153,3 +153,12 @@ it('sets activity and away, records an away activity as mode away, and records o
   expect(driver.performance).toMatchObject({ mode: 'listening', away: false })
   expect(events).toEqual([{ t: 0, kind: 'mode', mode: 'away' }, { t: 1, kind: 'marker', label: 'observe' }, { t: 2, kind: 'mode', mode: 'listening' }])
 })
+
+it('holds a mood cue for the body without dosing Natural, and labels it', () => {
+  const { adapter, driver, events } = boundary()
+  expect(driver.bodyMood).toBeNull()
+  driver.apply({ at: 0, kind: 'mood', mood: { valence: -0.8, arousal: -0.6, tension: 0.15 } }, 3)
+  expect(driver.bodyMood).toEqual({ valence: -0.8, arousal: -0.6, tension: 0.15 })
+  expect(adapter.addMood).not.toHaveBeenCalled()
+  expect(events).toEqual([{ t: 3, kind: 'marker', label: 'mood:-0.8,-0.6,0.15' }])
+})

@@ -6,7 +6,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import type { MMDStanceWorld } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
 
-import type { Motion3dCue } from '../scenarios'
+import type { Motion3dCue, Motion3dMood } from '../scenarios'
 
 import { emotionGesture, initialMindGestureState, initialMindMoodState, initialMindRefractoryState, moodEpisodeDose, pokeSurprise } from '@proj-airi/character-mind'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -30,6 +30,8 @@ export class Motion3dCueDriver {
   cursor: { x: number, y: number } | null = null
   /** User energy for Natural and the body; 0.5 until an `energy` cue. */
   energy = 0.5
+  /** The mood the body reads instead of Natural's; null until a `mood` cue. */
+  bodyMood: Motion3dMood | null = null
   /** Natural's chat input; null until a `chat` cue shows the panel. */
   chat: NaturalChatInput | null = null
   private held: { readonly cursor: { readonly x: number, readonly y: number }, readonly since: number } | null = null
@@ -136,6 +138,10 @@ export class Motion3dCueDriver {
       case 'energy':
         this.energy = cue.level
         this.event({ t, kind: 'marker', label: `energy:${cue.level}` })
+        return
+      case 'mood':
+        this.bodyMood = cue.mood
+        this.event({ t, kind: 'marker', label: `mood:${cue.mood.valence},${cue.mood.arousal},${cue.mood.tension}` })
         return
       case 'chat': {
         this.chat = cue.target ? { target: { ...cue.target }, typing: false } : null

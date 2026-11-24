@@ -8,7 +8,7 @@ import { motion3dScenarios, scriptBeats } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -54,6 +54,18 @@ describe('motion3d scenario timelines', () => {
       expect(goals.map(goal => [goal.at, goal.x, goal.pace])).toEqual([[0.5, 19.5, 'walk'], [28, 8, 'walk'], [33, 19, 'walk'], [45, 16, 'walk'], [54.5, 19, 'walk'], [64, 16, 'walk']])
       goals.slice(1).forEach((goal, i) => expect(goal.at - goals[i].at).toBeGreaterThanOrEqual(GOAL_MIN_DWELL_MS / 1000))
     }
+  })
+
+  it('walks the mood arc out and back every 30 s, changing the mood or energy halfway through a leg', () => {
+    const scenario = motion3dScenarios.find(scenario => scenario.id === 'walk-mood-arc')
+    if (!scenario)
+      throw new Error('Missing walk-mood-arc scenario')
+    const timeline = scenario.timeline(1, scenario.seconds)
+    const goals = timeline.flatMap(cue => cue.kind === 'goal' ? [[cue.at, cue.x, cue.pace]] : [])
+    expect(goals).toEqual([[0.5, 19.5, 'walk'], [30, 0, 'walk'], [60, 19.5, 'walk'], [90, 0, 'walk'], [120, 19.5, 'walk']])
+    const changes = [...new Set(timeline.flatMap(cue => (cue.kind === 'mood' || cue.kind === 'energy') && cue.at > 0 ? [cue.at] : []))]
+    expect(changes).toEqual([15, 45, 75, 105, 135])
+    expect(timeline.find(cue => cue.kind === 'mood')?.at).toBe(0)
   })
 
   it('rests without clips: idle from the start after a 100 s warm-up, away at 40 s and listening at 80 s, recording stance reasons', () => {
