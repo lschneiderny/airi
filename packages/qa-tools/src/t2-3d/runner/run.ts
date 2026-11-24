@@ -230,6 +230,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           natural.advance(dt, {
             performance: cues.performance,
             energy: cues.energy,
+            // Scenarios run the calm default.
+            pep: 0,
             voice: cues.voice,
             cursor,
             chat,

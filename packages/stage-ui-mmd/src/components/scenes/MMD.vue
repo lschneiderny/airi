@@ -131,6 +131,8 @@ const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
   performance?: PerformanceState
   naturalEnergy?: number
+  /** The active card's pep for the Natural driver, in [0, 1]; 0 is the calm default. */
+  pep?: number
   performanceSettings?: ExpressionPerformanceSettings
   /** Decision permissions supplied by the stage's character-behavior document. */
   idleActivities?: boolean
@@ -163,6 +165,7 @@ const props = withDefaults(defineProps<{
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
+  pep: 0,
   performanceSettings: () => defaultExpressionPerformanceSettings,
   idleActivities: true,
   touchReactions: true,
@@ -1450,6 +1453,7 @@ async function loadModel(src: string) {
           natural.advance(dt, {
             performance: props.performance,
             energy: props.naturalEnergy ?? naturalSettings.document.energy,
+            pep: props.pep,
             voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
             cursor: props.cursorAttention ? cursor : null,
             chat: props.chatAttention && props.chatTarget

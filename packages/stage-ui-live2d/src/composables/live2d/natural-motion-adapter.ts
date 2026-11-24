@@ -48,6 +48,8 @@ export interface Live2DNaturalMotionAttention {
   performance: PerformanceState
   /** User energy 0..1, 0.5 neutral. */
   energy: number
+  /** The active card's pep, in [0, 1]; 0 is the calm default. Forwarded to the controller whenever it differs from what it holds. */
+  pep: number
   voice: {
     speaking: boolean
     /** Lipsync mouth level in [0, 1]. */
@@ -210,6 +212,8 @@ export class Live2DNaturalMotionAdapter {
   private placement: number | null = null
   /** Called after every controller step with that step's placement input and applied yaw bias, for QA diagnostics. */
   onPlacementStep: ((placement: number | null, yawBias: number) => void) | null = null
+  /** Last pep handed to the controller; a fresh controller starts calm, so a rebuilt adapter forwards the host's pep again. */
+  private pep = 0
   /** Last chat input handed to the controller; a fresh controller starts without a chat signal. */
   private chat: NaturalChatInput | null = null
   private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
@@ -503,6 +507,11 @@ export class Live2DNaturalMotionAdapter {
     if (idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = idleDrive
       this.controller.setIdleDrive(idleDrive, this.time)
+    }
+    // Forwarded on change only, so a calm card never calls the controller and its frames stay unchanged.
+    if (attention.pep !== this.pep) {
+      this.pep = attention.pep
+      this.controller.setPep(attention.pep, this.time)
     }
     this.controller.setPerformance(attention.performance, attention.energy, this.time)
     this.controller.setVoice({ speaking: voice.speaking, speechActiveOrRecent: !mouthAllowed, level: voice.level })

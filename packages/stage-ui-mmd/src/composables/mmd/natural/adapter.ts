@@ -42,6 +42,8 @@ export const MMD_NATURAL_CAPABILITIES: PerformerCapabilities = {
 export interface MMDNaturalInput {
   readonly performance: PerformanceState
   readonly energy: number
+  /** The active card's pep, in [0, 1]; 0 is the calm default. */
+  readonly pep: number
   readonly voice: NaturalMotionVoice
   /** Eye-anchored head widths, Y up. */
   readonly cursor: { x: number, y: number } | null
@@ -87,6 +89,8 @@ export class MMDNaturalAdapter {
   private time = 0
   private events = 0
   private energy = 0.5
+  /** Last pep handed to Natural; a fresh controller starts calm, so a replaced adapter forwards the host's pep again. */
+  private pep = 0
   private placement: number | null = null
   private frame: NaturalMotionFrame
   private readonly pending: NaturalEpisode[] = []
@@ -162,6 +166,11 @@ export class MMDNaturalAdapter {
     if (this.idleDrive !== this.appliedIdleDrive) {
       this.appliedIdleDrive = this.idleDrive
       this.natural.setIdleDrive(this.idleDrive, this.time)
+    }
+    // Forwarded on change only, so a calm card never calls Natural and its frames stay unchanged.
+    if (input.pep !== this.pep) {
+      this.pep = input.pep
+      this.natural.setPep(input.pep, this.time)
     }
     this.energy = input.energy
     this.natural.setVoice(input.voice)

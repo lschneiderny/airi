@@ -10,6 +10,7 @@ import { MMDNaturalAdapter } from './adapter'
 const input = {
   performance: { mode: 'idle', attention: 'cursor', away: false },
   energy: 0.5,
+  pep: 0,
   voice: { speaking: false, speechActiveOrRecent: false, level: 0 },
   cursor: { x: 4, y: 0 },
   chat: null,
@@ -231,6 +232,23 @@ describe('mmd Natural adapter', () => {
     expect(adapter.mood.valence).toBeGreaterThan(0.55)
     expect(adapter.mood.valence).toBeLessThanOrEqual(0.6)
     expect(adapter.mood.arousal).toBeLessThan(0)
+  })
+
+  it('hands a changed pep to Natural on its motion clock, and again to a replaced adapter', () => {
+    const { adapter } = fixture()
+    const forwarded = vi.spyOn(adapter.natural, 'setPep')
+    adapter.advance(0.5, input)
+    expect(forwarded).not.toHaveBeenCalled()
+    adapter.advance(0.5, { ...input, pep: 0.6 })
+    adapter.advance(0.5, { ...input, pep: 0.6 })
+    adapter.advance(0.5, input)
+    expect(forwarded.mock.calls).toEqual([[0.6, 1], [0, 2]])
+
+    // A model swap or driver change replaces the adapter, whose controller starts calm.
+    const replaced = fixture().adapter
+    const reapplied = vi.spyOn(replaced.natural, 'setPep')
+    replaced.advance(0.5, { ...input, pep: 0.6 })
+    expect(reapplied.mock.calls).toEqual([[0.6, 0.5]])
   })
 
   it('hands the face baseline to Natural, whose face output feeds the morph mapping', () => {

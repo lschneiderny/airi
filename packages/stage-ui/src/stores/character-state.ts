@@ -76,6 +76,7 @@ export function characterProfileOf(value: unknown): CharacterProfile {
     resting: { ...profile.resting },
     startingStage: profile.startingStage,
     ...profile.gait === undefined ? {} : { gait: { ...profile.gait } },
+    ...profile.pep === undefined ? {} : { pep: profile.pep },
   }
 }
 

@@ -273,9 +273,9 @@ describe('airi card package import/export', () => {
     expect(imported.characterState?.mood.contributions.map(contribution => contribution.id)).toEqual(['moment-1'])
   })
 
-  it('shares a card and its profile, walking baseline included, without its memories or state record', async () => {
+  it('shares a card and its profile, walking baseline and pep included, without its memories or state record', async () => {
     const displayModelsStore = useDisplayModelsStore()
-    const profile: CharacterProfile = { resting: { valence: 0.2, energy: 0, tension: 0.2 }, startingStage: 'stranger', gait: { width: -0.6, sway: 0.6 } }
+    const profile: CharacterProfile = { resting: { valence: 0.2, energy: 0, tension: 0.2 }, startingStage: 'stranger', gait: { width: -0.6, sway: 0.6 }, pep: 0.65 }
     const card = createCard()
     card.extensions.airi.avatarModels = []
     card.extensions.airi.modules.character = profile

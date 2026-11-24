@@ -233,6 +233,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       exclusive: false,
       performance,
       energy,
+      // Scenarios run the calm default.
+      pep: 0,
       // The sim has no lipsync plugin, so it replays that plugin's release and hold on the sim clock.
       voice: { speaking: speeches.size > 0, level: speechLevel(), lipSyncOwnsMouth: speeches.size > 0 || (speechEndedAt !== null && simTime - speechEndedAt <= (lipSyncReleaseMs + lipSyncHandoffHoldMs) / 1000) },
       autoBlink: true,
