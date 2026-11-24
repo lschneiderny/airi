@@ -1,3 +1,4 @@
+import type { GaitStyle } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
@@ -16,6 +17,7 @@ import { setImmediate } from 'node:timers/promises'
 
 import { CharacterMind, idleOrderOf, nextIdleWakeAt } from '@proj-airi/character-mind'
 import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { MOTION_TRACE_KIND, MOTION_TRACE_VERSION } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { idleKindsOutOfReach, MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
@@ -59,6 +61,18 @@ export function createRunnerMind(options: Pick<Motion3dRunOptions, 'seed' | 'sce
   return mind
 }
 
+const recordedMoodSchema = v.strictObject({ valence: v.number(), arousal: v.number(), tension: v.number() })
+const recordedWalkStyleSchema = v.record(v.picklist(GAIT_STYLE_KEYS), v.number())
+
+/** The walk style, mood and energy overrides a run recorded in its trace source detail, so a replay can reproduce it. */
+export function recordedOverrides(detail: MotionTraceSource['detail']): Pick<Motion3dRunOptions, 'walkStyle' | 'mood' | 'energy'> {
+  return {
+    walkStyle: typeof detail.walkStyle === 'string' ? { ...NEUTRAL_GAIT_STYLE, ...v.parse(recordedWalkStyleSchema, JSON.parse(detail.walkStyle)) } : null,
+    mood: typeof detail.mood === 'string' ? v.parse(recordedMoodSchema, JSON.parse(detail.mood)) : null,
+    energy: typeof detail.energy === 'number' ? detail.energy : null,
+  }
+}
+
 export interface Motion3dRunOptions {
   readonly model: string
   readonly scenario: Motion3dScenario
@@ -71,6 +85,12 @@ export interface Motion3dRunOptions {
    * scenario without an idle drive the switch changes nothing but that record.
    */
   readonly acts: 'on' | 'off'
+  /** A walk style the body walks with instead of its own; recorded in the trace source when set. */
+  readonly walkStyle?: GaitStyle | null
+  /** A mood the body reads instead of Natural's, held for the whole run; recorded in the trace source when set. */
+  readonly mood?: { readonly valence: number, readonly arousal: number, readonly tension: number } | null
+  /** The user energy until the scenario's first `energy` cue; recorded in the trace source when set. */
+  readonly energy?: number | null
   readonly git: RunGitState
   readonly signal: AbortSignal
   /** Called after each pipeline step with the frame index and the posed mesh; read-only (`lab:motion3d frames` re-runs). */
@@ -152,6 +172,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         claimFade = { from: claimAmount, to: 0, elapsed: 0, duration: LAYER_FADE_SECONDS.upperOut }
       }),
     })
+    if (options.energy !== undefined && options.energy !== null)
+      cues.energy = options.energy
     const look = new Motion3dLookTarget(mmd.mesh, pose)
     const metrics = new Motion3dMeasurement()
     let points: MMDBodyPoints | null = null
@@ -162,8 +184,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         enabled: true,
         rootMotion: true,
         frame: natural.bodyFrame.frame,
-        intent: natural.bodyFrame.intent,
+        intent: options.mood ? { ...natural.bodyFrame.intent, mood: options.mood } : natural.bodyFrame.intent,
         energy: cues.energy,
+        ...options.walkStyle ? { walkStyle: options.walkStyle } : {},
         stance: stance.intent?.stance,
         rest: stance.intent?.rest,
         points,
@@ -243,6 +266,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       joints: mmd.pmx.joints.length,
       ikChains: mmd.pmx.bones.filter(bone => bone.ik).length,
       ...options.acts === 'off' ? { acts: 'off' } : {},
+      ...options.walkStyle ? { walkStyle: JSON.stringify(options.walkStyle) } : {},
+      ...options.mood ? { mood: JSON.stringify(options.mood) } : {},
+      ...options.energy !== undefined && options.energy !== null ? { energy: options.energy } : {},
       ...idleDrive ? idleDriveDetail(idleDrive) : {},
       ...options.scenario.music ? { music: true } : {},
       ...options.scenario.beats ? { beats: JSON.stringify(options.scenario.beats) } : {},
