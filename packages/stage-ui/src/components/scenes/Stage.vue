@@ -26,7 +26,7 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
-import { idleDriveOf, MOOD_CUE_MARKER } from '@proj-airi/stage-shared/character-state'
+import { idleDriveOf, MOOD_CUE_MARKER, pepOf } from '@proj-airi/stage-shared/character-state'
 import { initialOccasionMemory, resolveOccasions } from '@proj-airi/stage-shared/expression-performance'
 import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario/flag'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -286,8 +286,11 @@ function resetAssistantSpeechSurface(source: string) {
 }
 
 const { activeCardId: selectedCharacterId, activeCard, selectedAvatarModel, ready: cardsReady } = storeToRefs(useAiriCardStore())
+const activeProfile = computed(() => characterProfileOf(activeCard.value?.extensions.airi.modules.character))
 /** The active card's walking baseline, which her MMD walk starts from before her mood moves it. */
-const walkBaseline = computed(() => characterProfileOf(activeCard.value?.extensions.airi.modules.character).gait)
+const walkBaseline = computed(() => activeProfile.value.gait)
+/** The active card's pep, which the Natural driver of both renderers plays; 0 for a calm card. */
+const pep = computed(() => pepOf(activeProfile.value))
 const { stageModelUnavailable } = storeToRefs(useSettingsStageModel())
 // Before the card store is ready, no card owns the Stage yet, so an empty Stage is not a missing model.
 // `missing`: the card has no model. `unavailable`: this device cannot load the model of the card.
@@ -1225,6 +1228,7 @@ defineExpose({
         :presence="presenceBubble"
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
+        :pep="pep"
         :performance-settings="performanceSettings"
         :idle-activities="behaviorSettings.document.idleActivities"
         :touch-reactions="behaviorSettings.document.touchReactions"
@@ -1314,6 +1318,7 @@ defineExpose({
         v-model:state="componentState"
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
+        :pep="pep"
         :performance-settings="performanceSettings"
         :idle-activities="behaviorSettings.document.idleActivities"
         :touch-reactions="behaviorSettings.document.touchReactions"

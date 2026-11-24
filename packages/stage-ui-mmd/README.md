@@ -304,13 +304,13 @@ Natural's blink closure and the performer's lid closure (`body.lidClose`).
 Classic retains its gaze, blink and emotion composables. Switching drivers
 clears procedural morph channels and starts a fresh Natural controller.
 
-The adapter accepts performance, voice, chat, head-width cursor coordinates,
-screen inwardness and touch inputs. `Stage.vue` passes the resolved
-`performance` state, Natural energy, expression performance settings, screen
-placement, chat target and activity, mouth level and speaking state, and routes
-the stage performance conductor to this scene when the MMD renderer is active
-(`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
-driver declares `MMD_NATURAL_CAPABILITIES` and Classic declares `NO_CAPABILITIES`. The
+The adapter accepts performance, pep, voice, chat, head-width cursor
+coordinates, screen inwardness and touch inputs. `Stage.vue` passes the resolved
+`performance` state, Natural energy, the active card's `pep`, expression
+performance settings, screen placement, chat target and activity, mouth level
+and speaking state, and routes the stage performance conductor to this scene
+when the MMD renderer is active (`selectStagePerformanceRenderer` in
+`@proj-airi/stage-ui`). The MMD Natural driver declares `MMD_NATURAL_CAPABILITIES` and Classic declares `NO_CAPABILITIES`. The
 exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted`,
 `getMood` and `action` methods form the `StagePerformanceScene` surface. A sent
 message or an opened chat reaches Natural only as the character mind's

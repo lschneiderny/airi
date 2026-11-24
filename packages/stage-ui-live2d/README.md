@@ -185,6 +185,8 @@ Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
 Resetting Live2D settings restores the default Energy.
 
+The stage also passes the active card's pep (`CharacterProfile.pep`, 0 to 1) to the scene as the `pep` prop. The adapter reads it with each composition and hands a changed value to `NaturalMotion.setPep`; a new adapter, after a model swap or a driver change, starts from 0 and so hands it over again.
+
 ### Idle activities
 
 Idle activities is the user-wide `idleActivities` switch in character behavior, enabled by default. The stage supplies it to the Natural scene.

@@ -93,6 +93,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     exclusive: false,
     performance: { mode: 'idle', attention: 'camera', away: false } as PerformanceState,
     energy: 0.5,
+    pep: 0,
     voice: { speaking: false, level: 0, lipSyncOwnsMouth: false },
     autoBlink: true,
     manualBreathActive: false,
@@ -287,6 +288,31 @@ describe('natural motion adapter', () => {
     expect(shifted.commanded[actual.at('ParamMouthForm')]).toBeLessThan(reference.commanded[control.at('ParamMouthForm')] - 0.2)
     for (const f of [actual, neutral, control])
       f.adapter.dispose()
+  })
+
+  it('hands a changed pep to Natural on its motion clock, and again to a rebuilt adapter', () => {
+    const f = fixture()
+    const forwarded = vi.spyOn(f.adapter.natural, 'setPep')
+    f.state.driver = 'natural'
+    f.frame(0)
+    expect(forwarded).not.toHaveBeenCalled()
+    f.state.pep = 0.6
+    f.frame(0.5)
+    f.frame(1)
+    expect(forwarded.mock.calls).toEqual([[0.6, 0.5]])
+    f.state.pep = 0
+    f.frame(1.5)
+    expect(forwarded.mock.calls).toEqual([[0.6, 0.5], [0, 1.5]])
+    f.adapter.dispose()
+
+    // A model swap or driver change builds a new adapter whose controller starts calm.
+    const rebuilt = fixture()
+    const reapplied = vi.spyOn(rebuilt.adapter.natural, 'setPep')
+    rebuilt.state.driver = 'natural'
+    rebuilt.state.pep = 0.6
+    rebuilt.frame(0)
+    expect(reapplied.mock.calls).toEqual([[0.6, 0]])
+    rebuilt.adapter.dispose()
   })
 
   it('drops a queued cue if MAGIC takes ownership before composition', () => {

@@ -65,6 +65,8 @@ const props = withDefaults(defineProps<{
    * When omitted, the user's Natural energy setting applies.
    */
   naturalEnergy?: number
+  /** The active card's pep for the Natural driver, in [0, 1]; 0 is the calm default. */
+  pep?: number
   /** Effective expression-performance settings from the stage; Natural and the expression slots read them. */
   performanceSettings?: ExpressionPerformanceSettings
   /** Decision permissions supplied by the stage's character-behavior document. */
@@ -84,6 +86,7 @@ const props = withDefaults(defineProps<{
   presence: () => presenceBubbleIdle,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: undefined,
+  pep: 0,
   performanceSettings: () => defaultExpressionPerformanceSettings,
   idleActivities: true,
   touchReactions: true,
@@ -404,6 +407,7 @@ defineExpose({
         :natural-auto-blink="live2dAutoBlinkEnabled"
         :performance="props.performance"
         :natural-energy="props.naturalEnergy ?? naturalSettings.document.energy"
+        :pep="props.pep"
         :natural-emotion-strength="naturalSettings.document.emotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
         :idle-activities="props.idleActivities"

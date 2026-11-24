@@ -67,6 +67,7 @@ const attention: Live2DNaturalMotionAttention = {
   exclusive: false,
   performance: { mode: 'idle', attention: 'camera', away: false },
   energy: 0.5,
+  pep: 0,
   voice: { speaking: false, level: 0, lipSyncOwnsMouth: false },
   autoBlink: true,
   manualBreathActive: false,

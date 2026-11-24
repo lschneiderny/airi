@@ -150,6 +150,8 @@ const props = withDefaults(defineProps<{
   performance?: PerformanceState
   /** Natural energy 0..1, 0.5 neutral. */
   naturalEnergy?: number
+  /** The active card's pep for the Natural driver, in [0, 1]; 0 is the calm default. */
+  pep?: number
   /**
    * The user's auto-blink setting before the scene masks the blink plugin props in Natural.
    * Natural's own blink scheduler blinks only while it is true.
@@ -205,6 +207,7 @@ const props = withDefaults(defineProps<{
   screenAmbientLightSquint: ambientLightDefaults.squint,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
   naturalEnergy: 0.5,
+  pep: 0,
   naturalAutoBlink: true,
   performanceSettings: () => defaultExpressionPerformanceSettings,
   idleActivities: true,
@@ -781,6 +784,7 @@ async function performModelLoad() {
           springActive: manualMotionSpring.output.value.active,
           performance: props.performance,
           energy: props.naturalEnergy,
+          pep: props.pep,
           voice: { speaking: nowSpeaking.value, level: naturalVoiceLevel(mouthOpenSize.value), lipSyncOwnsMouth },
           autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
