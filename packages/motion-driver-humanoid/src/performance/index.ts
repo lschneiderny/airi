@@ -84,7 +84,7 @@ const GAIT_ARM_CLEARANCE = 6 * DEG
 const FLEX_JOINT = 2
 const GAIT_FLEX_REST = 2 * DEG
 const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number, side: (typeof SIDES)[number]])[] = SIDES.flatMap(side =>
-  (['ClavProt', 'Flex', 'Abduct', 'Elbow'] as const).map((joint) => {
+  (['ClavProt', 'Flex', 'Abduct', 'Twist', 'Elbow', 'Pron'] as const).map((joint) => {
     const channel = channelIndex(`${side}${joint}`)
     return [channel, channel - ARM_START[side], side] as const
   }),

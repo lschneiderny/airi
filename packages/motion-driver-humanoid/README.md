@@ -232,7 +232,11 @@ reaches the arms through the trunk's links, so a halted walk leaves each arm on 
 dropping it in a tick; the performer's followers (architecture 3a) are the pendulum that finishes the motion. The right
 arm swings 0.781 of the left (every swing term times 0.781), the mean left-dominant asymmetry of adults walking
 overground (directional arm swing asymmetry index 21.9, Killeen et al. 2018,
-https://www.nature.com/articles/s41598-018-31151-9). The wrist and fingers come from the performer's followers.
+https://www.nature.com/articles/s41598-018-31151-9). In the ordinary walk the arm also rolls with the elbow's timing,
+inward at the front of its swing and outward behind it, 7 degrees either way at a full stride (`twist` 2.5, `pronation`
+4.5, sized by the style's arm swing): acted walks roll the forearm 7 to 19 degrees within a stride, and about half the
+authored MMD walks key the arm twist bone. The performer feeds the roll through its followers' inverse, as it does the
+other swung joints. The wrist and fingers come from the performer's followers.
 `frame.lookAhead` is the world yaw she is about to face: during a turn it sweeps from the facing the turn starts at to the
 final facing as a minimum-jerk move over every step but the last, so it never steps and leads the body by one step;
 otherwise it is the walk heading. `lookAhead - root.yaw` is the turn the gaze leads by, so a host can aim the gaze there
