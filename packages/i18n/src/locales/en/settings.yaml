@@ -1022,6 +1022,8 @@ pages:
         stranger: Stranger
         friendly: Friendly
         close: Close
+      pep: Calm to lively motion
+      pep_help: 'How animated she is while she talks and idles. 0 keeps the calm default; 1 sways, tilts and blinks like a lively streamer avatar.'
       walk: Walk
       walk_help: How she walks before her mood changes it. A cheerful or tired mood still changes each of these values.
       walk_preset: Walking style
