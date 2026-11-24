@@ -254,7 +254,8 @@ heel strike, not at it; a list wider than the gait's lowers the pelvis by how fa
 roll acts on full strides only, and the roll is scaled against the style's own full stride.
 The rig limits a style's step: `stepLimit` is the longest full step, as a share of the gait's, whose trailing leg asks
 a bob of at most 0.06 L at lift-off. A rig whose ball sits under its ankle (stilettos, short robot feet) gets a limit
-under 1 and walks with shorter, quicker steps; a rig without `traits.foot` is not limited. `frame.limited` names the
+under 1 and walks with shorter, quicker steps, shorter still when the goal's urgency hurries her, until her top
+cadence slows the walk instead; a rig without `traits.foot` is not limited. `frame.limited` names the
 style values the rig held below the style's ask, and `qa:motion3d run` records each change as a `gait-limit` marker.
 The performer eases each walking arm's back swing into the room the rig has behind the hip (`BodyCollision.backSwing`,
 probed once per rig in 1 degree steps up to 36 degrees): the swing is unchanged to half the room and never passes it,

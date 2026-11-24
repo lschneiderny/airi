@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 
 import { STROLL_URGENCY, WALK_URGENCY } from '../types'
-import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS } from './index'
+import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS, urgencySpeedShare } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
 const legLength = 10
@@ -1075,6 +1075,31 @@ describe('procedural gait', () => {
     const varied = walk({ ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 }, {}, { seconds: 20, seed: 15, options: {} })
     expect(varied.step).toBeLessThan(varied.limit * 0.625 + 0.01)
     expect(new Set(varied.limited)).toEqual(new Set(['stride']))
+  })
+
+  it('step limit: a hurried walk on a limited rig takes shorter, quicker steps, and only the top cadence slows it', () => {
+    const hurry = (foot: { ankleHeight: number, ballForward: number, heelBack: number }, urgency: number) => {
+      const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, { ...traits, foot: { left: foot, right: foot } })
+      run.advance(10, () => ({ goalX: 5000, urgency, arriveFacing: Math.PI / 2 }))
+      const steady = run.frames.slice(6 * 120)
+      const strikes = steady.filter(frame => frame.events.some(event => event.kind === 'heelStrike')).map(frame => frame.root.position.x)
+      return {
+        speed: steady.reduce((sum, frame) => sum + frame.speed, 0) / steady.length / referenceSpeed,
+        step: Math.max(...strikes.slice(1).map((x, k) => x - strikes[k])) / legLength,
+        cap: run.locomotion.stepLimit * 0.625 + 0.01,
+        limited: new Set(steady.map(frame => frame.limited.join())),
+      }
+    }
+    // A shoe's limit, 1.03 of the gait's step, capped a chase at 1.056 of v_ref while the stride was held for the walk.
+    const chase = hurry({ ankleHeight: 1.3, ballForward: 1.8, heelBack: 0.25 }, 0.75)
+    expect(chase.speed).toBeCloseTo(urgencySpeedShare(0.75), 2)
+    expect(chase.step).toBeLessThan(chase.cap)
+    expect(chase.limited).toEqual(new Set(['stride']))
+    const rush = hurry({ ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 }, 1)
+    expect(rush.speed).toBeGreaterThan(urgencySpeedShare(0.75))
+    expect(rush.speed).toBeLessThan(urgencySpeedShare(1))
+    expect(rush.step).toBeLessThan(rush.cap)
+    expect(rush.limited).toEqual(new Set(['stride,speed']))
   })
 
   it('settle: the stop hands the feet back flat, since the standing feet take over without the gait\'s roll', () => {

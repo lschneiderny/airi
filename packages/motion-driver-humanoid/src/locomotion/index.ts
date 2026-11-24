@@ -678,9 +678,12 @@ class Locomotion {
     return low
   }
 
-  /** `style` with the rig's step limit applied: at the walk pace a full step is `stride` times the root of `speed`. */
-  private allow(style: GaitStyle): GaitStyle {
-    const stride = this.stepLimit / Math.sqrt(style.speed)
+  /**
+   * `style` with the rig's step limit applied: a full step is `stride` times the root of the speed, the style's `speed`
+   * times the urgency's `share` of the reference, so a hurried walk on a limited rig takes shorter, quicker steps.
+   */
+  private allow(style: GaitStyle, share: number): GaitStyle {
+    const stride = this.stepLimit / Math.sqrt(style.speed * share)
     if (style.stride <= stride) {
       this.limited = noLimits
       return style
@@ -752,7 +755,7 @@ class Locomotion {
       this.stepRequest = null
     // Between walks the style follows its input at once; while the gait still owns the body (a walk, a turn, the hand-off
     // between them, or the blend out) it eases into it.
-    const style = this.allow(input.style ?? NEUTRAL_GAIT_STYLE)
+    const style = this.allow(input.style ?? NEUTRAL_GAIT_STYLE, urgencySpeedShare(input.urgency))
     if (!this.walk && !this.turn && this.blend === 0)
       Object.assign(this.style, style)
     else if (dt > 0)
