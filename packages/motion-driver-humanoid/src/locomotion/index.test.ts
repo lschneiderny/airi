@@ -187,8 +187,9 @@ describe('sidestep', () => {
       hash.update(JSON.stringify(ordinary.frames, (_, value: unknown) => typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
     }
     // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers. Re-pinned when the frame
-    // gained `armSwing.wristFlex` and `handCurl` (hand carriage): without those two keys the frames hash as before.
-    expect(hash.digest('hex')).toBe('ca97dd3666a09f1882d72b8b36d8bff1de9c0c6473acd3ae264a202146060121')
+    // gained `armSwing.wristFlex` and `handCurl` (hand carriage) and then the arm's `twist` and `pronation` (forearm
+    // roll): without those keys the frames hash as before.
+    expect(hash.digest('hex')).toBe('07b2b7bdbd17fee0c1534b7b70603de766e8a3ed6a859fedf076335d77afb768')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -1187,6 +1188,23 @@ describe('walk style', () => {
     const strikes = (frames: LocomotionFrame[]) => frames.flatMap(frame => frame.events).filter(event => event.kind === 'heelStrike').length
     expect(strikes(shaped) / strikes(neutral)).toBeGreaterThan(1.1)
     expect(mean(shaped, frame => frame.speed) / mean(neutral, frame => frame.speed)).toBeCloseTo(1, 1)
+  })
+
+  it('rolls the arm inward as it swings forward, 7 to 20 degrees within a stride at the neutral style, sized by the swing', () => {
+    const roll = (frame: LocomotionFrame) => frame.armSwing.left.twist + frame.armSwing.left.pronation
+    const neutral = steady(styled({}))
+    // Acted walks roll the forearm 7 to 19 degrees within a stride (arm-hand plan, section 1).
+    expect(span(neutral.map(roll)) / rad).toBeGreaterThan(7)
+    expect(span(neutral.map(roll)) / rad).toBeLessThan(20)
+    // Inward (positive) at the front of the swing, outward behind it.
+    for (const frame of neutral) {
+      const swing = frame.armSwing.left.flexion - 2 * rad
+      if (Math.abs(swing) > 10 * rad)
+        expect(Math.sign(roll(frame))).toBe(Math.sign(swing))
+    }
+    // Pronation turns the hand alone and takes the larger share; the twist swings the bent forearm across the body.
+    expect(span(neutral.map(frame => frame.armSwing.left.pronation))).toBeGreaterThan(span(neutral.map(frame => frame.armSwing.left.twist)))
+    expect(span(steady(styled({ armSwing: 0.5 })).map(roll)) / span(neutral.map(roll))).toBeCloseTo(0.5, 2)
   })
 
   it('carries the hand by the style while walking and hands it back with the gait weight at the stop', () => {

@@ -18,8 +18,8 @@ export interface MMDBodyRoot {
 }
 
 const swingChannels = {
-  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt'), wflex: channelIndex('leftWflex'), thumb: channelIndex('leftThumb0'), opposition: channelIndex('leftOpposition') },
-  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt'), wflex: channelIndex('rightWflex'), thumb: channelIndex('rightThumb0'), opposition: channelIndex('rightOpposition') },
+  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt'), twist: channelIndex('leftTwist'), pron: channelIndex('leftPron'), wflex: channelIndex('leftWflex'), thumb: channelIndex('leftThumb0'), opposition: channelIndex('leftOpposition') },
+  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt'), twist: channelIndex('rightTwist'), pron: channelIndex('rightPron'), wflex: channelIndex('rightWflex'), thumb: channelIndex('rightThumb0'), opposition: channelIndex('rightOpposition') },
 } as const
 
 /**
@@ -54,6 +54,8 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
     out[swingChannels[side].elbow] = armSwing[side].elbowFlex
     out[swingChannels[side].abduct] = armSwing[side].abduct
     out[swingChannels[side].clavProt] = armSwing[side].clavProt
+    out[swingChannels[side].twist] = armSwing[side].twist
+    out[swingChannels[side].pron] = armSwing[side].pronation
     out[swingChannels[side].wflex] = armSwing[side].wristFlex
     const curl = frame.handCurl - 1
     const { fingerCurl, opposition } = DEFAULT_ARM_REST_POSE

@@ -160,14 +160,17 @@ export interface LocomotionFrame {
   /** True while the ordinary walk owns the gait, including its fade-out. */
   readonly walkForm: boolean
   /**
-   * Architecture 5.3, radians, per arm: shoulder flexion and abduction, elbow flexion, clavicle protraction and the
-   * wrist's offset from its rest (`wristFlex`, palmar positive, so the style's carriage is negative).
+   * Architecture 5.3, radians, per arm: shoulder flexion and abduction, elbow flexion, clavicle protraction, the arm's
+   * roll (upper-arm twist and forearm pronation, positive inward) and the wrist's offset from its rest (`wristFlex`,
+   * palmar positive, so the style's carriage is negative).
    */
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
     readonly abduct: number
     readonly clavProt: number
+    readonly twist: number
+    readonly pronation: number
     readonly wristFlex: number
   }>
   /** The finger curl the walk asks for as a share of the rest curl (`GaitStyle.handCurl`); 1 outside the walk. */
@@ -363,6 +366,15 @@ const upperArmLag = 0.0259
  */
 const armOutBack = 14
 const armOutForward = 19
+/**
+ * The arm's roll at a full swing, degrees either way, positive inward at the front of the swing and outward behind it,
+ * timed with the elbow. Acted walks roll the forearm 7 to 19 degrees within a stride (36 in a youthful walk), and about
+ * half the authored MMD walks key the arm twist bone, swinging 13 to 16 degrees either way (arm-hand plan, section 1).
+ * Two thirds go to pronation, which turns the hand alone; a third to the upper arm's twist, which also swings the bent
+ * forearm across the body and toward the hip.
+ */
+const armRollTwist = 2.5
+const armRollPronation = 4.5
 /** Seconds of shoulder-girdle history kept for the arms: the upper arm's lag, the elbow's after it, and drift room. */
 const girdleHistory = 0.5
 /**
@@ -1666,6 +1678,8 @@ class Locomotion {
           elbowFlex: 12 * radians + share * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
           abduct: -3 * radians * share * forward,
           clavProt: -3 * radians * share * girdle,
+          twist: 0,
+          pronation: 0,
           wristFlex: 0,
         }
       }
@@ -1679,6 +1693,9 @@ class Locomotion {
         elbowFlex: 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late),
         abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward) + this.style.armOut,
         clavProt: -3 * radians * share * girdle,
+        // The arm turns inward as it swings forward and back out behind, timed with the elbow.
+        twist: -size * radians * armRollTwist * late,
+        pronation: -size * radians * armRollPronation * late,
         wristFlex: -this.style.wristCarry,
       }
     }
