@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { solveArmKey } from './arm-key'
 import { ARM_START, BODY_CHANNELS, channelIndex, DEG } from './channels'
-import { BodyCollision, colliderDistance, proxyColliders } from './collision'
+import { BodyCollision, colliderDistance, easeBackSwing, proxyColliders } from './collision'
 import { createBodyPerformer } from './index'
 import { fixtureRigs } from './performance.test-fixtures'
 import { BodySkeleton, spineWeights } from './skeleton'
@@ -267,6 +267,44 @@ describe('canonical geometry', () => {
     expect(collision.measure('left', rest).depth).toBe(0)
     expect(collision.capabilities.gestures.left).toBe(true)
     expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBeLessThan(0)
+  })
+
+  it('measures the room behind the hip outward, so a body on the arm\'s sweep ends it', () => {
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const start = ARM_START.left
+    // The probe's pose 16 degrees into the back swing: the walk's trail of 10 degrees and its narrowest hang of 14.
+    const swung = rest.slice()
+    swung[start + 3] = Math.max(swung[start + 3], 14 * DEG)
+    swung[start + 2] = rest[start + 2] - 10 * DEG - 16 * DEG
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(rest)
+    const { elbow } = skeleton.arm('left', swung)
+    const origin = traits.spineChain[0]!
+    const collider: BodyCollider = {
+      bone: 'spine0',
+      shape: 'sphere',
+      radius: 0.05,
+      centre: { x: elbow.x - origin.x, y: elbow.y - origin.y, z: elbow.z - origin.z },
+      rotation: { yaw: 0, pitch: 0, roll: 0 },
+    }
+    const collision = new BodyCollision({ ...traits, colliders: [collider] }, rest)
+    expect(collision.backSwing.left).toBeLessThan(16 * DEG)
+    expect(collision.backSwing.right).toBe(36 * DEG)
+  })
+
+  it('eases a back swing into the room behind the hip without a step in its speed', () => {
+    const room = 10 * DEG
+    const step = 0.01 * DEG
+    let slope = 1
+    for (let swung = 0; swung > -40 * DEG; swung -= step) {
+      const eased = easeBackSwing(swung, room)
+      if (swung >= -room / 2)
+        expect(eased).toBe(swung)
+      expect(eased).toBeGreaterThan(-room)
+      const next = (eased - easeBackSwing(swung - step, room)) / step
+      expect(Math.abs(next - slope)).toBeLessThan(0.01)
+      slope = next
+    }
   })
 
   it('protects head proxies as well as torso proxies', () => {

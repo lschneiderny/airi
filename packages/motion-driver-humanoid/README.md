@@ -253,6 +253,9 @@ The rig limits a style's step: `stepLimit` is the longest full step, as a share 
 a bob of at most 0.06 L at lift-off. A rig whose ball sits under its ankle (stilettos, short robot feet) gets a limit
 under 1 and walks with shorter, quicker steps; a rig without `traits.foot` is not limited. `frame.limited` names the
 style values the rig held below the style's ask, and `qa:motion3d run` records each change as a `gait-limit` marker.
+The performer eases each walking arm's back swing into the room the rig has behind the hip (`BodyCollision.backSwing`,
+probed once per rig in 1 degree steps up to 36 degrees): the swing is unchanged to half the room and never passes it,
+so a wide style's swing slows into a tail or a skirt instead of stepping off it.
 `walkStyleFrom({ mood, energy, baseline })` turns the performer's mood, the host energy and a character's
 `GaitBaseline` into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting
 tension and energy 0.5 with no baseline gives the neutral style.
