@@ -898,8 +898,10 @@ head-side anchor within joint limits; later acts still validate their own keys.
 If the guard is blocked, that arm loses gesture capability and correction
 returns toward its initial rest instead. Guard blending also resets twist,
 so the checked endpoint and the applied endpoint are the same pose.
-When no pose of an arm keeps the budget, that arm keeps its last valid arm,
-hand and finger channels while the rest of the body moves on, and
+When no pose of an arm keeps the budget, that arm is held: its arm, hand and
+finger channels follow the requested pose from where they were at the
+persistent correction's rate (0.3 s), while the rest of the body moves on, so a
+hold is a last resort that lets go rather than a freeze, and
 `diagnostics.collisions` counts the tick with its side, remaining depth and
 tick; the performer never throws for it. `diagnostics.corrector` counts the arm
 ticks on which a fallback ran: `capHits` when the 6 degree step cap bounded a

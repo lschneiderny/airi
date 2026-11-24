@@ -103,6 +103,34 @@ describe('canonical geometry', () => {
     expect(collision.correction.left).toBeGreaterThan(0)
   })
 
+  it('lets a held arm follow its request instead of freezing', () => {
+    // Bodies on the hips round where the shoulders go when the trunk leans 60 degrees forward: the upright rest hang
+    // clears them, the leaned trunk puts every arm pose inside them, so the arms hold.
+    const traits = fixtureRigs[0].traits
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const lean = rest.slice()
+    for (const name of ['lowerPitch', 'midPitch', 'upperPitch'] as const)
+      lean[channelIndex(name)] = 20 * DEG
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(lean)
+    const shoulder = { ...skeleton.arm('left', lean).shoulder }
+    const { upperArm, forearm } = traits.arms.left
+    const length = Math.hypot(upperArm.x, upperArm.y, upperArm.z) + Math.hypot(forearm.x, forearm.y, forearm.z)
+    const ball = (x: number): BodyCollider => ({ bone: 'hips', shape: 'sphere', radius: 0.4 * length, centre: { x: x - traits.hips.x, y: shoulder.y - traits.hips.y, z: shoulder.z - traits.hips.z }, rotation: { yaw: 0, pitch: 0, roll: 0 } })
+    const collision = new BodyCollision({ ...traits, colliders: [ball(shoulder.x), ball(-shoulder.x)] }, rest.slice())
+    expect(collision.fit).toEqual([1, 1])
+    const flex = channelIndex('leftFlex')
+    let channels = lean
+    for (let tick = 1; tick <= 240; tick++) {
+      channels = lean.slice()
+      channels[flex] = 60 * DEG
+      collision.correct(channels, tick)
+    }
+    expect(collision.collisions.count).toBe(480)
+    // The held arm reaches its request at the persistent correction's 0.3 s: 2 s is more than six of them.
+    expect(channels[flex]).toBeCloseTo(60 * DEG, 2)
+  })
+
   it.each(fixtureRigs)('moves an arm continuously while it grazes into a proxy and out again on $name', ({ traits }) => {
     const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
     const collision = new BodyCollision(traits, rest)
