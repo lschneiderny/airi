@@ -52,6 +52,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
     restArmAngles: { left: Math.PI / 5, right: Math.PI / 5 },
     restForearmAngles: { left: Math.PI / 5, right: Math.PI / 5 },
     thumbAxis: { left: null, right: null },
+    hands: { left: null, right: null },
     fingerBones: {},
     armHelpers: { left: [], right: [] },
     eyeSource: 'bothEyes',
