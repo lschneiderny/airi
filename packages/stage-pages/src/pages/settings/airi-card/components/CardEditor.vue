@@ -10,6 +10,7 @@ import type { Ref } from 'vue'
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { GAIT_BASELINE_PRESET_NAMES, GAIT_BASELINE_PRESETS, gaitBaselinePresetOf, withGaitBaselineValue } from '@proj-airi/stage-shared/character-state'
+import { useMMDMotionDiagnostics, walkPreviewGoalX } from '@proj-airi/stage-ui-mmd/stores'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettingsSearchReveal } from '@proj-airi/stage-ui/composables/use-settings-search'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
@@ -199,6 +200,15 @@ const gaitPresetSelection = computed({
     selectedCharacter.value = preset === 'neutral' ? rest : { ...rest, gait: { ...GAIT_BASELINE_PRESETS[preset] } }
   },
 })
+
+// The preview walks the stage character a few steps with the unsaved baseline. It needs the desktop stage with an MMD
+// model, which the stage's diagnostics snapshot shows.
+const motionDiagnostics = useMMDMotionDiagnostics()
+const canPreviewWalk = computed(() => walkPreviewGoalX(motionDiagnostics.snapshot) !== null)
+
+function previewWalk() {
+  motionDiagnostics.previewWalk({ ...toRaw(selectedCharacter.value.gait) })
+}
 
 const gaitPresetOptions = computed(() => GAIT_BASELINE_PRESET_NAMES.map(preset => ({
   value: preset,
@@ -1149,12 +1159,14 @@ function handleBack() {
                     :description="t('settings.pages.card.character_profile.starting_stage_help')"
                     :options="startingStageOptions"
                   />
-                  <h4 :class="['text-sm font-medium']">
-                    {{ t('settings.pages.card.character_profile.walk') }}
-                  </h4>
-                  <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-                    {{ t('settings.pages.card.character_profile.walk_help') }}
-                  </p>
+                  <div :class="['flex flex-col gap-1']">
+                    <h4 :class="['text-sm font-medium']">
+                      {{ t('settings.pages.card.character_profile.walk') }}
+                    </h4>
+                    <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                      {{ t('settings.pages.card.character_profile.walk_help') }}
+                    </p>
+                  </div>
                   <FieldSelect
                     v-model="gaitPresetSelection"
                     :label="t('settings.pages.card.character_profile.walk_preset')"
@@ -1181,6 +1193,19 @@ function handleBack() {
                     :format-value="formatRestingValue"
                     @update:model-value="setGaitField(field.key, $event)"
                   />
+                  <div :class="['flex flex-col gap-2', 'sm:flex-row sm:items-center sm:justify-between sm:gap-4']">
+                    <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                      {{ canPreviewWalk ? t('settings.pages.card.character_profile.walk_preview_help') : t('settings.pages.card.character_profile.walk_preview_unavailable') }}
+                    </p>
+                    <Button
+                      icon="i-solar:walking-bold-duotone"
+                      :label="t('settings.pages.card.character_profile.walk_preview')"
+                      size="sm"
+                      :disabled="!canPreviewWalk"
+                      :class="['shrink-0']"
+                      @click="previewWalk"
+                    />
+                  </div>
                 </div>
               </section>
 

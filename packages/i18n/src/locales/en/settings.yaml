@@ -1049,6 +1049,9 @@ pages:
         arm_carry_help: How much she bends her elbows and holds her arms out while she walks.
         posture: Stooped to upright
         posture_help: Whether she carries her head and back forward or stands tall.
+      walk_preview: Preview walk
+      walk_preview_help: She walks a few steps on the desktop with these values. Nothing is saved.
+      walk_preview_unavailable: The preview needs the Experimental 3D stage with an MMD model.
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
     no_cards: No characters yet. Click the button above to import one!

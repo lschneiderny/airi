@@ -104,6 +104,7 @@ import { composeMMDStages } from '../../composables/mmd/stage-composition'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { chatStandX, directorIdleStates, frameClocks, MMDAttendInbox, MMDRefractoryInbox, MMDStanceDirector, wanderErrandAnswer } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
+import { MMDWalkPreview } from '../../composables/mmd/walk-preview'
 import { useMMDClipMetadata } from '../../stores/clip-metadata'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
@@ -240,6 +241,12 @@ let playedActionSeq: number | null = null
 let directorBaseApplied = false
 let playedLookSeq = 0
 let layerClip: string | null = null
+/** The card editor's walk preview; one sent before the scene mounted is not replayed. */
+const walkPreview = new MMDWalkPreview()
+/** The card's walking baseline, kept out of the props so the render loop reads a plain value. */
+let cardWalkBaseline: GaitBaseline | undefined
+/** The walking baseline the body reads this frame: a running preview's, otherwise the card's. */
+let walkBaseline: GaitBaseline | undefined
 const requestedKinds = new Map<number, BodyActionKind>()
 const loadedClips = new Map<string, { clip: AnimationClip, mask: ClipBoneMask }>()
 const actionDrops = { unknown: 0, notExposed: 0, notGesture: 0, superseded: 0 }
@@ -684,6 +691,14 @@ async function syncBackground() {
 }
 
 watch(() => props.backgroundUrl, () => void syncBackground())
+watch(() => props.walkBaseline, (baseline) => {
+  cardWalkBaseline = baseline
+}, { immediate: true })
+watch(() => diagnostics.walkPreview, (preview) => {
+  if (!preview)
+    return
+  walkPreview.start(preview.baseline)
+})
 
 function resize() {
   if (!renderer || !camera || !canvasRef.value)
@@ -719,6 +734,7 @@ function renderLoop(now = performance.now()) {
   expressions.update(now / 1000)
   const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
   naturalSeconds = clocks.naturalSeconds
+  walkBaseline = walkPreview.update(clocks.directorMs, stance?.debugGoal ?? null, body?.traveling ?? false, cardWalkBaseline)
   if (capabilities.value.body && animation && stance && loadedModelKey) {
     bodyPoints = motionDriver.value === 'natural' && natural && mesh && camera && canvasRef.value
       ? resolveBodyPoints({ mesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame)
@@ -1386,7 +1402,7 @@ async function loadModel(src: string) {
           dragging,
           layerClip,
           fullLayerPlaying: activeStance.intent?.action?.phase === 'playing' && activeStance.intent.action.layer === 'full',
-          walkBaseline: props.walkBaseline,
+          walkBaseline,
         }
       },
       // Per-frame root motion: no physics reset on this path, so Ammo feels the travel.
