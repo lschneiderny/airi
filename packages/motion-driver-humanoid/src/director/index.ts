@@ -30,6 +30,23 @@ export const STEP_ONTO_CURSOR_MIN_LEGS = 0.15
 /** Milliseconds with no goal reason before the character walks home. */
 export const RETURN_HOME_DELAY_MS = 20_000
 
+/**
+ * How urgently she walks for each reason (plan `walk-style` 2.5), so a chase, a walk to the chat, a wander and the walk
+ * home each ask for their own pace. Every reason keeps its former pace (stroll 0.3, walk 0.6) except three: a wander
+ * ambles below a stroll, a chat that unfolds draws her a little slower than a walk, and a chase of the cursor hurries.
+ * The chase and the corrective step onto the cursor share a reason; the director tells them apart by these values.
+ */
+export const GOAL_URGENCY = Object.freeze({
+  wander: 0.2,
+  visit: STROLL_URGENCY,
+  returnHome: STROLL_URGENCY,
+  cursorStep: STROLL_URGENCY,
+  approachChat: 0.5,
+  tool: WALK_URGENCY,
+  enterStage: WALK_URGENCY,
+  chase: 0.75,
+})
+
 /** Share of due wanders that walk over to where the user is working, when the cursor shows where that is. */
 export const VISIT_SHARE = 0.6
 
@@ -446,8 +463,8 @@ export function decideBody(
   const arrived = goalX !== null
     && (reachedCursor || (input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE))
   if (arrived) {
-    // Chases walk; the corrective approach strolls, so its own arrival never arms a second step.
-    if (reachedCursor && reason === 'approach-cursor' && goalUrgency === WALK_URGENCY)
+    // Chases hurry; the corrective approach strolls, so its own arrival never arms a second step.
+    if (reachedCursor && reason === 'approach-cursor' && goalUrgency === GOAL_URGENCY.chase)
       cursorStepPending = true
     // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds, but
     // stays as long as the mind drew with the errand.
@@ -654,7 +671,7 @@ export function decideBody(
   if (input.attend.chatOpenSeq > previous.lastChatOpenSeq && ground !== null && input.chatX !== null) {
     request = {
       x: chatStandGoal(input.chatX, input.homeX, leg, zones),
-      urgency: WALK_URGENCY,
+      urgency: GOAL_URGENCY.approachChat,
       reason: 'approach-chat',
     }
   }
@@ -691,7 +708,7 @@ export function decideBody(
         const toolX = tool.kind === 'come-here' && input.chatX !== null
           ? chatStandGoal(input.chatX, input.homeX, leg, zones)
           : clampToZones(input.homeX, zones)
-        request = { x: toolX, urgency: WALK_URGENCY, reason: 'tool' }
+        request = { x: toolX, urgency: GOAL_URGENCY.tool, reason: 'tool' }
       }
     }
   }
@@ -736,7 +753,7 @@ export function decideBody(
 
   // D16: wait for the braking slide to finish, then spend the chase's one correction before any new idle goal.
   if (cursorStepPending && !arrived && goalX === null && pending === null && input.locomotionMode === 'idle' && input.cursorX !== null && canIssue())
-    issue({ x: clampToZones(input.cursorX, zones), urgency: STROLL_URGENCY, reason: 'approach-cursor' })
+    issue({ x: clampToZones(input.cursorX, zones), urgency: GOAL_URGENCY.cursorStep, reason: 'approach-cursor' })
 
   const chasing = attendingCursor
     && input.cursorX !== null
@@ -745,7 +762,7 @@ export function decideBody(
     const chaseX = clampToZones(input.cursorX - Math.sign(input.cursorX - input.rootX) * CHASE_STOP_LEGS * leg, zones)
     const sameGoal = reason === 'approach-cursor' && goalX !== null && Math.abs(chaseX - goalX) <= ARRIVAL_TOLERANCE
     if (!sameGoal && Math.abs(chaseX - input.rootX) > ARRIVAL_TOLERANCE)
-      issue({ x: chaseX, urgency: WALK_URGENCY, reason: 'approach-cursor' })
+      issue({ x: chaseX, urgency: GOAL_URGENCY.chase, reason: 'approach-cursor' })
   }
 
   if (
@@ -758,7 +775,7 @@ export function decideBody(
     && nowMs >= lingerUntilMs
     && !atHome
   ) {
-    issue({ x: clampToZones(input.homeX, zones), urgency: STROLL_URGENCY, reason: 'return-home' })
+    issue({ x: clampToZones(input.homeX, zones), urgency: GOAL_URGENCY.returnHome, reason: 'return-home' })
   }
   // A stay that ends at home needs no walk home.
   if (wanderStay !== null && goalX === null && nowMs >= lingerUntilMs && atHome)
@@ -766,7 +783,7 @@ export function decideBody(
 
   // A root at rest in a wing is unseen, so she walks to the nearest zone. Issuing here also keeps a wander from starting there.
   if (inWing && input.reach !== undefined && pending === null && goalX === null && input.locomotionMode === 'idle' && canIssue())
-    issue({ x: clampToZones(input.rootX, input.reach), urgency: WALK_URGENCY, reason: 'enter-stage' })
+    issue({ x: clampToZones(input.rootX, input.reach), urgency: GOAL_URGENCY.enterStage, reason: 'enter-stage' })
 
   const watching = input.performance.mode === 'watching'
   if (
@@ -796,7 +813,7 @@ export function decideBody(
       if (visitInPlace)
         arriveInPlace()
       else if (visitX !== null)
-        issue({ x: visitX, urgency: STROLL_URGENCY, reason: 'visit' })
+        issue({ x: visitX, urgency: GOAL_URGENCY.visit, reason: 'visit' })
     }
     else {
       const visiting = (visitInPlace || visitX !== null) && asked.pick < VISIT_SHARE
@@ -804,7 +821,7 @@ export function decideBody(
         arriveInPlace()
       }
       else if (visiting && visitX !== null) {
-        issue({ x: visitX, urgency: STROLL_URGENCY, reason: 'visit' })
+        issue({ x: visitX, urgency: GOAL_URGENCY.visit, reason: 'visit' })
       }
       else {
         const longestSide = Math.max(input.rootX - ground.minX, ground.maxX - input.rootX)
@@ -820,7 +837,7 @@ export function decideBody(
           const x = offset < leftLength
             ? ground.minX + offset
             : input.rootX + minDistance + (offset - leftLength)
-          issue({ x, urgency: STROLL_URGENCY, reason: 'wander' })
+          issue({ x, urgency: GOAL_URGENCY.wander, reason: 'wander' })
         }
       }
       // Without room to wander, the request is spent like a refused act.
@@ -854,11 +871,12 @@ export function decideBody(
         : {
             homeX: input.homeX,
             goalX,
-            urgency: goalUrgency,
+            // Standing still keeps no hurry from the goal she reached.
+            urgency: goalX === null ? WALK_URGENCY : goalUrgency,
             arriveFacing,
             reason,
-            // Only the one corrective approach strolls; every chase walks.
-            ...(goalX !== null && reason === 'approach-cursor' && goalUrgency === STROLL_URGENCY ? { step: 'sidestep' as const } : {}),
+            // Only the one corrective approach strolls; every chase hurries.
+            ...(goalX !== null && reason === 'approach-cursor' && goalUrgency === GOAL_URGENCY.cursorStep ? { step: 'sidestep' as const } : {}),
           },
       action: performing === null
         ? null

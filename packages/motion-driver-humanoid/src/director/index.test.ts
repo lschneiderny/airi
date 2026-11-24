@@ -292,6 +292,14 @@ describe('body director home, goals, roam and tools', () => {
     expect(later.intent.locomotion.goalX).toBe(-4)
   })
 
+  it('keeps no hurry once she stands at the goal she hurried to', () => {
+    const hurried = decide(world({ debugGoal: { seq: 1, x: 4, urgency: 1 } }))
+    const arrived = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'idle' }), hurried.memory)
+
+    expect(hurried.intent.locomotion).toMatchObject({ goalX: 4, urgency: 1 })
+    expect(arrived.intent.locomotion).toMatchObject({ goalX: null, urgency: WALK_URGENCY })
+  })
+
   it('clamps a debug goal to the ground and tags it debug', () => {
     const result = decide(world({ debugGoal: { seq: 1, x: 50, urgency: STROLL_URGENCY } }))
 
@@ -313,7 +321,8 @@ describe('body director home, goals, roam and tools', () => {
     const left = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: -6 }))
     const clamped = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 30 }))
 
-    expect(right.intent.locomotion).toEqual({ homeX: 0, goalX: 5, urgency: WALK_URGENCY, arriveFacing: Math.PI / 4, reason: 'approach-chat' })
+    // A chat that unfolds draws her a little slower than a walk (plan walk-style 2.5; it walked at 0.6 before).
+    expect(right.intent.locomotion).toEqual({ homeX: 0, goalX: 5, urgency: 0.5, arriveFacing: Math.PI / 4, reason: 'approach-chat' })
     expect(left.intent.locomotion).toMatchObject({ goalX: -5, arriveFacing: -Math.PI / 4 })
     expect(clamped.intent.locomotion.goalX).toBe(19)
     expect(right.intent.facingYaw).toBe(0)
@@ -339,7 +348,8 @@ describe('body director home, goals, roam and tools', () => {
   it('chases the cursor to one leg length short of it inside the attend window', () => {
     const result = decide(world({ nowMs: 1_000, attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 8 }))
 
-    expect(result.intent.locomotion).toMatchObject({ goalX: 7, urgency: WALK_URGENCY, reason: 'approach-cursor', arriveFacing: 0 })
+    // A chase hurries (plan walk-style 2.5; it walked at 0.6 before).
+    expect(result.intent.locomotion).toMatchObject({ goalX: 7, urgency: 0.75, reason: 'approach-cursor', arriveFacing: 0 })
     expect(result.intent.locomotion.step).toBeUndefined()
   })
 
@@ -500,7 +510,8 @@ describe('body director home, goals, roam and tools', () => {
     const goalX = a.due.intent.locomotion.goalX as number
 
     expect(a.before.intent.locomotion.goalX).toBeNull()
-    expect(a.due.intent.locomotion).toMatchObject({ urgency: STROLL_URGENCY, reason: 'wander', arriveFacing: 0 })
+    // A wander ambles below a stroll (plan walk-style 2.5; it strolled at 0.3 before).
+    expect(a.due.intent.locomotion).toMatchObject({ urgency: 0.2, reason: 'wander', arriveFacing: 0 })
     expect(Math.abs(goalX)).toBeGreaterThanOrEqual(3)
     expect(Math.abs(goalX)).toBeLessThanOrEqual(20)
     expect(a.due.memory).toMatchObject({ pendingWander: null, wanderAnswer: { seq: 1, accepted: true } })
@@ -517,7 +528,7 @@ describe('body director home, goals, roam and tools', () => {
     const due = decide({ ...frame(1_000), wander: { seq: 1, pick: 0.9, lingerSeconds: 60 } }, started.memory)
     const goalX = due.intent.locomotion.goalX as number
 
-    expect(due.intent.locomotion).toMatchObject({ urgency: STROLL_URGENCY, reason: 'wander' })
+    expect(due.intent.locomotion).toMatchObject({ urgency: 0.2, reason: 'wander' })
     expect(goalX).toBeGreaterThanOrEqual(ground.minX)
     expect(goalX).toBeLessThanOrEqual(ground.maxX)
     expect(Math.abs(goalX - homeX)).toBeGreaterThanOrEqual(legLength)

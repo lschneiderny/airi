@@ -5,7 +5,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
 
 import { ACTION_REFRACTORY_MS, CharacterMind } from '@proj-airi/character-mind'
-import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { GOAL_URGENCY, NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { STROLL_URGENCY, WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
@@ -226,7 +226,7 @@ describe('mmd stance director in the stage world', () => {
     frame(director, 0, world())
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
     frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
-    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', urgency: WALK_URGENCY })
+    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', urgency: GOAL_URGENCY.approachChat })
     expect(director.intent?.locomotion).toMatchObject({ goalX: 4, reason: 'approach-chat' })
   })
 
