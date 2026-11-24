@@ -426,6 +426,14 @@ The link of a Live2D [stage item](#stage-item) that mirrors her (`link: 'paramet
 **Code:** `packages/stage-shared/src/expression-performance/catalog.ts` `ItemExpressionDocumentSchema` (`link`); `packages/stage-ui-live2d/src/composables/live2d/items/mirror.ts` `Live2DParameterMirror`; `packages/stage-ui-live2d/src/composables/live2d/items/live2d-item.ts` `Live2DItemModel`.
 **Not to be confused with:** a pin, which moves an item with her mesh but copies no parameters.
 
+### Pep
+
+A character's baseline amount of extra motion under Natural, a number in [0, 1]. 0 is calm Natural and leaves every frame unchanged. Pep scales a whole-upper-body sway (the torso leans, the head tilts after it and dips on each swing, with swings started by speech onsets while she talks), faster and more frequent blinks, and a closed-eye smile while her mood valence is positive. The controller eases a new pep over 1 s, and the performance mode, the user energy setting, the mood, held emotions and idle acts still scale the sway, which also steps back under gestures and acts.
+
+**Code:** `packages/motion-driver-natural/src/natural-motion.ts` `NaturalMotion` `setPep`; `packages/motion-driver-natural/src/sway.ts` `NaturalSwayLayer`; `packages/motion-driver-natural/src/smile-closure.ts` `NaturalSmileClosure`.
+**Not to be confused with:** the mood axis `energy` of the character state; `NaturalPerformanceEnergy` and the user energy setting, which scale all of Natural's motion per performance mode (see Energy); the idle liveliness scorer in `packages/stage-ui-live2d/src/composables/live2d/natural-motion/liveliness.ts`, which measures motion for a QA gate; and the `sway` idle act of the [groove](#groove).
+**Avoid:** "liveliness" and "energy" for pep.
+
 ### Persistence tier
 
 The six places that client state may live, chosen in order: 1, a synced settings document; 2, leader-only localStorage written by explicit command with a leadership token; 3, localStorage keyed by display model id and written by the stage window; 4, IndexedDB; 5, synced Pinia memory, replicated and not persisted; 6, per-window memory. Plain localStorage refs and a main-process ring with disk recording are closed to new state. Upstream's per-model display settings are plain refs stored once for each display model, under `settings/models/<model id>/`; they are not tier 3. A copy that the app can download or rebuild is a cache, not a tier. A store that persists anything registers in the state registry.

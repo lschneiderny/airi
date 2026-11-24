@@ -45,7 +45,9 @@ import { NaturalPlacement } from './placement'
 import { NaturalPostureLayers, postureHomes } from './posture'
 import { createRandomStream, deriveSeed } from './random'
 import { neutralReviewGains } from './review'
+import { NaturalSmileClosure } from './smile-closure'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './speech-emphasis'
+import { NaturalSwayLayer } from './sway'
 import { NaturalPetLayer } from './touch'
 
 export type { NaturalAttentionEvent, NaturalBodyIntent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalIdleEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
@@ -78,7 +80,7 @@ export const EXPRESSION_TILT_WEIGHT = 0
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, chat: 14, cueGestures: 15, regime: 16, idle: 17 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, chat: 14, cueGestures: 15, regime: 16, idle: 17, sway: 18, smile: 19 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -87,6 +89,11 @@ const step = 1 / 120
 
 // Seconds over which a changed review gain eases in, so a mute never snaps the head.
 const reviewEaseSeconds = 0.25
+// Seconds: first-order time constant over which the applied pep follows `setPep`, so a card switch never pops.
+const pepEaseSeconds = 1
+// Pep divides the blink interval by `1 + pepBlinkRate * pep` and scales the lid times by `1 - pepBlinkSpeed * pep`.
+const pepBlinkRate = 1.25
+const pepBlinkSpeed = 0.42
 // Review candidate: head units of yaw and pitch per eye unit of gaze when a posture shift follows the eyes.
 const headAimShare = { x: 1, y: 0.8 }
 const headAimLeadSeconds = 0.05
@@ -198,6 +205,12 @@ export class NaturalMotion {
   /** The review gains asked for, and the eased values the grid applies; both rest at exactly 1. */
   private reviewTarget: NaturalReviewGains = { ...neutralReviewGains }
   private readonly review: NaturalReviewGains = { ...neutralReviewGains }
+  /** The pep asked for; the grid eases the applied value toward it. */
+  private pepTarget = 0
+  /** The pep the grid applies; it stays exactly 0 while the target is 0. */
+  private pep = 0
+  private readonly sway: NaturalSwayLayer
+  private readonly smile: NaturalSmileClosure
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
@@ -241,6 +254,7 @@ export class NaturalMotion {
     held: [0, 0, 0],
     gesture: [0, 0, 0],
     cue: [0, 0, 0],
+    sway: [0, 0, 0],
   }
 
   private cursorShare = 0
@@ -292,6 +306,8 @@ export class NaturalMotion {
     this.gestures = new NaturalGestures(stream('gestures'))
     this.cueGestures = new NaturalCueGestures(stream('cueGestures'), this.gaze)
     this.idleLayer = new NaturalIdleActivities(stream('idle'))
+    this.sway = new NaturalSwayLayer(stream('sway'), step)
+    this.smile = new NaturalSmileClosure(stream('smile'), step)
     this.previous = { head: [...home], compensationHead: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
@@ -320,6 +336,7 @@ export class NaturalMotion {
         held: [...this.headTerms.held],
         gesture: [...this.headTerms.gesture],
         cue: [...this.headTerms.cue],
+        sway: [...this.headTerms.sway],
       },
       posture: { shiftSeq: this.posture.shiftCount, amplitude: this.posture.amplitudeScale, shiftRate: this.posture.shiftRateScale, activityGain: this.posture.activityGain },
       gaze: { on: this.petOverride ? 'pet' : this.gaze.onCursor ? 'cursor' : this.onChat ? 'chat' : this.energy.aside ? 'aside' : 'free', saccadeSeq: this.gaze.saccadeCount, saccadeSize: this.gaze.saccadeSize, held: this.gaze.held },
@@ -705,6 +722,15 @@ export class NaturalMotion {
     this.faceBaseline.set(baseline)
   }
 
+  /**
+   * Sets the character's pep, in [0, 1], from the next grid step after advancing to this timestamp.
+   * The grid eases the applied pep toward it over 1 s. 0 is the calm baseline and leaves every frame unchanged.
+   */
+  setPep(pep: number, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pepTarget = Math.max(0, Math.min(1, Number.isFinite(pep) ? pep : 0))
+  }
+
   /** The scale on newly drawn blink open intervals from held emotion and the face baseline; 1 when both are neutral. */
   get blinkIntervalScale() {
     return this.blink.intervalScale
@@ -1008,6 +1034,18 @@ export class NaturalMotion {
       this.review[layer] += (this.reviewTarget[layer] - this.review[layer]) * reviewEase
     // The rate changes only when the next hold is drawn, so it needs no ease.
     this.review.shiftRate = this.reviewTarget.shiftRate
+    // A target and value of exactly 0 move by exactly 0, so pep 0 stays exactly 0.
+    this.pep += (this.pepTarget - this.pep) * (1 - Math.exp(-step / pepEaseSeconds))
+    // The ease never arrives on its own; landing it returns a card set back to 0 to the exact calm baseline.
+    if (Math.abs(this.pepTarget - this.pep) < 1e-4)
+      this.pep = this.pepTarget
+    if (this.pep !== 0) {
+      this.blink.intervalScale /= 1 + pepBlinkRate * this.pep
+      this.blink.durationScale = 1 - pepBlinkSpeed * this.pep
+    }
+    else {
+      this.blink.durationScale = 1
+    }
     this.posture.shiftRateScale *= this.review.shiftRate
     this.posture.layerGains.shift = this.review.shifts
     this.posture.layerGains.drift = this.review.drift
@@ -1045,6 +1083,9 @@ export class NaturalMotion {
     this.posture.continuousScale = Math.min(this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1, this.cueGestures.continuousScale(stepStart + step))
     if (idle)
       this.posture.continuousScale = Math.min(this.posture.continuousScale, idle.continuousScale)
+    // Steps whatever the pep, so its draws depend only on time and the inputs; at pep 0 both terms are exactly 0.
+    const sway = this.sway.step({ talking: this.voice.speaking, onsetCount: this.emphasis.onsetCount, pep: this.pep, amplitude: this.posture.amplitudeScale, duck: this.posture.continuousScale })
+    const swayHead = sway.head
     this.yawBias = 0.10 * this.placement.value * (1 - this.onCursor)
     if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {
       this.lastEmittedYawBias = this.yawBias
@@ -1065,7 +1106,7 @@ export class NaturalMotion {
     const heldPosture = this.performanceSettings.heldEmotions ? this.hold.posture() : [0, 0, 0]
     const gestureHead = this.performanceSettings.heldEmotions ? this.gestures.headOffset(stepStart + step) : [0, 0, 0]
     const cueHead = this.cueGestures.headOffset(stepStart + step)
-    this.headTerms = { posture, slow: slowPose, emphasis, impulse, pet: petHead, held: [heldPosture[0], heldPosture[1], heldPosture[2]], gesture: [gestureHead[0], gestureHead[1], gestureHead[2]], cue: cueHead }
+    this.headTerms = { posture, slow: slowPose, emphasis, impulse, pet: petHead, held: [heldPosture[0], heldPosture[1], heldPosture[2]], gesture: [gestureHead[0], gestureHead[1], gestureHead[2]], cue: cueHead, sway: [swayHead[0], swayHead[1], swayHead[2]] }
     // The eyes counter-rotate for the head without the continuous wobble: the same terms, minus that one.
     const compose = (base: Readonly<Vec3>) => base.map((value, axis) => {
       let total = value + emphasis[axis] + impulse[axis] + petHead[axis]
@@ -1077,6 +1118,8 @@ export class NaturalMotion {
         total += cueHead[axis]
       if (idle && idle.head[axis] !== 0)
         total += idle.head[axis]
+      if (swayHead[axis] !== 0)
+        total += swayHead[axis]
       return clamp(total, 1)
     }) as Vec3
     const head = compose(posture)
@@ -1111,6 +1154,8 @@ export class NaturalMotion {
         lean[axis] += cueBody[axis]
       if (idle && idle.body[axis] !== 0)
         lean[axis] += idle.body[axis]
+      if (sway.body[axis] !== 0)
+        lean[axis] += sway.body[axis]
     }
     if (this.performanceSettings.heldEmotions) {
       const gestureBody = this.gestures.bodyOffset(stepStart + step)
@@ -1144,6 +1189,16 @@ export class NaturalMotion {
       if (!this.face.speechActiveOrRecent)
         face.silentMouthOpen += idle.mouthOpen
     }
+    const blinkFactor = idle ? this.blink.step(step) * (1 - idle.lidClose) : this.blink.step(step)
+    // A closed-eye smile never starts against a held or fixated gaze, a pet, an idle act, a moving lid, or an empty room.
+    const smile = this.smile.step({
+      pep: this.pep,
+      valence: this.mood.valence,
+      blocked: this.gaze.claim !== null || this.gaze.onCursor || this.gaze.onChat || this.petOverride
+        || idle !== null || this.idleLayer.eyesOwned(stepStart) || this.blink.lidMoving || this.energy.userAway,
+    })
+    if (smile.eyeSmile !== 0)
+      face.eyeSmile += smile.eyeSmile
     return {
       head,
       compensationHead,
@@ -1151,7 +1206,7 @@ export class NaturalMotion {
       gaze: this.review.eyes === 1 ? gaze : { x: this.review.eyes * gaze.x, y: this.review.eyes * gaze.y },
       face,
       // Closing lids ride on the blink factor, the one eye channel every adapter lets reach fully closed.
-      blinkFactor: idle ? this.blink.step(step) * (1 - idle.lidClose) : this.blink.step(step),
+      blinkFactor: smile.lidClose !== 0 ? blinkFactor * (1 - smile.lidClose) : blinkFactor,
       breath: this.breath.step(step),
     }
   }

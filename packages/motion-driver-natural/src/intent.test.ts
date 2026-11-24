@@ -254,7 +254,7 @@ describe('natural body intent', () => {
     expect(seq).toBeGreaterThan(0)
   })
 
-  it('sums the six applied terms and posture to the reported head at grid endpoints', () => {
+  it('sums the seven applied terms and posture to the reported head at grid endpoints', () => {
     const motion = new NaturalMotion({ seed: 41 })
     let error = 0
     for (let i = 0; i <= 120 * 120; i++) {
@@ -265,7 +265,7 @@ describe('natural body intent', () => {
         continue // At the origin the displayed pose is the unintegrated home.
       const { head } = motion.bodyIntent()
       for (const [axis, reported] of [frame.pose.headX, frame.pose.headY, frame.pose.headZ].entries()) {
-        const sum = head.posture[axis] + head.emphasis[axis] + head.impulse[axis] + head.pet[axis] + head.held[axis] + head.gesture[axis] + head.cue[axis]
+        const sum = head.posture[axis] + head.emphasis[axis] + head.impulse[axis] + head.pet[axis] + head.held[axis] + head.gesture[axis] + head.cue[axis] + head.sway[axis]
         const composed = Math.max(-1, Math.min(1, sum))
         const expected = axis === 1 ? Math.max(-1, Math.min(1, composed + frame.breath.headY)) : composed
         error = Math.max(error, Math.abs(expected - reported))

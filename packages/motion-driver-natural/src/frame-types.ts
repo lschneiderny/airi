@@ -190,6 +190,8 @@ export interface NaturalBodyIntent {
     readonly held: Readonly<Vec3>
     readonly gesture: Readonly<Vec3>
     readonly cue: Readonly<Vec3>
+    /** Pep's sway: roll from the trailing head tilt, a small counter yaw and the swing's pitch dip; zero at pep 0. */
+    readonly sway: Readonly<Vec3>
   }
   readonly posture: {
     readonly shiftSeq: number

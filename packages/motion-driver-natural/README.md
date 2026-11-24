@@ -30,8 +30,8 @@ without changing its rendered motion. A positive weight is future motion tuning.
 
 The layers are blink, breath, gaze, posture, body, face and face hints,
 impulses, hold, gestures, cue gestures, mood and mood modulation, energy,
-cursor attention, placement, speech emphasis, pending actions, touch and idle
-activities. Each layer that draws does so from
+cursor attention, placement, speech emphasis, pending actions, touch, idle
+activities, and pep's sway and closed-eye smile. Each layer that draws does so from
 its own seeded stream, so a change in one layer does not reshuffle another.
 Cursor attention draws nothing: it plays the episodes the character mind draws.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
@@ -80,8 +80,8 @@ reading earlier throws. Repeated reads return the same snapshot without stepping
 or consuming events. `NaturalMotionFrame` keeps its original shape; intent is
 not a frame property. `NaturalBodyIntent` is exported from the root and
 `./frame-types`. It is a detached, read-only snapshot of state already
-computed by Natural: head posture and its slow component, the six additive head
-terms (emphasis, impulse, pet, held, emotion gesture, cue), posture shift sequence
+computed by Natural: head posture and its slow component, the seven additive head
+terms (emphasis, impulse, pet, held, emotion gesture, cue, sway), posture shift sequence
 and final amplitude/rate scales and activity gain, gaze ownership and saccades,
 breath phase/effective period/amplitude scale, host voice and its slow envelope
 and onsets, mood, energy, held affect, touch, and cursor attention.
@@ -89,7 +89,7 @@ and onsets, mood, energy, held affect, touch, and cursor attention.
 Intent is assembled after the grid loop and describes its next endpoint; the
 legacy pose, face, blink, breath and fixation remain interpolated. `intent.time`
 is the frame's active seconds, so the grid endpoint may be up to one tick ahead.
-At grid endpoints after the origin, the posture plus six head terms, clamped to
+At grid endpoints after the origin, the posture plus seven head terms, clamped to
 [-1, 1], equals the reported head before breath pitch is added and clamped again.
 `head.slow` is an alternative to `head.posture`, not an additional term.
 Gaze ownership chooses pet override, cursor, chat, aside, then free. Pet coordinates
@@ -120,6 +120,41 @@ read Live2D parameters. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md),
 and what each renderer performs is in
 [the interaction portability ADR](../../docs/ai/adr/2026-11-04-interaction-portability.md).
+
+## Pep
+
+Pep is a character's baseline amount of extra motion, a number in [0, 1].
+`motion.setPep(pep, nowSeconds)` sets it from the next grid step, and the grid
+eases the applied value toward it over 1 s, so a card switch never pops. Pep
+adds three things:
+
+- A whole-upper-body sway (`./sway`, `NaturalSwayLayer`, stream `sway`): the
+  body leans to a drawn side and size through an underdamped follower, the
+  head tilt trails the lean through a faster one with a small counter yaw, and
+  each swing start dips the head pitch. While she talks, a speech onset starts
+  the next swing once the running one is 0.3 s old; swings come about every
+  0.75 s while she talks and 1.6 s while she is silent. The head term is the
+  intent's `head.sway` and enters the eye compensation, so the gaze holds its
+  target through a swing; the body term adds to the body lean.
+- Faster and more frequent blinks: the blink interval is divided by
+  `1 + 1.25 pep` and the lid times are multiplied by `1 - 0.42 pep`.
+- A closed-eye smile (`./smile-closure`, `NaturalSmileClosure`, stream
+  `smile`): while the mood valence is above 0.15 the eyes close into a smile
+  for 0.35 to 1.6 s, at up to 6 per minute times pep, full at valence 0.65. It
+  adds to `eyeSmile` and closes the lids through the blink factor. A closure
+  that falls due while a glance holds, the cursor or the chat is fixated, the
+  pet override holds, an idle act runs or holds the eyes, a blink moves the
+  lids, or the user is away is dropped.
+
+The sway's weight is pep times the posture amplitude scale (capped at 2) times
+the posture continuous scale, the last two eased over 0.15 s. The amplitude
+scale carries the performance mode, the user energy, the mood, held emotions,
+idle acts, the pet and the cursor calm, and the continuous scale steps back
+under emotion gesture clips, cue gestures and idle acts. Both layers step every
+grid step whatever the pep, so their draws depend only on time and inputs. At
+pep 0 they add and multiply nothing, so every frame and intent is bit-identical
+to a controller that never calls `setPep`. The sway's constants are starting
+values, named at the top of `src/sway.ts`.
 
 ## Idle activities
 
