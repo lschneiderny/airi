@@ -17,10 +17,11 @@ import { errorMessageFrom } from '@moeru/std'
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { MotionTraceRefusal, readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 import { loadHeadlessMMD } from '@proj-airi/qa-tools/t2-3d/runner/loader'
+import { recordedOverrides } from '@proj-airi/qa-tools/t2-3d/runner/run'
 
 import * as v from 'valibot'
 
-import { activeEvents, CLIP_LIMITS, clipCodec, clipTimes, composeClipFrame, findOnPath } from '../frames/clip'
+import { activeEvents, CLIP_LIMITS, clipCodec, clipTimes, composeClipFrame, findOnPath, heldLines, wrapHeader } from '../frames/clip'
 import { eventLabel, frameAt, framesSummarySchema, selectWindows } from '../frames/frames'
 import { frameRigFromMMD } from '../frames/model'
 import { FramePoseRefusal, neededBones, poseFrame, skin, unposedBones } from '../frames/pose'
@@ -202,21 +203,29 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
       const framing = framingFor(skin(rig, { rotations: rig.bones.map(bone => bone.bindRotation), positions: rig.bones.map(bone => bone.bindPosition) }), PANEL.width, PANEL.height)
       const label = runs.length > 1 ? ['BEFORE', 'AFTER'] : ['RUN']
       const footer = [`${options.pose === 'trace' ? 'posed from the trace only (untraced twist, physics and accessory bones at bind)' : 'posed from the trace and a reproducing re-run'}; ${options.hz} fps = real time`, CLIP_LIMITS]
-      const drawFrame = (t: number) => composeClipFrame(runs.map((run, r) => {
+      const headerAt = (r: number, t: number) => {
+        const run = runs[r]
         const frame = frameAt(run.input, t)
         const frameTime = run.input.channels[frame * CHANNELS.length]
-        const vertices = skin(rig, poseFrame(rig, run.input, frame, sources[r].pose(frame)))
         const source = run.input.trace.source
+        return [
+          `${label[r]} ${source.gitSha?.slice(0, 9) ?? '?'}${source.dirty ? '+dirty' : ''}`,
+          `${source.scenario.id} seed ${source.scenario.seed ?? '-'}`,
+          `t ${frameTime.toFixed(2)} s  f ${frame}${t > frameTime + 1 / options.hz ? ' (ended)' : ''}`,
+          ...heldLines(run.input.trace.events, recordedOverrides(source.detail), frameTime),
+          ...activeEvents(run.input.trace.events, frameTime, eventLabel).slice(0, 2),
+        ]
+      }
+      // The first frame sizes the video, so the header takes the most lines any frame wraps to.
+      const headerLines = Math.max(...times.flatMap(t => runs.map((_, r) => wrapHeader(headerAt(r, t), PANEL.width, options.views.length).length)))
+      const drawFrame = (t: number) => composeClipFrame(runs.map((run, r) => {
+        const frame = frameAt(run.input, t)
+        const vertices = skin(rig, poseFrame(rig, run.input, frame, sources[r].pose(frame)))
         return {
-          header: [
-            `${label[r]} ${source.gitSha?.slice(0, 9) ?? '?'}${source.dirty ? '+dirty' : ''}`,
-            `${source.scenario.id} seed ${source.scenario.seed ?? '-'}`,
-            `t ${frameTime.toFixed(2)} s  f ${frame}${t > frameTime + 1 / options.hz ? ' (ended)' : ''}`,
-            ...activeEvents(run.input.trace.events, frameTime, eventLabel).slice(0, 2),
-          ],
+          header: headerAt(r, t),
           panels: options.views.map(view => ({ rgb: rasterize(vertices, rig.triangles, view, framing, view === 'front' ? run.input.root[frame * 4] : run.input.root[frame * 4 + 2]) })),
         }
-      }), PANEL.width, PANEL.height, footer)
+      }), PANEL.width, PANEL.height, footer, headerLines)
       const firstFrame = drawFrame(times[0])
       const encoder = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${firstFrame.width}x${firstFrame.height}`, '-r', String(options.hz), '-i', '-', ...codec.args, options.out], { stdio: ['pipe', 'inherit', 'inherit'] })
       const exited = once(encoder, 'close') as Promise<[number | null]>
