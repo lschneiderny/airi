@@ -3,7 +3,7 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 import type { Object3D, SkinnedMesh } from 'three'
 
 import type { Quat, Vec3 } from '../metrics'
-import type { FrameRig, LocalPose } from './pose'
+import type { FrameRig, LocalPose, PosedBones } from './pose'
 
 import { PmxObject } from '@moeru/three-mmd'
 import { MOTION_TRACE_BONES } from '@proj-airi/motion-driver-humanoid/motion-trace'
@@ -93,4 +93,23 @@ export function localPoses(mesh: SkinnedMesh): LocalPose[] {
     local.decompose(position, rotation, scale)
     return { rotation: quat(rotation), position: vec(position) }
   })
+}
+
+/**
+ * Every bone's posed transform in the mesh's bind space, the space `FrameRig` holds bind poses in, read from the live
+ * skeleton after its world matrices are updated. This is the space three's skinning applies a bone in.
+ */
+export function meshSpacePoses(mesh: SkinnedMesh): PosedBones {
+  const matrix = new Matrix4()
+  const position = new Vector3()
+  const rotation = new Quaternion()
+  const scale = new Vector3()
+  const rotations: Quat[] = []
+  const positions: Vec3[] = []
+  for (const bone of mesh.skeleton.bones) {
+    matrix.multiplyMatrices(mesh.bindMatrixInverse, bone.matrixWorld).decompose(position, rotation, scale)
+    rotations.push(quat(rotation))
+    positions.push(vec(position))
+  }
+  return { rotations, positions }
 }
