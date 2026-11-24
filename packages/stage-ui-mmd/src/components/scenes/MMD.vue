@@ -13,6 +13,7 @@ import type { AttendIntent, ChatReadIntent, RefractoryRemaining, TouchReactionIn
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest, BodyDirectorReport } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate, IdleClipHistory } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import type { GaitBaseline } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
@@ -155,6 +156,8 @@ const props = withDefaults(defineProps<{
    * `row`, a change of calibration moves the camera to another display and leaves the root where it is.
    */
   stageWorld?: MMDStageWorld
+  /** The character's walking baseline, which her mood and energy move; the neutral walk's when absent. */
+  walkBaseline?: GaitBaseline
 }>(), {
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false }),
@@ -1383,6 +1386,7 @@ async function loadModel(src: string) {
           dragging,
           layerClip,
           fullLayerPlaying: activeStance.intent?.action?.phase === 'playing' && activeStance.intent.action.layer === 'full',
+          walkBaseline: props.walkBaseline,
         }
       },
       // Per-frame root motion: no physics reset on this path, so Ammo feels the travel.
