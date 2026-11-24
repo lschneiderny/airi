@@ -46,9 +46,10 @@ describe('walkStyleFrom', () => {
     expect(sad.armSwing).toBeLessThan(glad.armSwing)
   })
 
-  it('tension bends the elbows and shrinks the swing, the roll and the lift', () => {
+  it('tension bends the elbows, leans the trunk as acted tense walks do, and shrinks the swing, the roll and the lift', () => {
     const tense = style({ tension: 0.9 })
     expect(tense.elbowCarry).toBeGreaterThan(20 * Math.PI / 180)
+    expect(tense.lean).toBeGreaterThan(8 * Math.PI / 180)
     for (const key of ['armSwing', 'roll', 'lift'] as const)
       expect(tense[key]).toBeLessThan(1)
   })
@@ -58,7 +59,8 @@ describe('walkStyleFrom', () => {
     expect(tired.stride).toBeLessThan(1)
     expect(tired.width).toBeGreaterThan(1)
     expect(tired.head).toBeGreaterThan(0)
-    expect(tired.lean).toBeGreaterThan(0)
+    // Acted tired walks lean 11 degrees more than a normal walk.
+    expect(tired.lean).toBeGreaterThan(9 * Math.PI / 180)
     expect(tired.armSwing).toBeLessThan(1)
   })
 
