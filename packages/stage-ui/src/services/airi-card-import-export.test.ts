@@ -273,16 +273,19 @@ describe('airi card package import/export', () => {
     expect(imported.characterState?.mood.contributions.map(contribution => contribution.id)).toEqual(['moment-1'])
   })
 
-  it('shares a card without its memories or state record, and imports it with no record', async () => {
+  it('shares a card and its profile, walking baseline included, without its memories or state record', async () => {
     const displayModelsStore = useDisplayModelsStore()
+    const profile: CharacterProfile = { resting: { valence: 0.2, energy: 0, tension: 0.2 }, startingStage: 'stranger', gait: { width: -0.6, sway: 0.6 } }
     const card = createCard()
     card.extensions.airi.avatarModels = []
+    card.extensions.airi.modules.character = profile
     const exported = await exportAiriCardPackage({ card, displayModelsStore })
     const zip = await JSZip.loadAsync(await exported.arrayBuffer())
     expect(zip.file('memories.json')).toBeNull()
     expect(zip.file('character-state.json')).toBeNull()
 
     const imported = await importAiriCardPackage({ file: new File([exported], 'share.zip'), displayModelsStore })
+    expect(airiFrom(imported.card).modules.character).toEqual(profile)
     expect(imported.memories).toEqual([])
     expect(imported.characterState).toBeNull()
   })

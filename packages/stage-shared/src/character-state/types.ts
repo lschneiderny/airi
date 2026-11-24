@@ -2,7 +2,7 @@ import type { GenericSchema } from 'valibot'
 
 import type { CharacterPacingMemory } from '../situation/urge-gate'
 
-import { array, finite, integer, literal, maxLength, maxValue, minLength, minValue, nullable, number, picklist, pipe, strictObject, string, variant } from 'valibot'
+import { array, finite, integer, literal, maxLength, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, strictObject, string, variant } from 'valibot'
 
 import { CHARACTER_STATE_SETTINGS } from './settings'
 
@@ -68,16 +68,49 @@ export const CLOSENESS_STAGES = ['stranger', 'friendly', 'close', 'intimate'] as
 export const TRUST_STAGES = ['guarded', 'open', 'confiding'] as const satisfies readonly TrustStage[]
 export const FAMILIARITY_STAGES = ['new', 'knows-you'] as const satisfies readonly FamiliarityStage[]
 
-/** The resting disposition and starting relationship a character card sets. */
+/**
+ * What a character's walk starts from before her mood and energy move it: a card's walking baseline. Each value lies in
+ * [-1, 1] and is 0 when omitted, which is the neutral walk. Positive `posture` stands taller; positive `armCarry` holds
+ * the arms bent and a little out. `walkStyleFrom` in `@proj-airi/motion-driver-humanoid/locomotion` turns it into a walk.
+ */
+export interface GaitBaseline {
+  /** Step length at a given speed. */
+  readonly stride?: number
+  /** Hip sway: pelvis list and twist. */
+  readonly sway?: number
+  /** Stance width. */
+  readonly width?: number
+  readonly bounce?: number
+  readonly armSwing?: number
+  readonly armCarry?: number
+  readonly posture?: number
+}
+
+export const GAIT_BASELINE_KEYS = ['stride', 'sway', 'width', 'bounce', 'armSwing', 'armCarry', 'posture'] as const satisfies readonly (keyof GaitBaseline)[]
+
+export const GaitBaselineSchema = strictObject({
+  stride: optional(signedUnit),
+  sway: optional(signedUnit),
+  width: optional(signedUnit),
+  bounce: optional(signedUnit),
+  armSwing: optional(signedUnit),
+  armCarry: optional(signedUnit),
+  posture: optional(signedUnit),
+}) satisfies GenericSchema<unknown, GaitBaseline>
+
+/** The resting disposition, starting relationship, and walking baseline a character card sets. */
 export interface CharacterProfile {
   /** The mood temperament is anchored to. */
   readonly resting: MoodAxes
   readonly startingStage: StartingStage
+  /** Her walking baseline; the neutral walk when absent. */
+  readonly gait?: GaitBaseline
 }
 
 export const CharacterProfileSchema = strictObject({
   resting: MoodAxesSchema,
   startingStage: picklist(['stranger', 'friendly', 'close']),
+  gait: optional(GaitBaselineSchema),
 }) satisfies GenericSchema<unknown, CharacterProfile>
 
 export const DEFAULT_CHARACTER_PROFILE: CharacterProfile = Object.freeze({

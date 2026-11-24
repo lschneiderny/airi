@@ -104,6 +104,23 @@ describe('characterProfileSchema', () => {
     expect(safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, startingStage: 'intimate' }).success).toBe(false)
     expect(safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, resting: { valence: 0, energy: 0, tension: -0.1 } }).success).toBe(false)
   })
+
+  it('parses a profile without a walking baseline, as cards saved before it have', () => {
+    const result = safeParse(CharacterProfileSchema, { resting: { valence: 0.4, energy: -0.2, tension: 0.3 }, startingStage: 'friendly' })
+    expect(result.success).toBe(true)
+    expect(result.output).not.toHaveProperty('gait')
+  })
+
+  it('keeps a partial walking baseline with its bounds included', () => {
+    const gait = { stride: -1, sway: 1, armCarry: 0.25 }
+    const result = safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, gait })
+    expect(result.success && result.output.gait).toEqual(gait)
+  })
+
+  it('rejects a walking baseline value outside [-1, 1], not finite, or unknown', () => {
+    for (const gait of [{ width: 1.01 }, { bounce: -1.5 }, { posture: Number.NaN }, { stride: Number.POSITIVE_INFINITY }, { speed: 0.5 }, { sway: '0.5' }, null])
+      expect(safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, gait }).success, JSON.stringify(gait)).toBe(false)
+  })
 })
 
 describe('characterStateRecordSchema', () => {

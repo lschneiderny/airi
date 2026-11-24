@@ -1,3 +1,5 @@
+import type { GaitBaseline } from '@proj-airi/stage-shared/character-state'
+
 const radians = Math.PI / 180
 
 /**
@@ -97,19 +99,8 @@ export function boundGaitStyle(style: GaitStyle, out: MutableGaitStyle = { ...st
   return out
 }
 
-/**
- * What a character's walk starts from before her mood moves it, each value in [-1, 1] and 0 when omitted: a card's
- * walking baseline. Positive `posture` stands taller; positive `armCarry` holds the arms bent and a little out.
- */
-export interface GaitBaseline {
-  readonly stride?: number
-  readonly sway?: number
-  readonly width?: number
-  readonly bounce?: number
-  readonly armSwing?: number
-  readonly armCarry?: number
-  readonly posture?: number
-}
+/** A card's walking baseline; the character profile owns its shape and schema. */
+export type { GaitBaseline }
 
 /** The external factors a walk's style follows. */
 export interface WalkFactors {

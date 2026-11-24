@@ -149,7 +149,7 @@ function clampCharacterProfile(profile: CharacterProfile): CharacterProfile {
   const resting = { ...profile.resting }
   for (const field of characterRestingFields)
     resting[field.key] = clamp(profile.resting[field.key], field.min, field.max)
-  return { resting, startingStage: profile.startingStage }
+  return { ...profile, resting }
 }
 
 function setCharacterRestingField(key: keyof MoodAxes, value: number) {
