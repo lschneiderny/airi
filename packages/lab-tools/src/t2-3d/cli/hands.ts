@@ -24,8 +24,8 @@ import { frameRigFromMMD, meshSpacePoses } from '../frames/model'
 import { skin } from '../frames/pose'
 import { cameraToward, contactSheet, encodePng, rasterize } from '../frames/render'
 
-const usage = 'Usage: lab:motion3d hands --model <pmx> --out <directory>'
-/** Pixels across one view of one hand. */
+const usage = 'Usage: lab:motion3d hands --model <pmx> --out <directory> [--pixels <n>]'
+/** Pixels across one view of one hand, unless `--pixels` sets them. */
 const CELL_SIZE = 300
 /** The view spans this many hand lengths (wrist to the middle finger's last joint), so a spread or bent hand still fits. */
 const SPAN_HAND_LENGTHS = 2.2
@@ -61,7 +61,7 @@ class HandsUsageError extends Error {
   override readonly name = 'HandsUsageError'
 }
 
-function parse(args: readonly string[], cwd: string): { model: string, out: string } {
+function parse(args: readonly string[], cwd: string): { model: string, out: string, pixels: number } {
   const values = new Map<string, string>()
   for (let i = 0; i < args.length; i++) {
     if (!args[i].startsWith('--'))
@@ -70,14 +70,17 @@ function parse(args: readonly string[], cwd: string): { model: string, out: stri
       throw new HandsUsageError(`${args[i]} needs a value`)
     values.set(args[i].slice(2), args[++i])
   }
-  const unknown = [...values.keys()].find(key => key !== 'model' && key !== 'out')
+  const unknown = [...values.keys()].find(key => key !== 'model' && key !== 'out' && key !== 'pixels')
   if (unknown)
     throw new HandsUsageError(`unknown option --${unknown}`)
   const model = values.get('model')
   const out = values.get('out')
   if (!model || !out)
     throw new HandsUsageError('--model and --out are required')
-  return { model: resolve(cwd, model), out: resolve(cwd, out) }
+  const pixels = Number(values.get('pixels') ?? CELL_SIZE)
+  if (!Number.isInteger(pixels) || pixels < 100 || pixels > 1200)
+    throw new HandsUsageError('--pixels must be a whole number from 100 to 1200')
+  return { model: resolve(cwd, model), out: resolve(cwd, out), pixels }
 }
 
 /** The rig bones one side's drawing needs, and the triangles skinned mostly to the forearm or a bone under it. */
@@ -134,7 +137,7 @@ export async function handsMotion3d(args: readonly string[], context: Motion3dCl
       const rest = performer.restChannels()
       const span = SPAN_HAND_LENGTHS * Math.max(sides.left.length, sides.right.length)
       const git = readGitStateFromRepo(context.repoRoot)
-      console.info(`hands ${options.model}: ${HAND_SHEET_CELLS.length} cells x 2 hands x ${Object.keys(VIEWS).length} views; ${span.toFixed(3)} model units across ${CELL_SIZE} pixels`)
+      console.info(`hands ${options.model}: ${HAND_SHEET_CELLS.length} cells x 2 hands x ${Object.keys(VIEWS).length} views; ${span.toFixed(3)} model units across ${options.pixels} pixels`)
       const strips: Record<BodySide, { rgb: Uint8Array, caption: string[] }[]> = { left: [], right: [] }
       const cells = []
       for (const cell of HAND_SHEET_CELLS) {
@@ -160,23 +163,23 @@ export async function handsMotion3d(args: readonly string[], context: Motion3dCl
           const degrees = armDegrees(channels, side)
           const row = Object.entries(VIEWS).map(([view, toward]) => {
             const camera = cameraToward(toward(side === 'left' ? 1 : -1))
-            const { framing, centre } = closeUpFraming(camera, focus, span, CELL_SIZE)
+            const { framing, centre } = closeUpFraming(camera, focus, span, options.pixels)
             return {
               rgb: rasterize(vertices, triangles, camera, framing, centre),
               caption: [`${cell.name} ${side} ${view}`, `pron ${degrees.Pron.toFixed(0)} wflex ${degrees.Wflex.toFixed(0)} wdev ${degrees.Wdev.toFixed(0)}`],
             }
           })
           strips[side].push(...row)
-          const strip = contactSheet(row, CELL_SIZE, CELL_SIZE, row.length)
+          const strip = contactSheet(row, options.pixels, options.pixels, row.length)
           files[side] = join(side, `${cell.name}.png`)
           await mkdir(join(options.out, side), { recursive: true })
           await writeFile(join(options.out, files[side]), await encodePng(strip.rgb, strip.width, strip.height))
         }
-        cells.push({ name: cell.name, shape: cell.shape, wristDeg: cell.wrist, files, channelsDeg: { left: armDegrees(channels, 'left'), right: armDegrees(channels, 'right') } })
+        cells.push({ name: cell.name, shape: cell.shape, blend: cell.blend ?? null, walk: cell.walk ?? null, wristDeg: cell.wrist, files, channelsDeg: { left: armDegrees(channels, 'left'), right: armDegrees(channels, 'right') } })
       }
       const sheets: Partial<Record<BodySide, string>> = {}
       for (const side of SIDES) {
-        const sheet = contactSheet(strips[side], CELL_SIZE, CELL_SIZE, Object.keys(VIEWS).length)
+        const sheet = contactSheet(strips[side], options.pixels, options.pixels, Object.keys(VIEWS).length)
         sheets[side] = `sheet-${side}.png`
         await writeFile(join(options.out, sheets[side]), await encodePng(sheet.rgb, sheet.width, sheet.height))
       }
@@ -190,7 +193,7 @@ export async function handsMotion3d(args: readonly string[], context: Motion3dCl
         seed: SEED,
         spanModelUnits: span,
         handLength: { left: sides.left.length, right: sides.right.length },
-        cellPixels: CELL_SIZE,
+        cellPixels: options.pixels,
         views: VIEW_NOTES,
         sheets,
         limits: HANDS_LIMITS,

@@ -57,14 +57,22 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
     out[swingChannels[side].twist] = armSwing[side].twist
     out[swingChannels[side].pron] = armSwing[side].pronation
     out[swingChannels[side].wflex] = armSwing[side].wristFlex
-    const curl = frame.handCurl - 1
-    const { fingerCurl, opposition } = DEFAULT_ARM_REST_POSE
-    for (let finger = 0; finger < 5; finger++) {
-      for (let joint = 0; joint < 3; joint++)
-        out[swingChannels[side].thumb + finger * 3 + joint] = curl * fingerCurl[finger][joint]
-    }
-    out[swingChannels[side].opposition] = curl * opposition
+    writeWalkHand(frame.handCurl, side, out)
   }
+}
+
+/**
+ * Writes the walk's hand curl (`LocomotionFrame.handCurl`, a share of the rest curl) into `out` as one side's finger,
+ * thumb and opposition offsets from the performer's nominal rest hand (`DEFAULT_ARM_REST_POSE`).
+ */
+export function writeWalkHand(handCurl: number, side: 'left' | 'right', out: { [index: number]: number }): void {
+  const curl = handCurl - 1
+  const { fingerCurl, opposition } = DEFAULT_ARM_REST_POSE
+  for (let finger = 0; finger < 5; finger++) {
+    for (let joint = 0; joint < 3; joint++)
+      out[swingChannels[side].thumb + finger * 3 + joint] = curl * fingerCurl[finger][joint]
+  }
+  out[swingChannels[side].opposition] = curl * opposition
 }
 
 /** Runs one character's gait one fixed tick at a time; `MMDBodyClock` decides how many ticks a display frame holds. */
