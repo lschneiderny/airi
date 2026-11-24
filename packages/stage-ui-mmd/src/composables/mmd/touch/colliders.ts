@@ -163,6 +163,19 @@ export function buildMMDHeadColliders(
   })
 }
 
+/**
+ * `collider` with its size scaled by `scale` about its own centre: the sphere's radius, the capsule's radius and
+ * cylinder height, or the box's half extents. The body performer's corrector fits the arm bodies this way
+ * (`BodyCollision.fit`), and the arm gate measures the same bodies.
+ */
+export function scaleMMDTouchCollider(collider: MMDTouchCollider, scale: number): MMDTouchCollider {
+  if (scale === 1)
+    return collider
+  const [x, y, z] = collider.size
+  const size: MMDTouchCollider['size'] = collider.shape === 'sphere' ? [scale * x, y, z] : collider.shape === 'capsule' ? [scale * x, scale * y, z] : [scale * x, scale * y, scale * z]
+  return { ...collider, size }
+}
+
 function buildColliders(
   source: MMDTouchSource,
   boneInverses: readonly Matrix4[],

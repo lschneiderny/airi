@@ -9,19 +9,20 @@ import type { AnimationClip } from 'three'
 
 import type { MMDCleanPose, MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
 import type { MMDRigProfile } from '../rig'
+import type { MMDTouchCollider } from '../touch/colliders'
 import type { MMDArmsMeasurement } from './arms'
 import type { MMDBodyPoints } from './attention'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
 import { NEUTRAL_GAIT_STYLE, walkStyleFrom } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { BODY_CHANNELS, BODY_TICK, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, BODY_TICK, BodyCollision, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { Quaternion, Vector3 } from 'three'
 
 import { fnv1a32 } from '../natural/seed'
 import { buildMMDClipMask, toRigTraits } from '../rig'
-import { buildMMDArmTestColliders, buildMMDHeadColliders } from '../touch/colliders'
+import { buildMMDArmTestColliders, buildMMDHeadColliders, scaleMMDTouchCollider } from '../touch/colliders'
 import { MMDArms } from './arms'
 import { MMDBodyClock } from './clock'
 import { MMDEyes } from './eyes'
@@ -187,12 +188,15 @@ export class MMDBody {
     const { skeleton, bindMatrix } = mmd.mesh
     const colliders = buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig)
     const head = buildMMDHeadColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig)
-    this.arms = new MMDArms(this.pose, colliders, head)
     this.traits = buildBodyRigTraits(mmd.pmx, rig, [...colliders.kinematic, ...head], { boneInverses: skeleton.boneInverses, bindMatrix })
     const seed = fnv1a32(options.modelKey)
     this.performer = this.traits
       ? new MMDBodyPerformer(this.pose, this.traits, { seed, layers: createPerformanceLayers({ traits: this.traits, seed }), onEvent: event => this.listeners.forEach(listener => listener(event)) })
       : null
+    // The arm gate and the hang solver measure the bodies the performer's corrector clears: each fitted to the rest hang.
+    const fit = this.traits && this.performer ? new BodyCollision(this.traits, this.performer.restChannels()).fit : null
+    const fitted = (bodies: MMDTouchCollider[], offset: number) => fit ? bodies.map((body, i) => scaleMMDTouchCollider(body, fit[offset + i])) : bodies
+    this.arms = new MMDArms(this.pose, { kinematic: fitted(colliders.kinematic, 0), dynamic: colliders.dynamic }, fitted(head, colliders.kinematic.length))
     this.poseStages = [
       // Root motion lands before every bone write and before physics, so the pose and Ammo both see this frame's root.
       { id: 'locomotion', run: (context) => {
