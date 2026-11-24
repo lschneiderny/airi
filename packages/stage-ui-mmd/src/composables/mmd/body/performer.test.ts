@@ -213,6 +213,89 @@ describe('mmd body performer adapter', () => {
     expect(performer.writeDeviation.leftArm).toBe(0)
   })
 
+  describe('calibrated hands', () => {
+    const fingerChains = ['親指０', '親指１', '親指２', '親指２先', '人指１', '人指２', '人指３', '人指３先', '中指１', '中指２', '中指３', '中指３先', '薬指１', '薬指２', '薬指３', '薬指３先', '小指１', '小指２', '小指３', '小指３先']
+    // A pointing hand with the wrist turned: curled fingers, a spread, an opposed thumb, and every arm joint off zero.
+    const pose = (side: 'left' | 'right') => channels({
+      [`${side}ClavElev`]: 0.05,
+      [`${side}Flex`]: 0.5,
+      [`${side}Abduct`]: 0.3,
+      [`${side}Twist`]: 0.1,
+      [`${side}Elbow`]: 0.7,
+      [`${side}Pron`]: 0.4,
+      [`${side}Wflex`]: 0.3,
+      [`${side}Wdev`]: -0.1,
+      [`${side}Thumb0`]: 0.6,
+      [`${side}Thumb1`]: 0.3,
+      [`${side}Index1`]: 0.1,
+      [`${side}Middle0`]: 1.1,
+      [`${side}Middle1`]: 1.2,
+      [`${side}Ring0`]: 0.9,
+      [`${side}Ring2`]: 0.5,
+      [`${side}Little0`]: 0.7,
+      [`${side}Spread`]: 0.12,
+      [`${side}Opposition`]: 0.5,
+    } as Partial<Record<typeof BODY_CHANNELS[number], number>>)
+
+    /** Each finger segment's posed direction in the posed palm frame (along the hand, out of the palm, across it). */
+    function posedFingers(fixture: ReturnType<typeof bodyFixture>, side: 'left' | 'right') {
+      const { performer } = performerOf(fixture)
+      performer.applyArms(fixture.pipeline.clean, free, pose(side))
+      fixture.mesh.updateMatrixWorld(true)
+      const prefix = side === 'left' ? '左' : '右'
+      const calibration = fixture.rig.hands[side]!
+      const hand = fixture.bone(`${prefix}手首`).getWorldQuaternion(new Quaternion())
+      const axis = new Vector3(...calibration.axis).applyQuaternion(hand)
+      const normal = new Vector3(...calibration.normal).applyQuaternion(hand)
+      const across = axis.clone().cross(normal)
+      const at = (name: string) => fixture.bone(`${prefix}${name}`).getWorldPosition(new Vector3())
+      return fingerChains.flatMap((name, k) => {
+        if (k % 4 === 3)
+          return []
+        const segment = at(fingerChains[k + 1]).sub(at(name)).normalize()
+        return [segment.dot(axis), segment.dot(normal), segment.dot(across)]
+      })
+    }
+
+    it('poses a rolled, bent and fanned bind hand as the straight one for the same channels', () => {
+      const straight = bodyFixture(0, Math.PI, { hand: {} })
+      const turned = bodyFixture(0, Math.PI, { hand: { wrist: 0.15, roll: 0.35, tilt: 0.25, fan: 0.08 } })
+      for (const side of ['left', 'right'] as const) {
+        const expected = posedFingers(straight, side)
+        posedFingers(turned, side).forEach((value, index) => expect(value).toBeCloseTo(expected[index], 6))
+      }
+    })
+
+    it('curls each finger toward the palm and fans the fingers about the middle one', () => {
+      const fixture = bodyFixture(0, Math.PI, { hand: { roll: 0.35 } })
+      const posed = posedFingers(fixture, 'left')
+      // Finger f, segment j: along, out of the palm, across, from index (f = 1) to little (f = 4).
+      const segment = (f: number, j: number) => posed.slice((f * 3 + j) * 3, (f * 3 + j) * 3 + 3)
+      expect(segment(2, 0)[1]).toBeCloseTo(Math.sin(1.1), 6)
+      expect(segment(2, 0)[2]).toBeCloseTo(0, 6)
+      // Spread turns the straight index finger 0.12 toward the thumb, against `across`.
+      expect(segment(1, 0)[2]).toBeCloseTo(-Math.sin(0.12), 6)
+      expect(segment(4, 0)[2]).toBeGreaterThan(0)
+    })
+
+    it('carries the hand along the performer\'s forward kinematics whatever the bind wrist bend', () => {
+      const fixture = bodyFixture(0, Math.PI, { hand: { wrist: 0.2, roll: 0.3 } })
+      const { performer, traits } = performerOf(fixture)
+      for (const side of ['left', 'right'] as const) {
+        const c = pose(side)
+        performer.applyArms(fixture.pipeline.clean, free, c)
+        fixture.mesh.updateMatrixWorld(true)
+        const prefix = side === 'left' ? '左' : '右'
+        const hand = fixture.bone(`${prefix}手首`).getWorldQuaternion(new Quaternion())
+        const posed = new Vector3(...fixture.rig.hands[side]!.axis).applyQuaternion(hand)
+        const skeleton = new BodySkeleton(traits)
+        skeleton.update(c)
+        const fk = skeleton.arm(side, c).hand
+        expect(posed.angleTo(new Vector3(-fk[1], -fk[4], -fk[7]))).toBeLessThan(1e-6)
+      }
+    })
+  })
+
   it('never writes a physics-owned bone', () => {
     const { mmd, pipeline, rig, input, bone } = bodyFixture()
     const physics = ['上半身2', '首', '左腕', '左ひじ', '右人指１']

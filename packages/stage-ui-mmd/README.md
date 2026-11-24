@@ -429,7 +429,20 @@ The `body-arms` stage runs after `body-head` and before eyes. It poses the
 finger bones the rig has (`fingerBones`, read through
 `HUMANOID_FINGER_CANDIDATES`: thumbs `親指０/１/２` map to Metacarpal, Proximal
 and Distal; a leading `０` is the metacarpal of the other fingers, which is not
-written), curling the thumb about `thumbAxis`. The gait's arm swing arrives in
+written). On a side with a hand calibration (`hands`, read from bind bone
+positions: a palm frame from the wrist and the knuckles, the wrist's bind bend,
+and each finger's curl axis, bind spread and per-joint bind bend), a channel
+angle means the same hand on every rig: wrist 0 holds the hand in line with the
+forearm, as the performer's forward kinematics assume; curl 0 is a finger
+straight along the palm, with half of each joint's own bind bend and half of the
+whole finger's taken off, because bone centres zigzag inside straight fingers on
+some rigs; spread turns each finger's first joint about the palm normal,
+fanned about the middle finger, with spread 0 setting the fingers parallel; and
+opposition folds the thumb's first joint across the palm, with the thumb curling
+across the palm and partly into it so a fist's thumb wraps over the fingers. A
+side without a hand bone or two knuckles keeps the uncalibrated write: curls
+about the model Z axis on top of the bind pose and the thumb about `thumbAxis`,
+with spread and opposition unwritten. The gait's arm swing arrives in
 the performer's channels. A clip owns the arm and finger bones
 it keys: `registerClip` builds a `ClipBoneMask` once and `body.ownership()`
 returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
