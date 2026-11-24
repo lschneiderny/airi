@@ -8,8 +8,9 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 import { path } from './cues'
-import { GestureKeys, writeHandShape } from './gesture-forms'
+import { GestureKeys } from './gesture-forms'
 import { followerInverse } from './gestures'
+import { writeHandShape } from './hand-shapes'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 

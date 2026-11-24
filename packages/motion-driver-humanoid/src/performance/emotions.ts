@@ -295,18 +295,13 @@ export function createEmotionLayer(): EmotionLayer {
       if (!hands)
         continue
       // Index to little finger, three joints each; the thumb keeps its rest curl.
-      for (let finger = 1; finger < 5; finger++) {
-        for (let joint = 0; joint < 3; joint++) {
-          const index = start + 9 + finger * 3 + joint
-          if ('curl' in hands) {
-            channels[index] += hand * (hands.curl - 1) * rest[index]
-            continue
-          }
-          const shape = HAND_SHAPES[hands.shape]
-          const indexRest = rest[start + 12 + joint]
-          const curl = shape.index[joint] * DEG * (shape.others === 'same' || indexRest === 0 ? 1 : rest[index] / indexRest)
-          channels[index] += hand * hands.amount * (curl - rest[index])
+      for (let index = start + 12; index < start + 24; index++) {
+        if ('curl' in hands) {
+          channels[index] += hand * (hands.curl - 1) * rest[index]
+          continue
         }
+        const j = index - start - 12
+        channels[index] += hand * hands.amount * (HAND_SHAPES[hands.shape].fingers[j / 3 | 0][j % 3] * DEG - rest[index])
       }
       if ('shape' in hands)
         channels[start + 24] += hand * hands.amount * (HAND_SHAPES[hands.shape].spread * (hands.spread ?? 1) * DEG - rest[start + 24])

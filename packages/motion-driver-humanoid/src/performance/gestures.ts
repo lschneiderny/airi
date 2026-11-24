@@ -10,7 +10,8 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeHandShape } from './gesture-forms'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo } from './gesture-forms'
+import { writeHandShape } from './hand-shapes'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
