@@ -49,3 +49,37 @@ export function softLimit(value: number) {
     return value
   return Math.sign(value) * (0.8 + 0.2 * Math.tanh((magnitude - 0.8) / 0.2))
 }
+
+/**
+ * Underdamped second-order follower `x'' = w^2 (target - x) - 2 zeta w x'` with natural frequency `w = 2 pi hz` and
+ * damping ratio `zeta` in (0, 1), stepped exactly for a target held over a fixed step `dt`, so it is stable at any step.
+ * State starts at rest at zero.
+ */
+export class SecondOrderFollower {
+  value = 0
+  velocity = 0
+  private readonly omega: number
+  private readonly decayCos: number
+  private readonly decaySin: number
+  private readonly decay: number
+  private readonly sigma: number
+  private readonly damped: number
+
+  constructor(hz: number, zeta: number, dt: number) {
+    this.omega = 2 * Math.PI * hz
+    this.sigma = zeta * this.omega
+    this.damped = this.omega * Math.sqrt(1 - zeta * zeta)
+    this.decay = Math.exp(-this.sigma * dt)
+    this.decayCos = Math.cos(this.damped * dt)
+    this.decaySin = Math.sin(this.damped * dt)
+  }
+
+  /** Advances one fixed step toward `target` and returns the new value. */
+  step(target: number) {
+    const error = this.value - target
+    const v = this.velocity
+    this.value = target + this.decay * (error * this.decayCos + (v + this.sigma * error) / this.damped * this.decaySin)
+    this.velocity = this.decay * (v * this.decayCos - (this.sigma * v + this.omega * this.omega * error) / this.damped * this.decaySin)
+    return this.value
+  }
+}

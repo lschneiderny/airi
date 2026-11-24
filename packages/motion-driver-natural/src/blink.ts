@@ -32,6 +32,9 @@ export class NaturalBlinkScheduler {
   /** Scales newly drawn open intervals, not lid timing or double-blink gaps. @default 1 */
   intervalScale = 1
 
+  /** Scales newly drawn closing and opening durations, not intervals or double-blink gaps. @default 1 */
+  durationScale = 1
+
   private time = 0
   private phase: Phase = 'open'
   private phaseStart = 0
@@ -49,6 +52,11 @@ export class NaturalBlinkScheduler {
   /** Lid closure multiplier in [0, 1]: 1 open, 0 fully closed. */
   get blinkFactor() {
     return this.enabled ? this.factor : 1
+  }
+
+  /** Whether a shown blink is closing or opening at the latest step; false while blinks are switched off. */
+  get lidMoving() {
+    return this.enabled && this.phase !== 'open'
   }
 
   /** Reports a gaze shift of `size` normalized eye-space units at the current time. */
@@ -82,8 +90,8 @@ export class NaturalBlinkScheduler {
     this.secondBlinkPending = !this.secondBlinkPending && this.random() < doubleBlinkProbability
     this.phase = 'closing'
     this.phaseStart = at
-    this.closeDuration = 0.06 + 0.03 * this.random()
-    this.openDuration = 0.16 + 0.10 * this.random()
+    this.closeDuration = (0.06 + 0.03 * this.random()) * this.durationScale
+    this.openDuration = (0.16 + 0.10 * this.random()) * this.durationScale
   }
 
   private factorAt(time: number) {

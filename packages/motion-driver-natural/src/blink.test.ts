@@ -83,6 +83,19 @@ describe('natural blink scheduler', () => {
     expect(record(small, 10 * 60, () => small.onGazeShift(0.15)).factors).toEqual(reference)
   })
 
+  it('shortens the lid times by the duration scale without moving the blink starts', () => {
+    const reference = record(new NaturalBlinkScheduler(createRandomStream(5)), 10 * 60).blinks
+    const quick = new NaturalBlinkScheduler(createRandomStream(5))
+    quick.durationScale = 0.58
+    const blinks = record(quick, 10 * 60).blinks.filter(blink => Number.isFinite(blink.reopen))
+    // The first blink was scheduled before any lid time was drawn, so it starts in the same step.
+    expect(blinks[0].start).toBe(reference[0].start)
+    const durations = blinks.map(blink => blink.reopen - blink.start)
+    // 0.58 times the unscaled 0.22 to 0.35 s, within one grid step at each edge.
+    expect(Math.min(...durations)).toBeGreaterThanOrEqual(0.58 * 0.22 - dt)
+    expect(Math.max(...durations)).toBeLessThanOrEqual(0.58 * 0.35 + dt)
+  })
+
   it('stays open while disabled and resumes the running schedule', () => {
     const reference = record(new NaturalBlinkScheduler(createRandomStream(4)), 120).factors
     const toggled = new NaturalBlinkScheduler(createRandomStream(4))
