@@ -13,16 +13,16 @@ import { MMDBody } from './index'
  * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
  * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` (default true) adds
  * A-pose arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
- * `hand` replaces those chains with a whole hand (`FixtureHand`), and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
+ * `hand` replaces those chains with a whole hand (`FixtureHand`), `twist` adds twist bones (`FixtureTwist`), and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
 /** Natural fixates the cursor at `point`; the camera sits ahead of the fixture's head. */
 export function cursorAt(intent: MMDBodyInput['intent'], point: Vector3): Pick<MMDBodyInput, 'intent' | 'points'> {
   return { intent: { ...intent, gaze: { ...intent.gaze, on: 'cursor' } }, points: { cursor: point, chat: null, camera: new Vector3(0, 21, 40) } }
 }
 
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, hand?: FixtureHand, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, hand?: FixtureHand, twist?: FixtureTwist, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
-  const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
+  const definitions: Array<{ name: string, parent: number, position: [number, number, number], axisLimit?: [number, number, number], append?: { parent: string, ratio: number } }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
     { name: 'グルーブ', parent: 0, position: [0, 0, 0] },
     { name: '下半身', parent: 1, position: [0, 1, 0] },
@@ -45,9 +45,9 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   ]
   // The body performer needs both arms, as every humanoid MMD rig has; `arms: false` builds a rig without them.
   if (options.arms ?? true) {
-    for (const entry of armDefinitions(options.hand)) {
+    for (const entry of armDefinitions(options.hand, options.twist)) {
       const parent = definitions.findIndex(({ name }) => name === entry.parent)
-      definitions.push({ name: entry.name, parent, position: entry.position })
+      definitions.push({ ...entry, parent })
     }
   }
   if (options.bodies)
@@ -89,13 +89,15 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
   const isIk = (index: number) => index === 16 || index === 17
   const pmx: PmxObject = {
     ...shell.pmx,
-    bones: definitions.map(({ name, parent }, index) => ({
+    bones: definitions.map(({ name, parent, axisLimit, append }, index) => ({
       ...shell.pmx.bones[0],
       name,
       parentBoneIndex: parent,
       position: bones[index].getWorldPosition(new Vector3()).toArray(),
       transformOrder: index,
-      flag: isIk(index) ? PmxObject.Bone.Flag.IsIkEnabled : 0,
+      flag: (isIk(index) ? PmxObject.Bone.Flag.IsIkEnabled : 0) | (append ? PmxObject.Bone.Flag.HasAppendRotate : 0) | (axisLimit ? PmxObject.Bone.Flag.HasAxisLimit : 0),
+      axisLimit,
+      appendTransform: append && { parentIndex: definitions.findIndex(definition => definition.name === append.parent), ratio: append.ratio },
       ik: isIk(index)
         ? {
             target: index === 16 ? 11 : 14,
@@ -209,18 +211,51 @@ function handChains(hand: FixtureHand, forearm: Vector3): Array<{ names: string[
   ]
 }
 
+/**
+ * Twist bones for the fixture's arms, as library rigs carry them: `腕捩` 0.6 along the upper arm and parent of the elbow,
+ * `手捩` 0.6 along the forearm and parent of the hand, each with a PMX fixed axis pointing back up its segment (as the
+ * parser leaves real axes) and a `捩2` grant child turning by half of it. `offset` moves `腕捩` off the segment line
+ * toward +Z by that share of the segment, and `tilt` turns its fixed axis off the segment toward +Z, radians. Without
+ * `fixedAxis` (default true) neither bone has a fixed axis.
+ */
+export interface FixtureTwist {
+  offset?: number
+  tilt?: number
+  fixedAxis?: boolean
+}
+
+interface ArmDefinition {
+  name: string
+  parent: string
+  position: [number, number, number]
+  axisLimit?: [number, number, number]
+  append?: { parent: string, ratio: number }
+}
+
 /** Bind offsets of the A-pose arms: 3-unit segments 36 degrees below horizontal on both sides. */
-function armDefinitions(hand?: FixtureHand): Array<{ name: string, parent: string, position: [number, number, number] }> {
+function armDefinitions(hand?: FixtureHand, twist?: FixtureTwist): ArmDefinition[] {
   const segment: [number, number, number] = [3 * Math.cos(0.2 * Math.PI), -3 * Math.sin(0.2 * Math.PI), 0]
   return (['左', '右'] as const).flatMap((prefix) => {
     const sign = prefix === '左' ? 1 : -1
     const mirror = ([x, y, z]: [number, number, number]): [number, number, number] => [sign * x, y, z]
-    const arm = [
+    const arm: ArmDefinition[] = [
       { name: `${prefix}肩`, parent: '上半身2', position: mirror([0.5, 1, 0]) },
       { name: `${prefix}腕`, parent: `${prefix}肩`, position: mirror([1, 0, 0]) },
       { name: `${prefix}ひじ`, parent: `${prefix}腕`, position: mirror(segment) },
       { name: `${prefix}手首`, parent: `${prefix}ひじ`, position: mirror(segment) },
     ]
+    if (twist) {
+      const along = new Vector3(...segment)
+      const upper = along.clone().multiplyScalar(0.6).add(new Vector3(0, 0, (twist.offset ?? 0) * 3))
+      const lower = along.clone().multiplyScalar(0.6)
+      const axis = (tilt: number): [number, number, number] | undefined => {
+        if (twist.fixedAxis === false)
+          return undefined
+        const direction = along.clone().normalize()
+        return mirror(direction.applyAxisAngle(direction.clone().cross(new Vector3(0, 0, 1)).normalize(), -tilt).negate().toArray())
+      }
+      arm.splice(2, 2, { name: `${prefix}腕捩`, parent: `${prefix}腕`, position: mirror(upper.toArray()), axisLimit: axis(twist.tilt ?? 0) }, { name: `${prefix}腕捩2`, parent: `${prefix}腕`, position: mirror(upper.toArray()), append: { parent: `${prefix}腕捩`, ratio: 0.5 } }, { name: `${prefix}ひじ`, parent: `${prefix}腕捩`, position: mirror(along.clone().sub(upper).toArray()) }, { name: `${prefix}手捩`, parent: `${prefix}ひじ`, position: mirror(lower.toArray()), axisLimit: axis(0) }, { name: `${prefix}手捩2`, parent: `${prefix}ひじ`, position: mirror(lower.toArray()), append: { parent: `${prefix}手捩`, ratio: 0.5 } }, { name: `${prefix}手首`, parent: `${prefix}手捩`, position: mirror(along.clone().sub(lower).toArray()) })
+    }
     if (hand) {
       return [...arm, ...handChains(hand, new Vector3(...segment).normalize()).flatMap(({ names, points }) => names.map((name, k) => ({
         name: `${prefix}${name}`,
