@@ -4,8 +4,8 @@ import type { BodyDirectorInput, BodyDirectorMemory } from './index'
 
 import { describe, expect, it } from 'vitest'
 
-import { createLocomotion } from '../locomotion'
-import { decideBody, initialBodyDirectorMemory, NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT, STEP_ONTO_CURSOR_MIN_LEGS } from './index'
+import { createLocomotion, urgencySpeedShare } from '../locomotion'
+import { decideBody, GOAL_URGENCY, initialBodyDirectorMemory, NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT, STEP_ONTO_CURSOR_MIN_LEGS } from './index'
 
 // The locomotion tests' fixture traits: leg 10, on a ground of 60 legs each side.
 const leg = 10
@@ -134,26 +134,31 @@ function simulate(scenario: PressScenario) {
   }
 }
 
+/** Seconds a chase at full speed takes to brake: the gait sheds v_ref per second, so 1 s at the former walk speed. */
+const chaseBrakeS = urgencySpeedShare(GOAL_URGENCY.chase)
+
 describe('body director press loop', () => {
-  it.each([1, 2, 4])('brakes within 1 s and ends within 0.5 L of a pointer that lands on her %i s into a chase', (landAtS) => {
+  it.each([1, 2, 4])('brakes within the chase\'s braking time and ends within 0.5 L of a pointer that lands on her %i s into a chase', (landAtS) => {
     const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
 
-    // D16 adds another walk after braking; the original 1 s bound still applies to that first stop.
+    // D16 adds another walk after braking; the braking bound applies to that first stop. It was 1 s while a chase
+    // walked; since 2026-11-23 a chase hurries at 1.131 v_ref and needs up to 1.131 s (1.125 s when it lands at 2 s).
     expect(result.firstRestAfterLandingS).not.toBeNull()
-    expect(result.firstRestAfterLandingS).toBeLessThanOrEqual(1)
+    expect(result.firstRestAfterLandingS).toBeLessThanOrEqual(chaseBrakeS)
     expect(result.offsetLegs).toBeLessThanOrEqual(0.5)
   })
 
   // Total travel without the correction in this deterministic fixture, rounded up to six decimals. Pinned again on
   // 2026-11-23: a walk now turns while it steps off, so she is under way sooner than when she first turned on the spot
-  // (0, 0.676 and 2.535001 L before).
+  // (0, 0.676 and 2.535001 L before). Pinned again the same day when a chase began to hurry at urgency 0.75: it covers
+  // more ground before the pointer lands and slides further while braking (0.247382, 1.400606 and 3.008447 L at walk).
   it.each([
-    { landAtS: 1, originalTravelLegs: 0.247382 },
-    { landAtS: 2, originalTravelLegs: 1.400606 },
-    { landAtS: 4, originalTravelLegs: 3.008447 },
+    { landAtS: 1, originalTravelLegs: 0.222553 },
+    { landAtS: 2, originalTravelLegs: 1.549428 },
+    { landAtS: 4, originalTravelLegs: 3.339705 },
   ])('takes at most one corrective step onto a pointer that lands on her $landAtS s into a chase', ({ landAtS, originalTravelLegs }) => {
     const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0, chase: true, wanderAtS: null })
-    // One 120 Hz tick at the nominal walk speed is 0.0075 L; allow 0.01 L for discrete stopping.
+    // One 120 Hz tick at the chase speed is 0.0085 L; allow 0.01 L for discrete stopping.
     const toleranceLegs = 0.01
 
     expect(result.offsetLegs, JSON.stringify({ landAtS, ...result })).toBeLessThanOrEqual(STEP_ONTO_CURSOR_MIN_LEGS + toleranceLegs)
@@ -164,8 +169,10 @@ describe('body director press loop', () => {
     expect(result.travelLegs).toBeLessThanOrEqual(originalTravelLegs + result.correctiveDistanceLegs + toleranceLegs)
   })
 
-  it.each([1, 2, 4])('comes to rest on a pointer that lands 0.5 L ahead of her %i s into a chase', (landAtS) => {
-    const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0.5 * leg, chase: true, wanderAtS: null })
+  // The pointer lands 0.65 L ahead, beyond the 0.58 L a chase at full speed slides while braking. It landed 0.5 L
+  // ahead while a chase walked (0.45 L slide); a hurried chase passed a pointer that close by 0.093 L at 2 s.
+  it.each([1, 2, 4])('comes to rest on a pointer that lands 0.65 L ahead of her %i s into a chase', (landAtS) => {
+    const result = simulate({ mode: 'watching', landAtS, farX: 8 * leg, landOffset: 0.65 * leg, chase: true, wanderAtS: null })
 
     expect(result.offsetLegs).toBeLessThanOrEqual(0.02)
     expect(result.goalX).toBeNull()

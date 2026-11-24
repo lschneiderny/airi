@@ -289,7 +289,9 @@ and looser still while she dozes.
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
-`stay`) and the urgency. She approaches the chat on a new `attend.chatOpenSeq`, chases the cursor while
+`stay`) and the urgency, which `GOAL_URGENCY` sets per reason: a wander ambles at 0.2, a visit, the walk home and the
+corrective step onto the cursor stroll at 0.3, an unfolded chat draws her at 0.5, a tool and an entry walk at 0.6, and a
+chase hurries at 0.75. She approaches the chat on a new `attend.chatOpenSeq`, chases the cursor while
 `attend.untilMs` is open (the host stamps it from the character mind's `attend`
 intent, 60 s after a poke, pet start, drag or sent message; the conductor
 dispatches it only under the Natural driver, so under the classic driver the
