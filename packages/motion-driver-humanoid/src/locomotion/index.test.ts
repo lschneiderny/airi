@@ -186,8 +186,9 @@ describe('sidestep', () => {
       expect(forwarded.frames).toEqual(ordinary.frames)
       hash.update(JSON.stringify(ordinary.frames, (_, value: unknown) => typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
     }
-    // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers.
-    expect(hash.digest('hex')).toBe('b52b37538dac097a458cae3982b098e660491da96a3576efcc0f01380004e8fb')
+    // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers. Re-pinned when the frame
+    // gained `armSwing.wristFlex` and `handCurl` (hand carriage): without those two keys the frames hash as before.
+    expect(hash.digest('hex')).toBe('ca97dd3666a09f1882d72b8b36d8bff1de9c0c6473acd3ae264a202146060121')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -1186,6 +1187,28 @@ describe('walk style', () => {
     const strikes = (frames: LocomotionFrame[]) => frames.flatMap(frame => frame.events).filter(event => event.kind === 'heelStrike').length
     expect(strikes(shaped) / strikes(neutral)).toBeGreaterThan(1.1)
     expect(mean(shaped, frame => frame.speed) / mean(neutral, frame => frame.speed)).toBeCloseTo(1, 1)
+  })
+
+  it('carries the hand by the style while walking and hands it back with the gait weight at the stop', () => {
+    const style = { ...NEUTRAL_GAIT_STYLE, wristCarry: 20 * rad, handCurl: 3 }
+    const run = createRun(scenarioDefinitions.arrive.start)
+    run.advance(scenarioDefinitions.arrive.seconds, () => ({ ...scenarioDefinitions.arrive.drive(), style }))
+    const walking = run.frames.filter(frame => frame.mode === 'walking')
+    expect(walking.length).toBeGreaterThan(120)
+    for (const frame of walking) {
+      expect(frame.armSwing.left.wristFlex).toBeCloseTo(-20 * rad, 6)
+      expect(frame.handCurl).toBeCloseTo(3, 6)
+    }
+    // The performer adds each gait channel by the weight, so the weighted carriage is what the hand shows: the weight's
+    // smoothstep spreads it over the start and the stop, no tick moving it by more than 5 % of its size.
+    const wrist = run.frames.map(frame => frame.weight * frame.armSwing.right.wristFlex)
+    const curl = run.frames.map(frame => frame.weight * (frame.handCurl - 1))
+    const steps = (values: number[]) => Math.max(...values.slice(1).map((value, index) => Math.abs(value - (values[index] as number))))
+    expect(steps(wrist)).toBeLessThan(0.05 * 20 * rad)
+    expect(steps(curl)).toBeLessThan(0.05 * 2)
+    expect(run.frames.at(-1)?.mode).toBe('idle')
+    expect(wrist.at(-1)).toBeCloseTo(0, 9)
+    expect(curl.at(-1)).toBeCloseTo(0, 9)
   })
 
   it('eases into a new style under way without stepping any channel', () => {

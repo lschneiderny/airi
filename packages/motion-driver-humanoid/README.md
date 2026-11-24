@@ -246,7 +246,10 @@ point holds still; `target` keeps its meaning. Without `traits.foot`, and in tur
 performer's heel raise: a host turns the foot toe-down about its ball by the performer's negative `FootPitch` channel.
 `input.style` (`GaitStyle`, default `NEUTRAL_GAIT_STYLE`) sizes the walk without changing its structure: speed,
 stride at a given speed, bounce, foot lift, roll, pelvis twist and list, step width, the torso's counter-twist, arm
-swing, elbow carry, arm hang, trunk lean and head carriage (`frame.body.neckPitch`). Ratios are 1 and offsets 0 in the
+swing, elbow carry, arm hang, trunk lean, head carriage (`frame.body.neckPitch`), the wrist's carriage beyond the rest's
+10 degrees of extension (`armSwing[side].wristFlex`, palmar positive) and the finger curl as a share of the rest curl
+(`frame.handCurl`; the MMD adapter writes it as each finger joint's offset from `DEFAULT_ARM_REST_POSE`). Like every arm
+term, the hand rides the gait's weight: standing, the hand shape stays the emotion layer's. Ratios are 1 and offsets 0 in the
 neutral style, which reproduces the refitted walk exactly, and `GAIT_STYLE_BOUNDS` holds each value inside the range
 acted walking styles span. Between walks the style follows its input at once; a walk or a turn under way eases into a
 new one with a 0.5 s time constant, so a change shows within a step or two. A bouncy style bends the knee after each
@@ -263,7 +266,10 @@ so a wide style's swing slows into a tail or a skirt instead of stepping off it.
 `walkStyleFrom({ mood, energy, baseline, urgency })` turns the performer's mood, the host energy, a character's
 `GaitBaseline` (a card's walking baseline, owned by `@proj-airi/stage-shared/character-state`) and the goal's urgency
 into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting tension and energy
-0.5 with no baseline gives the neutral style. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
+0.5 with no baseline gives the neutral style. Valence, arousal and energy extend the wrist and sadness, fatigue and
+tension let it drop toward the forearm's line; tension closes the hand toward a fist, most with arousal, and a calm
+positive mood opens it; a baseline's `armCarry` extends the wrist a little and opens the hand, and its `armSwing` above 0
+closes it a little. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
 more at 1; at or below it, or omitted, the urgency changes no style value.
 
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and

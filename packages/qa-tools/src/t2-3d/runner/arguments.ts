@@ -14,7 +14,7 @@ export class Motion3dUsageError extends Error {
 }
 
 /** Style values given in degrees on the command line. */
-const ANGLE_KEYS: ReadonlySet<GaitStyleKey> = new Set(['elbowCarry', 'armOut', 'lean', 'head'])
+const ANGLE_KEYS: ReadonlySet<GaitStyleKey> = new Set(['elbowCarry', 'armOut', 'lean', 'head', 'wristCarry'])
 
 /**
  * `key=value,...` over `GaitStyle`'s keys, angles in degrees; unnamed keys keep the neutral walk's value. A value outside

@@ -72,6 +72,44 @@ describe('walkStyleFrom', () => {
     expect(upright.head).toBeLessThan(0)
   })
 
+  it('valence, arousal and energy extend the wrist; sadness, fatigue and tension let it drop toward the forearm', () => {
+    const carry = (mood: Partial<typeof calm>, energy = 0.5) => style(mood, energy).wristCarry
+    const ends = [-1, -0.5, 0, 0.5, 1]
+    for (const key of ['valence', 'arousal'] as const) {
+      const values = ends.map(value => carry({ [key]: value }))
+      for (let i = 1; i < values.length; i++)
+        expect(values[i]).toBeGreaterThan(values[i - 1] as number)
+    }
+    const energies = [0, 0.25, 0.5, 0.75, 1].map(energy => carry({}, energy))
+    for (let i = 1; i < energies.length; i++)
+      expect(energies[i]).toBeGreaterThan(energies[i - 1] as number)
+    expect(carry({ tension: 1 })).toBeLessThan(carry({ tension: 0.5 }))
+    expect(carry({ tension: 0.5 })).toBeLessThan(0)
+    // A sad walk carries the hand about in line with the forearm, the rest's 10 degrees taken back.
+    expect(carry({ valence: -1, arousal: -0.6 }, 0.3)).toBeCloseTo(-10 * Math.PI / 180, 12)
+  })
+
+  it('tension closes the hand, most with arousal, and a calm positive walk opens it', () => {
+    const curl = (mood: Partial<typeof calm>) => style(mood).handCurl
+    const tensions = [0.15, 0.4, 0.7, 1].map(tension => curl({ tension }))
+    for (let i = 1; i < tensions.length; i++)
+      expect(tensions[i]).toBeGreaterThan(tensions[i - 1] as number)
+    expect(curl({ tension: 0.7, arousal: 0.8 })).toBeGreaterThan(curl({ tension: 0.7 }))
+    expect(curl({ valence: -0.6, arousal: 0.8, tension: 0.9 })).toBe(GAIT_STYLE_BOUNDS.handCurl[1])
+    const valences = [0, 0.5, 1].map(valence => curl({ valence }))
+    for (let i = 1; i < valences.length; i++)
+      expect(valences[i]).toBeLessThan(valences[i - 1] as number)
+    expect(curl({ valence: 1 })).toBeLessThan(0.5)
+  })
+
+  it('a carried arm extends the wrist and opens the hand, and a wide swing closes it a little', () => {
+    const carried = style({}, 0.5, { armCarry: 0.6 })
+    expect(carried.wristCarry).toBeGreaterThan(0)
+    expect(carried.handCurl).toBeLessThan(1)
+    expect(style({}, 0.5, { armSwing: 0.6 }).handCurl).toBeGreaterThan(1)
+    expect(style({}, 0.5, { armSwing: -0.6 }).handCurl).toBe(1)
+  })
+
   it('leaves every style alone at or below the walk urgency', () => {
     const sad = { mood: { valence: -0.7, arousal: -0.4, tension: 0.5 }, energy: 0.2, baseline: { posture: 0.5 } }
     for (const urgency of [0, STROLL_URGENCY, WALK_URGENCY]) {
