@@ -25,6 +25,15 @@ export const GAIT_BASELINE_PRESETS: Readonly<Record<GaitBaselinePreset, Readonly
   heavy: Object.freeze({ stride: -0.2, sway: 0.3, width: 0.8, bounce: 0.6, armSwing: 0, armCarry: 0.2, posture: -0.4 }),
 })
 
+/**
+ * `gait` with one value set, rounded to hundredths and clamped to [-1, 1]; `undefined` when every value is then 0, so a
+ * neutral card stores no baseline.
+ */
+export function withGaitBaselineValue(gait: GaitBaseline | undefined, key: keyof GaitBaseline, value: number): GaitBaseline | undefined {
+  const next = { ...gait, [key]: Math.min(1, Math.max(-1, Math.round(value * 100) / 100)) }
+  return GAIT_BASELINE_KEYS.every(name => (next[name] ?? 0) === 0) ? undefined : next
+}
+
 /** The preset whose values `gait` holds, an omitted value counting as 0, or `null` for a custom baseline. */
 export function gaitBaselinePresetOf(gait: GaitBaseline | undefined): GaitBaselinePreset | null {
   return GAIT_BASELINE_PRESET_NAMES.find(name => GAIT_BASELINE_KEYS.every(key => (gait?.[key] ?? 0) === GAIT_BASELINE_PRESETS[name][key])) ?? null
