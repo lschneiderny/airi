@@ -45,6 +45,7 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
   out[15] = 0.35 * body.twist.head
   out[18] = 0.65 * body.twist.head
   out[13] = body.chestPitch
+  out[16] = body.neckPitch
   out[14] = body.chestCounterRoll
   for (const side of ['left', 'right'] as const) {
     out[swingChannels[side].flex] = armSwing[side].flexion

@@ -241,6 +241,18 @@ strike. `roll.ankleOffset` is the ankle's displacement from `target` as the foot
 point holds still; `target` keeps its meaning. Without `traits.foot`, and in turns, every roll is 0.
 `ballRoll(foot, pitch)` is the same ball-pivot roll for a standing foot the gait does not carry, such as the
 performer's heel raise: a host turns the foot toe-down about its ball by the performer's negative `FootPitch` channel.
+`input.style` (`GaitStyle`, default `NEUTRAL_GAIT_STYLE`) sizes the walk without changing its structure: speed,
+stride at a given speed, bounce, foot lift, roll, pelvis twist and list, step width, the torso's counter-twist, arm
+swing, elbow carry, arm hang, trunk lean and head carriage (`frame.body.neckPitch`). Ratios are 1 and offsets 0 in the
+neutral style, which reproduces the refitted walk exactly, and `GAIT_STYLE_BOUNDS` holds each value inside the range
+acted walking styles span. Between walks the style follows its input at once; a walk or a turn under way eases into a
+new one with a 0.5 s time constant, so a change shows within a step or two. A bouncy style bends the knee after each
+heel strike, not at it; a list wider than the gait's lowers the pelvis by how far it raises the stance hip; the style's
+roll acts on full strides only, and the roll is scaled against the style's own full stride.
+`walkStyleFrom({ mood, energy, baseline })` turns the performer's mood, the host energy and a character's
+`GaitBaseline` into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting
+tension and energy 0.5 with no baseline gives the neutral style.
+
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
 first-foot ties.
