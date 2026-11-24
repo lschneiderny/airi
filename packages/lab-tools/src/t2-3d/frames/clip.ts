@@ -1,6 +1,9 @@
+import type { GaitStyle } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
 import { delimiter, extname, join } from 'node:path'
+
+import { GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE } from '@proj-airi/motion-driver-humanoid/locomotion'
 
 import { drawText, GLYPH_HEIGHT, GLYPH_WIDTH } from './font'
 
@@ -33,6 +36,37 @@ export function clipTimes(from: number, to: number, hz: number): number[] {
   return Array.from({ length: Math.floor((to - from) * hz + 1e-6) + 1 }, (_, i) => from + i / hz)
 }
 
+/** The walk style, mood and energy a run's trace source records it held from the start. */
+export interface HeldInputs {
+  readonly walkStyle?: GaitStyle | null
+  readonly mood?: { readonly valence: number, readonly arousal: number, readonly tension: number } | null
+  readonly energy?: number | null
+}
+
+/**
+ * Header lines naming what a run held at `t`: its recorded mood and energy, replaced by the scenario's `mood:` and
+ * `energy:` cues up to `t`, and the walk style's values that differ from the neutral walk. The clip wraps a long style line.
+ */
+export function heldLines(events: readonly MotionTraceEvent[], held: HeldInputs, t: number): string[] {
+  let mood = held.mood ? `${held.mood.valence},${held.mood.arousal},${held.mood.tension}` : null
+  let energy = held.energy != null ? String(held.energy) : null
+  for (const event of events) {
+    if (event.t > t + 1e-9 || event.kind !== 'marker')
+      continue
+    if (event.label.startsWith('mood:'))
+      mood = event.label.slice('mood:'.length)
+    else if (event.label.startsWith('energy:'))
+      energy = event.label.slice('energy:'.length)
+  }
+  const style = held.walkStyle
+  const styled = style ? GAIT_STYLE_KEYS.filter(key => style[key] !== NEUTRAL_GAIT_STYLE[key]) : []
+  return [
+    ...mood ? [`mood ${mood}`] : [],
+    ...energy ? [`energy ${energy}`] : [],
+    ...style ? [`style ${styled.join(', ') || 'neutral'}`] : [],
+  ]
+}
+
 /** Events in the last `holdSeconds` before `t`, newest first, so a marker stays on screen long enough to read. */
 export function activeEvents(events: readonly MotionTraceEvent[], t: number, label: (event: MotionTraceEvent) => string, holdSeconds = 1): string[] {
   return events.filter(event => event.t <= t + 1e-9 && event.t > t - holdSeconds).sort((a, b) => b.t - a.t).map(event => `${event.t.toFixed(2)} ${label(event)}`)
@@ -50,7 +84,6 @@ export interface ClipBlock {
 }
 
 const SEPARATOR = 6
-const HEADER_LINES = 5
 const SCALE = 2
 
 function wrapWords(line: string, columns: number): string[] {
@@ -68,13 +101,19 @@ function wrapWords(line: string, columns: number): string[] {
   return current ? [...lines, current] : lines
 }
 
+/** A run block's header lines, wrapped to the width of its `views` panels. */
+export function wrapHeader(header: readonly string[], panelWidth: number, views: number): string[] {
+  return header.flatMap(line => wrapWords(line, Math.floor((views * panelWidth - 4) / (GLYPH_WIDTH * SCALE))))
+}
+
 /**
- * One clip frame: run blocks left to right (before, then after), each a header over its view panels, and the footer
- * across the bottom. Width and height are even, as yuv420p needs.
+ * One clip frame: run blocks left to right (before, then after), each a header of `headerLines` wrapped lines over its
+ * view panels, and the footer across the bottom. Width and height are even, as yuv420p needs. The first frame sizes the
+ * video, so a caller passes the most header lines any frame of the clip wraps to.
  */
-export function composeClipFrame(blocks: readonly ClipBlock[], panelWidth: number, panelHeight: number, footer: readonly string[]): { rgb: Uint8Array, width: number, height: number } {
+export function composeClipFrame(blocks: readonly ClipBlock[], panelWidth: number, panelHeight: number, footer: readonly string[], headerLines: number): { rgb: Uint8Array, width: number, height: number } {
   const views = Math.max(...blocks.map(block => block.panels.length))
-  const headerHeight = HEADER_LINES * GLYPH_HEIGHT * SCALE + 6
+  const headerHeight = headerLines * GLYPH_HEIGHT * SCALE + 6
   const rawWidth = blocks.length * views * panelWidth + (blocks.length - 1) * SEPARATOR
   const width = rawWidth + (rawWidth % 2)
   const footerLines = footer.flatMap(line => wrapWords(line, Math.floor((width - 4) / GLYPH_WIDTH)))
@@ -89,7 +128,7 @@ export function composeClipFrame(blocks: readonly ClipBlock[], panelWidth: numbe
       for (let y = 0; y < headerHeight + panelHeight; y++)
         rgb.fill(60, ((y * width) + x0 - SEPARATOR) * 3, ((y * width) + x0) * 3)
     }
-    block.header.slice(0, HEADER_LINES).forEach((line, i) => drawText(rgb, width, height, x0 + 2, 3 + i * GLYPH_HEIGHT * SCALE, line.slice(0, columns), SCALE))
+    wrapHeader(block.header, panelWidth, views).slice(0, headerLines).forEach((line, i) => drawText(rgb, width, height, x0 + 2, 3 + i * GLYPH_HEIGHT * SCALE, line.slice(0, columns), SCALE))
     block.panels.forEach((panel, v) => {
       for (let y = 0; y < panelHeight; y++)
         rgb.set(panel.rgb.subarray(y * panelWidth * 3, (y + 1) * panelWidth * 3), ((headerHeight + y) * width + x0 + v * panelWidth) * 3)
