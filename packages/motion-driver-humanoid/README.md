@@ -690,7 +690,12 @@ thumb across the outside of the index and middle fingers. The emotion layer
 moves the whole hand (thumb, spread and opposition included) from the hand she
 holds, the rest hand plus the walk's, toward the open or fist shape with
 `addHandShape`, so an angry fist on a closed walking hand stays a fist. The
-gesture layer shapes each stroke and arm form from them. Layers implement clip admission/cancellation
+gesture layer shapes each stroke and arm form from them. Every blend between
+shapes follows the hand's closing order (`blendHand`): a closing finger leads
+with its knuckle and rolls its tip in last, the thumb folds over the fingers
+last, and an opening hand retraces that path, so a partly closed hand never
+hooks its fingertips; the gesture layer's segments time their finger channels
+the same way. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 

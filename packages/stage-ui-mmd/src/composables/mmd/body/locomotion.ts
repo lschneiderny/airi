@@ -3,7 +3,7 @@ import type { FootGeometry, LocomotionFrame, LocomotionInput } from '@proj-airi/
 import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
 import { createLocomotion, GAIT_STYLE_BOUNDS } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { BODY_TICK, channelIndex, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
+import { blendHand, BODY_TICK, channelIndex, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 /** The director's goal, including the optional corrective sidestep. */
@@ -69,7 +69,7 @@ writeHandShape('fist', walkHands.fist)
 /**
  * Writes the walk's hand (`LocomotionFrame.handCurl`) into `out` as one side's finger, thumb, spread and opposition
  * offsets from the performer's nominal rest hand, the `relaxed` shape (`DEFAULT_ARM_REST_POSE`). A hand curl of 1 is
- * the rest hand; toward the ends of `GAIT_STYLE_BOUNDS.handCurl` the hand blends channel by channel into the `open`
+ * the rest hand; toward the ends of `GAIT_STYLE_BOUNDS.handCurl` the hand blends in its closing order into the `open`
  * shape and into the `fist`, so the most closed walking hand is a fist with its thumb across the fingers, not the rest
  * hand's curl scaled past it.
  */
@@ -77,8 +77,11 @@ export function writeWalkHand(handCurl: number, side: 'left' | 'right', out: { [
   const [least, most] = GAIT_STYLE_BOUNDS.handCurl
   const toward = handCurl < 1 ? walkHands.open : walkHands.fist
   const share = Math.min(1, handCurl < 1 ? (1 - handCurl) / (1 - least) : (handCurl - 1) / (most - 1))
+  // In the hand's closing order (`blendHand`), so a walking hand partly closed toward the fist leads with its knuckles.
+  const start = swingChannels[side].clavElev
+  blendHand(walkHands.rest, toward, share, out, 0, 0, start)
   for (let j = 9; j < 26; j++)
-    out[swingChannels[side].clavElev + j] = share * (toward[j] - walkHands.rest[j])
+    out[start + j] -= walkHands.rest[j]
 }
 
 /** Runs one character's gait one fixed tick at a time; `MMDBodyClock` decides how many ticks a display frame holds. */

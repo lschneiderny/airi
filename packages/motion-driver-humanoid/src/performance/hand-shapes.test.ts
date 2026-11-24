@@ -3,7 +3,7 @@ import type { HandShape } from './hand-shapes'
 import { describe, expect, it } from 'vitest'
 
 import { ARM_START, BODY_CHANNELS, DEG, limitChannel } from './channels'
-import { addHandShape, HAND_SHAPES, writeHandShape } from './hand-shapes'
+import { addHandShape, blendHand, HAND_SHAPES, writeHandShape } from './hand-shapes'
 
 const shapes = Object.keys(HAND_SHAPES) as HandShape[]
 
@@ -51,18 +51,51 @@ describe('hand shapes', () => {
     expect(point.opposition).toBe(fist.opposition)
   })
 
-  it('moves a hand a share of the way to a shape, thumb, spread and opposition included', () => {
+  it('closes a hand knuckles first and rolls the fingertips in last', () => {
+    const half = new Float64Array(26)
+    const [relaxed, fist] = [pose('relaxed'), pose('fist')]
+    blendHand(relaxed, fist, 0.5, half)
+    const gone = (j: number) => (half[j] - relaxed[j]) / (fist[j] - relaxed[j])
+    for (let digit = 1; digit < 5; digit++) {
+      const first = 9 + digit * 3
+      expect(gone(first)).toBeGreaterThan(gone(first + 1))
+      expect(gone(first + 1)).toBeGreaterThan(gone(first + 2))
+    }
+    // The fingers come together as the knuckles close; the thumb folds over them last.
+    expect(gone(24)).toBeGreaterThan(0.5)
+    for (const thumb of [9, 10, 11, 25])
+      expect(gone(thumb)).toBeLessThan(0.5)
+  })
+
+  it('opens a hand by retracing the way it closed', () => {
+    const [relaxed, fist] = [pose('relaxed'), pose('fist')]
+    const closing = new Float64Array(26)
+    const opening = new Float64Array(26)
+    for (const share of [0.2, 0.5, 0.8]) {
+      blendHand(relaxed, fist, share, closing)
+      blendHand(fist, relaxed, 1 - share, opening)
+      for (let j = 9; j < 26; j++)
+        expect(opening[j]).toBeCloseTo(closing[j], 12)
+    }
+  })
+
+  it('moves a hand a share of the way to a shape in the closing order, and the whole way at a share of 1', () => {
     const rest = new Float64Array(BODY_CHANNELS.length)
     const relaxed = pose('relaxed')
     const start = ARM_START.right
     rest.set(relaxed.subarray(9), start + 9)
-    const channels = new Float64Array(BODY_CHANNELS.length)
-    addHandShape('fist', 0.5, rest, channels, start, 0.5)
     const fist = pose('fist')
-    for (let j = 9; j < 24; j++)
-      expect(channels[start + j]).toBeCloseTo(0.5 * (fist[j] - relaxed[j]))
-    expect(channels[start + 24]).toBeCloseTo(0.5 * (0.5 * fist[24] - relaxed[24]))
-    expect(channels[start + 25]).toBeCloseTo(0.5 * (fist[25] - relaxed[25]))
-    expect(channels[ARM_START.left + 12]).toBe(0)
+    fist[24] *= 0.5
+    const half = new Float64Array(BODY_CHANNELS.length)
+    addHandShape('fist', 0.5, rest, half, start, 0.5)
+    const blended = new Float64Array(26)
+    blendHand(relaxed, fist, 0.5, blended)
+    for (let j = 9; j < 26; j++)
+      expect(half[start + j]).toBeCloseTo(blended[j] - relaxed[j])
+    const whole = new Float64Array(BODY_CHANNELS.length)
+    addHandShape('fist', 1, rest, whole, start, 0.5)
+    for (let j = 9; j < 26; j++)
+      expect(whole[start + j]).toBeCloseTo(fist[j] - relaxed[j])
+    expect(half[ARM_START.left + 12]).toBe(0)
   })
 })

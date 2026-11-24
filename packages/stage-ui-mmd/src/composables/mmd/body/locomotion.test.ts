@@ -27,12 +27,15 @@ describe('writeWalkHand', () => {
     expect(out[channelIndex('leftMiddle1')]).toBe(0)
   })
 
-  it('opens toward the open hand at the bottom, halfway between', () => {
+  it('opens toward the open hand at the bottom, halfway between in the hand\'s closing order', () => {
     const [least] = GAIT_STYLE_BOUNDS.handCurl
     const full = walkHand(least)
     const half = walkHand((1 + least) / 2)
-    const i = channelIndex('rightSpread')
-    expect(full[i]).toBeCloseTo(HAND_SHAPES.open.spread * DEG - HAND_SHAPES.relaxed.spread * DEG, 9)
-    expect(half[i]).toBeCloseTo(full[i] / 2, 9)
+    const spread = channelIndex('rightSpread')
+    const middle = channelIndex('rightMiddle1')
+    expect(full[spread]).toBeCloseTo(HAND_SHAPES.open.spread * DEG - HAND_SHAPES.relaxed.spread * DEG, 9)
+    // An opening hand unrolls its fingers before it fans them; the middle joint moves with the hand.
+    expect(half[middle]).toBeCloseTo(full[middle] / 2, 9)
+    expect(half[spread]).toBeLessThan(full[spread] / 2)
   })
 })
