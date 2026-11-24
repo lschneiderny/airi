@@ -19,6 +19,9 @@ export interface FootSample extends FootAnchor {
   readonly kneeAnimated: boolean
 }
 
+/** The share of its leg's length a standing foot may stand from its hip before the pelvis drops. */
+export const STANDING_REACH_SHARE = 0.985
+
 export interface FootContactInput {
   /** Requested translation from the bind hips, in mesh-local model units. */
   readonly pelvisOffset: Vec3
@@ -27,8 +30,9 @@ export interface FootContactInput {
   readonly enabled: boolean
   readonly duck: number
   /**
-   * The share of its leg's length an anchor may stand from its hip before the pelvis drops; 0.985 when omitted. A gait
-   * that keeps its own reach passes its limit, so the pelvis drops only where the gait's own drop falls short.
+   * The share of its leg's length an anchor may stand from its hip before the pelvis drops; `STANDING_REACH_SHARE` when
+   * omitted. A gait that keeps its own reach passes its limit, so the pelvis drops only where the gait's own drop falls
+   * short.
    */
   readonly reach?: number
 }
@@ -112,7 +116,7 @@ class FootContact {
     }
 
     const maxDrop = 0.06 * Math.min(this.lengths.left, this.lengths.right)
-    const reach = input.reach ?? 0.985
+    const reach = input.reach ?? STANDING_REACH_SHARE
     const offset = input.pelvisOffset
     let lateralScale = 1
     // Intersect both legs' reachable horizontal disks at the maximum permitted drop.

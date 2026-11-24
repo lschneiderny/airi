@@ -7,7 +7,7 @@ import type { AnimationClip, Bone, Matrix4 } from 'three'
 import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
 
-import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
+import { createFootContact, planFootSteps, STANDING_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import { ballRoll, GAIT_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { Euler, Quaternion, Vector3 } from 'three'
 
@@ -183,7 +183,7 @@ export class MMDFootContact {
     clips: ReadonlyMap<string, AnimationClip>
     root: MMDRootPose
     /** Gait foot targets in the ground frame; they own both feet while the gait weight is above 0. */
-    gait: Pick<LocomotionFrame, 'feet' | 'walkForm'> | null
+    gait: Pick<LocomotionFrame, 'feet' | 'walkForm' | 'weight'> | null
     /**
      * The performer's foot pitch per foot, radians (its `FootPitch` channels); a negative pitch turns a standing foot
      * toe-down about its ball (architecture 5.1), as a heel raise does. Read while the gait does not own the feet and
@@ -241,7 +241,9 @@ export class MMDFootContact {
       feet: samples,
       enabled: !input.disabled,
       duck: input.contactDuck,
-      ...input.gait?.walkForm ? { reach: GAIT_REACH_SHARE } : {},
+      // The gait's reach eases into the standing one with its weight: stepped at weight 0, it dropped the pelvis 0.008 L
+      // in one frame at the end of every stop.
+      ...input.gait?.walkForm ? { reach: STANDING_REACH_SHARE + (GAIT_REACH_SHARE - STANDING_REACH_SHARE) * input.gait.weight } : {},
     }, dt)
     for (const leg of this.legs) {
       const contact = this.result.feet[leg.side]
