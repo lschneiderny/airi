@@ -865,10 +865,12 @@ tries the wrist a hand length from the fingertips in 600 directions, solves the
 arm to it, and turns pronation and palmar flexion so the hand ends at the
 fingertips; the first back-off step with a key clear of the proxies inside the
 limits wins, the touch by limit margin and the sweep by the smallest joint
-change from the touch. `capabilities.hairTouch` holds when both sides have head
-clearance, 4e's precondition, and both arms reach both keys; without head
-clearance the keys are not searched. On the real rigs all three arms reach
-both keys; Chisa has head clearance and tucks, Ellen and Vivian do not.
+change from the touch. `capabilities.hairTouch` holds when both arms reach both
+keys: a key clear of the proxies at the side of the head, with its path from
+rest, is the head clearance 4e's precondition asks for, so the conservative
+`headClearance` probe (a wrist outside a sphere round every head proxy) no
+longer gates it. On the ten test rigs every arm reaches both keys except
+Lucilla's and Sigrika's, so the other eight tuck.
 Each lead stroke also nods the head (the speech head beat, MMD only): neck
 and head pitch down together by 3 degrees for a major stroke (Graf et al. 2002,
 about 3 to 5 degrees per accent nod), 0.6 of that for a minor stroke, 0.6 more
