@@ -132,8 +132,11 @@ function unit(value: number | undefined, min = -1) {
  *   degrees), foot lift and twist all rise with it.
  * - Valence moves head and trunk carriage and the arm swing: not-confident and sad walks carry the head 13 to 36 degrees
  *   further forward than a normal walk, with the arms nearly still; proud walks carry it back.
- * - Tension bends the elbows (44 to 73 degrees), shrinks the swing, the roll and the foot lift, and leans the trunk.
- * - Low energy is fatigue: trunk and head forward, shorter steps, less arm swing, a wider stance; the bounce stays.
+ * - Tension bends the elbows (44 to 73 degrees), shrinks the swing, the roll and the foot lift, and leans the trunk
+ *   forward: angry and not-confident walks lean 11 and 14 degrees more than a normal walk.
+ * - Low energy is fatigue: trunk and head forward (tired walks lean 11 degrees more), shorter steps, less arm swing, a
+ *   wider stance; the bounce stays.
+ * - Arousal leans the trunk a little forward too: happy, active and childish walks lean 4 to 8 degrees more.
  * - Urgency above the walk's leans the trunk forward, up to 6 degrees more at urgency 1: rushed and active walks lean
  *   (100STYLE Rushed 11 degrees, set 1 active 4 degrees against normal's 2). The urgency sets the speed elsewhere.
  *
@@ -166,7 +169,7 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   out.armSwing = Math.exp(0.5 * a + 0.35 * v - 0.8 * t - 0.5 * f + 0.5 * b('armSwing'))
   out.elbowCarry = radians * (18 * up + 28 * t + 20 * Math.max(0, b('armCarry')))
   out.armOut = radians * 3 * b('armCarry')
-  out.lean = radians * (6 * f + 4 * sad + 4 * t - 3 * b('posture') + 6 * hurry)
+  out.lean = radians * (20 * f + 4 * sad + 10 * t + 4 * up - 3 * b('posture') + 6 * hurry)
   out.head = radians * (12 * sad + 10 * f - 5 * glad * (1 - up) - 6 * b('posture'))
   return boundGaitStyle(out, out)
 }
