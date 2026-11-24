@@ -357,6 +357,10 @@ the away pose), not to the seed's standing head pitch; an onset clause scored
 against mid-sink entries; a rate limit that admits 4f's nod sizes at its sink
 durations; and scoring on seeds 1 to 3 of both rigs.
 
+### Walk style measures
+
+`pnpm lab:motion3d report walk-style <run>...` measures a walk's style; it judges nothing, records no verdict, and exits 0 once every run is measured. Over steady straight walking (frames the mode channel reads as walking whose travel heading turns slower than 15 deg/s, less 0.5 s at each end, in spans of at least 3 s) it prints speed, cadence, step length, bounce, pelvis twist, shoulder twist, pelvis list, step width, arm swing, elbow carry, trunk lean, head carriage, foot lift and knee swing, in leg lengths and degrees, each beside the range of acted human walking styles with its source (walk style plan, section 1). The ranges are the styles' spread, not targets. One run prints the long form with how each measure is read; several runs print one row per run, for example a mood sweep. Each run gets `walk-style.json` and `walk-style.txt`.
+
 ### Run tools
 
 Commands that read stored run directories and judge, render, or batch them. `qa:motion3d diff` and `qa:motion3d affected` are in [qa-tools](../qa-tools/README.md#run-tools).
