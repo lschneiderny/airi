@@ -20,17 +20,27 @@ export interface HandShapeSpec {
 }
 
 /**
- * Data only: architecture 4a's hand-shape table, each finger's curl written out (the middle, ring and little fingers of
- * `relaxed`, `open` and `cup` at the rest pose's per-finger scale of the index curl). A gesture, emotion or act turns a
- * shape into finger channels with `writeHandShape`.
+ * Data only: architecture 4a's hand-shape table, each digit written out (plan H6, reviewed on ten library rigs). A
+ * gesture, emotion or act turns a shape into hand channels with `writeHandShape`.
+ *
+ * - `relaxed`, the rest hand: curl grows from the index to the little finger and is largest at the middle joint, so the
+ *   tips fall apart in a cascade; a 4 degree fan keeps the little finger off the ring finger. The thumb lies soft along
+ *   the side of the index.
+ * - `open`, the presenting hand of palm-up, press, frame and the hair touch: nearly straight with the same cascade, an
+ *   8 degree fan and the thumb relaxed out to the side, not a blade.
+ * - `flat`, the chop's blade: straight fingers, no fan, the thumb drawn in along the index.
+ * - `cup`, a hold: curl at the knuckles more than at the tips, the thumb opposed under the fingers.
+ * - `fist`, closed to the knee of each finger joint's limit (`limitChannel`), so the tips reach the palm; the thumb
+ *   opposes across the palm and curls over the outside of the index and middle fingers' middle phalanges.
+ * - `point`, the index straight and every other digit as in the fist.
  */
 export const HAND_SHAPES: Readonly<Record<HandShape, HandShapeSpec>> = {
-  relaxed: { fingers: [[15, 20, 10], [17.25, 23, 11.5], [19.5, 26, 13], [21.75, 29, 14.5]], spread: 0, thumb: [10, 0, 0], opposition: 10 },
-  open: { fingers: [[5, 5, 3], [5.75, 5.75, 3.45], [6.5, 6.5, 3.9], [7.25, 7.25, 4.35]], spread: 8, thumb: [0, 0, 0], opposition: 10 },
-  flat: { fingers: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], spread: 0, thumb: [5, 0, 0], opposition: 10 },
-  point: { fingers: [[0, 5, 0], [75, 85, 50], [75, 85, 50], [75, 85, 50]], spread: 0, thumb: [40, 0, 0], opposition: 40 },
-  cup: { fingers: [[25, 30, 15], [28.75, 34.5, 17.25], [32.5, 39, 19.5], [36.25, 43.5, 21.75]], spread: 3, thumb: [20, 0, 0], opposition: 10 },
-  fist: { fingers: [[60, 70, 40], [60, 70, 40], [60, 70, 40], [60, 70, 40]], spread: 0, thumb: [45, 0, 0], opposition: 40 },
+  relaxed: { fingers: [[14, 20, 9], [17, 24, 11], [21, 28, 13], [25, 32, 15]], spread: 4, thumb: [8, 8, 10], opposition: 10 },
+  open: { fingers: [[5, 8, 4], [7, 10, 5], [10, 13, 6], [13, 17, 8]], spread: 8, thumb: [5, 8, 10], opposition: 4 },
+  flat: { fingers: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], spread: 0, thumb: [15, 0, 0], opposition: 0 },
+  point: { fingers: [[0, 4, 2], [89, 100, 68], [90, 100, 68], [90, 100, 68]], spread: 0, thumb: [0, 40, 60], opposition: 38 },
+  cup: { fingers: [[34, 28, 12], [36, 30, 13], [38, 32, 14], [40, 34, 15]], spread: 3, thumb: [15, 15, 10], opposition: 25 },
+  fist: { fingers: [[88, 100, 68], [89, 100, 68], [90, 100, 68], [90, 100, 68]], spread: 0, thumb: [0, 40, 60], opposition: 38 },
 }
 
 /**

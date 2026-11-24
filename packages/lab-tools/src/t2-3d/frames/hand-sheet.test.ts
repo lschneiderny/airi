@@ -45,10 +45,12 @@ describe('hand sheet', () => {
   })
 
   it('puts a blend cell halfway between its two shapes', () => {
-    const [relaxed, fist, half] = ['relaxed', 'fist', 'relaxed-to-fist'].map(name => handSheetChannels(REST, cell(name)))
-    for (const channel of ['leftIndex1', 'rightOpposition'] as const) {
+    // Halfway in the shapes' own angles, then through the joint limits like every cell.
+    const half = handSheetChannels(REST, cell('relaxed-to-fist'))
+    const { relaxed, fist } = HAND_SHAPES
+    for (const [channel, from, to] of [['leftIndex1', relaxed.fingers[0][1], fist.fingers[0][1]], ['rightOpposition', relaxed.opposition, fist.opposition]] as const) {
       const i = channelIndex(channel)
-      expect(half[i]).toBeCloseTo((relaxed[i] + fist[i]) / 2, 6)
+      expect(half[i]).toBeCloseTo(limitChannel(i, (from + to) / 2 * DEG), 6)
     }
   })
 

@@ -441,7 +441,8 @@ whole finger's taken off, because bone centres zigzag inside straight fingers on
 some rigs; spread turns each finger's first joint about the palm normal,
 fanned about the middle finger, with spread 0 setting the fingers parallel; and
 opposition folds the thumb's first joint across the palm, with the thumb curling
-across the palm and partly into it so a fist's thumb wraps over the fingers. A
+across the palm and partly into it, so the fist's thumb, opposed and curled at
+its outer joints, lies across the outside of the index and middle fingers. A
 side without a hand bone or two knuckles keeps the uncalibrated write: curls
 about the model Z axis on top of the bind pose and the thumb about `thumbAxis`,
 with spread and opposition unwritten. The gait's arm swing arrives in
