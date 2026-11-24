@@ -22,11 +22,12 @@ import { Quaternion } from 'three'
 
 import * as v from 'valibot'
 
+import { CLOSE_UP_SIZE, closeUpBone, FACING_WINDOW_SECONDS, parseCloseUp } from '../frames/close-up'
 import { availableChannels, drawFrames, frameAt, FRAMES_LIMITS, framesSummarySchema, selectWindows } from '../frames/frames'
 import { frameRigFromMMD, localPoses } from '../frames/model'
 import { FramePoseRefusal, neededBones, poseFrame } from '../frames/pose'
 
-const usage = 'Usage: lab:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--channels <name>[,<name>...]] --out <directory>'
+const usage = 'Usage: lab:motion3d frames <run directory> --model <pmx> (--at <t>[,<t>...] | --window <from>:<to> [--hz <n>] | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--hz <n>]) [--views front,side] [--focus <traced bone> [--span <model units>]] [--channels <name>[,<name>...]] --out <directory>'
 /** A re-run must reproduce every stored rotation to this turn, else its untraced bones would not belong to the reviewed run. */
 const RERUN_TOLERANCE_DEG = 0.001
 /** Largest turn between a traced bone posed from the trace and the same bone in the re-run, on the drawn frames. */
@@ -56,7 +57,7 @@ function parse(args: readonly string[], cwd: string) {
       throw new FramesUsageError(`unexpected argument ${args[i]}`)
     }
   }
-  const known = new Set(['model', 'at', 'window', 'hz', 'around', 'before', 'after', 'views', 'channels', 'out'])
+  const known = new Set(['model', 'at', 'window', 'hz', 'around', 'before', 'after', 'views', 'focus', 'span', 'channels', 'out'])
   const unknown = [...values.keys()].filter(key => !known.has(key))
   if (!run || !values.get('model') || !values.get('out') || unknown.length)
     throw new FramesUsageError(unknown.length ? `unknown option --${unknown[0]}` : 'a run directory, --model and --out are required')
@@ -92,7 +93,10 @@ function parse(args: readonly string[], cwd: string) {
   const views = named.filter((view): view is FrameView => view === 'front' || view === 'side')
   if (!views.length || views.length !== named.length)
     throw new FramesUsageError('--views takes front, side or both')
-  return { run, model: resolve(cwd, values.get('model') ?? ''), out: resolve(cwd, values.get('out') ?? ''), selection, views, channels: values.get('channels')?.split(',') ?? null }
+  const closeUp = parseCloseUp(values.get('focus'), values.get('span'))
+  if (typeof closeUp === 'string')
+    throw new FramesUsageError(closeUp)
+  return { run, model: resolve(cwd, values.get('model') ?? ''), out: resolve(cwd, values.get('out') ?? ''), selection, views, closeUp, channels: values.get('channels')?.split(',') ?? null }
 }
 
 /** Largest turn, in degrees, between two rotations; q and -q read as one pose. */
@@ -125,9 +129,15 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
       if (loaded.assetSha256 !== input.trace.rig.assetSha256)
         throw new FramesUsageError(`the model hashes to ${loaded.assetSha256}, the run's rig to ${input.trace.rig.assetSha256 ?? 'nothing'}`)
       const rig = frameRigFromMMD(loaded.mmd)
+      const focus = options.closeUp ? closeUpBone(options.closeUp, rig, input) : null
+      if (typeof focus === 'string')
+        throw new FramesUsageError(focus)
+      const closeUp = options.closeUp && focus !== null ? { ...options.closeUp, index: focus } : undefined
       const traced = new Set(input.trace.rig.bones)
       const needed = neededBones(rig, traced)
       const frames = new Set(windows.flatMap(window => window.times.map(t => frameAt(input, t))))
+      if (closeUp)
+        console.info(`  close-up on ${closeUp.bone}, ${closeUp.span} model units across ${CLOSE_UP_SIZE} pixels; the views turn with her facing (root yaw averaged over ${FACING_WINDOW_SECONDS} s) and side looks from the bone's own side`)
       console.info(`frames ${options.run}: ${frames.size} frame(s) in ${windows.length} window(s); ${traced.size} traced bones posed from the trace`)
       let rerun: Awaited<ReturnType<typeof rerunRun>> | null = null
       if (needed.length) {
@@ -137,7 +147,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
         rerun = await rerunRun(context, options.model, summary, frames, input, rig)
       }
       await mkdir(options.out, { recursive: true })
-      const index = await drawFrames({ input, summary, rig, windows, views: options.views, channels, out: options.out, rerun: rerun?.local })
+      const index = await drawFrames({ input, summary, rig, windows, views: options.views, channels, out: options.out, rerun: rerun?.local, closeUp })
       const commit = input.trace.source.gitSha
       await writeFile(join(options.out, 'index.json'), `${JSON.stringify({
         kind: 'motion3d-frames',
@@ -149,6 +159,8 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
         modelSha256: loaded.assetSha256,
         limits: FRAMES_LIMITS,
         pose: { traced: [...traced], needed: needed.map(i => rig.bones[i].name), rerun: rerun?.report ?? null },
+        // Absent without --focus, so a whole-body index stays what it was.
+        closeUp: closeUp && { bone: closeUp.bone, span: closeUp.span, size: CLOSE_UP_SIZE, facingWindowSeconds: FACING_WINDOW_SECONDS, sideFrom: closeUp.bone.startsWith('right') ? 'her right' : 'her left' },
         windows,
         frames: index,
       }, null, 2)}\n`)
