@@ -132,8 +132,9 @@ adds three things:
   body leans to a drawn side and size through an underdamped follower, the
   head tilt trails the lean through a faster one with a small counter yaw, and
   each swing start dips the head pitch. While she talks, a speech onset starts
-  the next swing once the running one is 0.3 s old; swings come about every
-  0.75 s while she talks and 1.6 s while she is silent. The head term is the
+  the next swing once the running one is 0.45 s old; swings come about every
+  1.1 s while she talks and 1.5 s while she is silent, and the lean returns
+  to the centre between swings with a 1.5 s time constant. The head term is the
   intent's `head.sway` and enters the eye compensation, so the gaze holds its
   target through a swing; the body term adds to the body lean.
 - Faster and more frequent blinks: the blink interval is divided by

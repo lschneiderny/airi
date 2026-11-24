@@ -7,24 +7,26 @@ import { gaussian } from './random'
 /** Probability that a new swing leans to the other side than the previous one. */
 const SIDE_CHANGE_PROBABILITY = 0.75
 /** Normalized head-roll units (1 is 30 degrees on Live2D): median lean target of a swing. */
-const SWING_SIZE_MEDIAN = 0.15
+const SWING_SIZE_MEDIAN = 0.18
 /** Log-space SD of the swing size. */
 const SWING_SIZE_LOG_SD = 0.35
 /** Standard deviations: the size and interval draws are clamped to this many, so no swing is extreme. */
 const DRAW_CLAMP = 2.5
 /** Seconds: median interval between swings while she talks. */
-const TALK_INTERVAL_MEDIAN = 0.75
+const TALK_INTERVAL_MEDIAN = 1.1
 /** Seconds: median interval between swings while she is silent. */
-const QUIET_INTERVAL_MEDIAN = 1.6
+const QUIET_INTERVAL_MEDIAN = 1.5
 /** Log-space SD of the swing interval. */
 const INTERVAL_LOG_SD = 0.35
 /** Seconds: a speech onset starts the next swing only when the running swing is at least this old. */
-const ONSET_MIN_AGE = 0.3
+const ONSET_MIN_AGE = 0.45
+/** Seconds: time constant of the swing target's return to the centre, so she recovers from a lean instead of holding it. */
+const RECOVER_SECONDS = 1.5
 /** Hz and damping ratio of the body lean follower: a fast attack, an overshoot and a slow settle. */
-const LEAN_HZ = 1.1
-const LEAN_ZETA = 0.55
+const LEAN_HZ = 1.6
+const LEAN_ZETA = 0.6
 /** Hz and damping ratio of the head tilt follower, faster than the lean, so the head trails the torso. */
-const HEAD_HZ = 1.8
+const HEAD_HZ = 2.6
 const HEAD_ZETA = 0.7
 /** Hz and damping ratio of the head pitch dip each swing start kicks. */
 const DIP_HZ = 2
@@ -74,8 +76,9 @@ export interface NaturalSwayOutput {
  * Pep's whole-upper-body sway. A scheduler draws swings, each a side, a size and the interval to the next, from five
  * uniforms (one side, two size, two interval) whatever the values, so the stream position depends only on the number
  * of swings. While she talks a fresh speech onset starts the next swing at once when the running one is at least
- * 0.3 s old. The lean follows the swing target through an underdamped follower, the head tilt trails the lean
- * through a faster one, and each swing start kicks a pitch dip that recovers.
+ * 0.45 s old. The swing target returns to the centre between swings, so she recovers from a lean instead of holding
+ * it. The lean follows the target through an underdamped follower, the head tilt trails the lean through a faster
+ * one, and each swing start kicks a pitch dip that recovers.
  *
  * The layer steps every grid step whatever the weight, so its draws depend only on time and the inputs. The weight is
  * `pep x min(amplitude, 2) x duck`, the last two eased; at pep 0 both outputs are exactly zero.
@@ -87,6 +90,7 @@ export class NaturalSwayLayer {
   private readonly head: SecondOrderFollower
   private readonly dip: SecondOrderFollower
   private readonly gainEase: number
+  private readonly recover: number
   private gain = 1
   private target = 0
   private side: -1 | 1 = 1
@@ -103,6 +107,7 @@ export class NaturalSwayLayer {
     this.head = new SecondOrderFollower(HEAD_HZ, HEAD_ZETA, dt)
     this.dip = new SecondOrderFollower(DIP_HZ, DIP_ZETA, dt)
     this.gainEase = 1 - Math.exp(-dt / GAIN_EASE_SECONDS)
+    this.recover = Math.exp(-dt / RECOVER_SECONDS)
     this.intervalZ = this.drawZ()
     const probe = new SecondOrderFollower(DIP_HZ, DIP_ZETA, dt)
     let peak = 0
@@ -119,6 +124,7 @@ export class NaturalSwayLayer {
     const interval = (input.talking ? TALK_INTERVAL_MEDIAN : QUIET_INTERVAL_MEDIAN) * Math.exp(INTERVAL_LOG_SD * this.intervalZ)
     if ((input.talking && fresh && this.age >= ONSET_MIN_AGE) || this.age >= interval)
       this.startSwing()
+    this.target *= this.recover
     const lean = this.lean.step(this.target)
     const tilt = this.head.step(lean)
     const dip = this.dip.step(this.age < DIP_PULSE_SECONDS ? this.dipTarget : 0)
