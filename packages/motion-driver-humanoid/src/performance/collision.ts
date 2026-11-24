@@ -42,6 +42,30 @@ export function easeBackSwing(swung: number, room: number): number {
   return swung >= -knee ? swung : -knee - knee * Math.tanh((-swung - knee) / knee)
 }
 
+/**
+ * Room a key the arm settles on (the ready key it returns to between strokes, and the rest hang) leaves around itself
+ * beyond the corrector's margin, as a share of each segment's length: 3.5 degrees of elbow at the middle of the
+ * forearm, the measured settle past a fed-forward preparation's key (1.9 degrees, Chisa) plus the elbow's moving-hold
+ * noise (1.2 degrees, `ARM_NOISE_DEGREES`). Such a key clears it, so the arm does not touch the margin while it
+ * arrives and holds; paths and brief stroke keys clear the margin itself.
+ */
+export const KEY_HEADROOM = 0.05
+
+/** Bisection steps of a proxy's fit to the rest hang (`BodyCollision.fit`): the scale is found to 1 / 4096. */
+const FIT_STEPS = 12
+
+/** `collider` with its size (radius and length, or half extents) scaled by `scale` about its own centre. */
+function scaledCollider(collider: BodyCollider, scale: number): BodyCollider {
+  switch (collider.shape) {
+    case 'sphere':
+      return { ...collider, radius: scale * collider.radius }
+    case 'capsule':
+      return { ...collider, radius: scale * collider.radius, length: scale * collider.length }
+    case 'box':
+      return { ...collider, halfSize: { x: scale * collider.halfSize.x, y: scale * collider.halfSize.y, z: scale * collider.halfSize.z } }
+  }
+}
+
 /** Writes the rotation by `angle` about the unit axis (x, y, z) into a transform's row-major 3x3, as `setRotation` does. */
 function setAxisAngle(out: BodyTransform, x: number, y: number, z: number, angle: number): void {
   const c = Math.cos(angle)
@@ -88,7 +112,15 @@ export class BodyCollision {
   /** Each side's last arm, hand and finger channels that cleared every proxy. */
   private readonly valid = new Float64Array(BODY_CHANNELS.length)
   private readonly skeleton: BodySkeleton
-  private readonly colliders: readonly BodyCollider[]
+  /** The rig's proxies, each fitted to the rest hang (`fit`). */
+  private readonly colliders: BodyCollider[]
+  /**
+   * Each proxy's scale about its own centre, 1 where the rest hang already clears it. A proxy the arm rests inside
+   * (a hair-collision body wider than the shoulders, a chest body round the shoulder joint) is shrunk until the rest
+   * hang clears it: the rig's own hang is where its arm rests against the body, so no proxy may hold the arm away from
+   * it, and an arm that cannot reach its rest freezes or stands out. The host scales its own copies of the bodies by it.
+   */
+  readonly fit: number[]
   private readonly posed: ReturnType<typeof identityTransform>[]
   /**
    * The back swing each arm has room for, radians: the largest probed swing at which the arm, swung back from its rest
@@ -126,9 +158,10 @@ export class BodyCollision {
       return SKIN * Math.min(Math.hypot(upperArm.x, upperArm.y, upperArm.z), Math.hypot(forearm.x, forearm.y, forearm.z))
     }
     this.skin = { left: skin('left'), right: skin('right') }
-    this.colliders = traits.colliders.length ? traits.colliders : proxyColliders(traits)
+    this.colliders = (traits.colliders.length ? traits.colliders : proxyColliders(traits)).slice()
     this.posed = this.colliders.map(() => identityTransform())
     this.prepare(rest)
+    this.fit = this.colliders.map((_, i) => this.fitToRest(i, rest))
     const gestures = { left: false, right: false }
     const headClearance = { left: false, right: false }
     const guard = rest.slice()
@@ -180,6 +213,31 @@ export class BodyCollision {
       this.guardWeight[side].weight = 0
       this.guardWeight[side].rate = 0
     }
+  }
+
+  /**
+   * Shrinks proxy `index` about its centre, by bisection, to the largest scale at which both rest arms clear it with a
+   * settled key's headroom (`KEY_HEADROOM`), and returns the scale (1 when they already do). The rest hang is the key
+   * every arm settles on, and an arm hanging at the margin itself is inside it at the trunk's first sway, so no path
+   * from it would clear. Each proxy is fitted alone: clearing each one clears them all.
+   */
+  private fitToRest(index: number, rest: Float32Array): number {
+    const enters = () => SIDES.some(side => this.measure(side, rest, KEY_HEADROOM, index).depth > 0)
+    if (!enters())
+      return 1
+    const base = this.colliders[index]
+    let low = 0
+    let high = 1
+    for (let step = 0; step < FIT_STEPS; step++) {
+      const middle = (low + high) / 2
+      this.colliders[index] = scaledCollider(base, middle)
+      if (enters())
+        high = middle
+      else
+        low = middle
+    }
+    this.colliders[index] = scaledCollider(base, low)
+    return low
   }
 
   private headProbe(side: BodySide, channels: Float32Array): boolean {
@@ -306,9 +364,10 @@ export class BodyCollision {
 
   /**
    * Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. `extra` grows
-   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin.
+   * each capsule's radius by that share of its segment length, for poses that need room beyond the margin; `only`
+   * measures against that one proxy.
    */
-  measure(side: BodySide, channels: ArrayLike<number>, extra = 0) {
+  measure(side: BodySide, channels: ArrayLike<number>, extra = 0, only = -1) {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
     d.depth = d.head = 0
@@ -327,7 +386,8 @@ export class BodyCollision {
         const x = from.x + dx * fraction
         const y = from.y + dy * fraction
         const z = from.z + dz * fraction
-        for (let i = 0; i < this.colliders.length; i++) {
+        const end = only < 0 ? this.colliders.length : only + 1
+        for (let i = Math.max(0, only); i < end; i++) {
           const frame = this.posed[i]
           const px = x - frame[9]
           const py = y - frame[10]

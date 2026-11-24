@@ -1,41 +1,37 @@
-import type { BodyPerformanceInput } from './contracts'
+import type { BodyCollider, BodyPerformanceInput } from './contracts'
 
 import { describe, expect, it } from 'vitest'
 
 import { createRandomStream } from '../random'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG, JOINT_LIMITS } from './channels'
-import { BodyCollision } from './collision'
+import { BodyCollision, proxyColliders } from './collision'
 import { createBodyPerformer } from './index'
-import { fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
+import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('performer invariants', () => {
-  it('holds only the arms, and counts it, when no clear arm pose exists', () => {
-    // A torso sphere wider than the arm's reach: no pose of either arm clears it.
-    const rig = { ...traits, colliders: [{ bone: 'spine0', centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 }, shape: 'sphere', radius: 2 * traits.legLength }] as const }
+  it('fits a proxy the rest hang lies in, so the arms keep the rig\'s own rest and move', () => {
+    // A shoulder bar such as a hair-collision chest body: a horizontal capsule wider than the shoulders, around the
+    // shoulder joints, which no projection of a hanging arm clears.
+    const { left, right } = traits.arms
+    const span = Math.hypot(left.shoulder.x - right.shoulder.x, left.shoulder.y - right.shoulder.y, left.shoulder.z - right.shoulder.z)
+    const chest = traits.spineChain[traits.spineChain.length - 1]
+    const bar: BodyCollider = { bone: 'spine2', shape: 'capsule', radius: 0.4 * span, length: 1.3 * span, centre: { x: 0, y: left.shoulder.y - chest.y - 0.2 * span, z: left.shoulder.z - chest.z }, rotation: { yaw: 0, pitch: 0, roll: Math.PI / 2 } }
+    const rig = { ...traits, colliders: [...proxyColliders(traits), bar] }
+    const natural = createBodyPerformer({ traits, seed: 1 }).restChannels()
     const performer = createBodyPerformer({ traits: rig, seed: 1 })
-    const held = performer.restChannels()
-    let torso = 0
-    let tick = 0
-    for (let i = 0; i < 480; i++) {
-      const frame = performer.step(idleInput(i / 120))
-      expect(frame.tick).toBe(++tick)
-      for (const side of ['left', 'right'] as const) {
-        for (const name of ['ClavElev', 'Flex', 'Abduct', 'Elbow', 'Wflex'] as const)
-          expect(frame.channels[c(`${side}${name}`)]).toBe(held[c(`${side}${name}`)])
-      }
-      torso = Math.max(torso, Math.abs(frame.channels[c('midPitch')] - held[c('midPitch')]))
-    }
-    const frame = performer.step(idleInput(4))
-    expect(torso).toBeGreaterThan(0.1 * DEG)
-    expect(frame.diagnostics.collisions.count).toBeGreaterThan(0)
-    expect(frame.diagnostics.collisions.last).toMatchObject({ tick: frame.tick })
-    expect(frame.diagnostics.collisions.last?.depth).toBeGreaterThan(0)
-    // Both discontinuous fallbacks ran before the hold: the 6 degree step cap and the guard scan.
-    expect(frame.diagnostics.corrector.capHits).toBeGreaterThan(0)
-    expect(frame.diagnostics.corrector.guardScans).toBeGreaterThan(0)
+    const rest = performer.restChannels()
+    for (const name of ['leftFlex', 'leftAbduct', 'rightFlex', 'rightAbduct'] as const)
+      expect(rest[c(name)]).toBeCloseTo(natural[c(name)], 6)
+    const collision = new BodyCollision(rig, rest)
+    expect(collision.fit.slice(0, -1).every(scale => scale === 1)).toBe(true)
+    expect(collision.fit.at(-1)).toBeLessThan(1)
+    expect(collision.capabilities.gestures).toEqual({ left: true, right: true })
+    const flex = channelTrace(performer, 4)[c('leftFlex')]
+    expect(Math.max(...flex) - Math.min(...flex)).toBeGreaterThan(0.2 * DEG)
+    expect(performer.step(idleInput(4)).diagnostics.collisions.count).toBe(0)
   })
 
   it('counts no corrector fallback while the arms clear the proxies on their own', () => {

@@ -7,7 +7,7 @@ import type { HandShape } from './hand-shapes'
 import { solveArmKey } from './arm-key'
 import { DEFAULT_ARM_REST_POSE } from './arms'
 import { ARM_START, DEG, JOINT_LIMITS } from './channels'
-import { BodyCollision } from './collision'
+import { BodyCollision, KEY_HEADROOM } from './collision'
 import { HAND_SHAPES } from './hand-shapes'
 import { BodySkeleton } from './skeleton'
 
@@ -103,14 +103,6 @@ export type ArmPose = Float64Array
 /** The rest pose's thumb opposition, degrees (`BodyArms` rest). */
 const REST_OPPOSITION = 10
 const OPPOSED_THUMB = 40
-/**
- * Room a key the arm settles on (the ready key it returns to between strokes) leaves around itself beyond the
- * corrector's margin, as a share of each segment's length: 3.5 degrees of elbow at the middle of the forearm, the
- * measured settle past a fed-forward preparation's key (1.9 degrees, Chisa) plus the elbow's moving-hold noise (1.2
- * degrees, `ARM_NOISE_DEGREES`). Such a key clears it, so the arm does not touch the margin while it arrives and holds;
- * paths and brief stroke keys clear the margin itself.
- */
-export const KEY_HEADROOM = 0.05
 const PUSH_STEPS = 8
 const PUSH_STEP = 0.02
 const PATH_SAMPLES = 10

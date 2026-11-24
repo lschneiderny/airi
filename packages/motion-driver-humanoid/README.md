@@ -835,8 +835,8 @@ malleolus (6.27 cm) stands for the ankle, so the hip-to-ankle span 78.27 cm
 is the rig's `legLength`. The wrists sit (98.01 - 84.54 - 7.82) / 78.27 =
 0.072 L above the hip joints (`FRONT_LOW_HEIGHT`); a rig without leg joints
 does not clasp. A rig that cannot reach the anchor does not clasp, as 6.3
-states: Vivian's arms reach it; on Chisa and Ellen no key at that height
-clears their body proxies inside the limits, so their hands hang. The
+states: Vivian's and Ellen's arms reach it; on Chisa no key at that height
+clears her body proxies inside the limits, so her hands hang. The
 proportional proxies of the fixture rigs reach it. A refused form is not
 searched again.
 The hair tuck's two keys (4e act 8) put the fingertips, not the wrist, on the
@@ -875,6 +875,16 @@ and pendulum already do; the drag returns as the activation falls.
 
 Collision runs after dynamics and limits, using the same lower-half upper-arm
 and extended-forearm sample capsules as the MMD gate, with its clearance margin.
+At load each proxy is fitted to the rest hang (`BodyCollision.fit`): a proxy
+that either rest arm enters, with a settled key's headroom (`KEY_HEADROOM`)
+beyond the margin, shrinks about its own centre, by bisection, to the largest
+scale that both rest arms clear. The rig's own hang is where its arms rest
+against the body, so no proxy holds an arm away from it: a rig's hair or bust
+collision bodies often reach past its shoulders or thighs (Robin's chest body is
+a horizontal capsule wider than her shoulders, which no pose of a hanging arm
+cleared, so both arms froze). The headroom keeps a resting arm clear while the
+trunk sways, so the gesture layer's path from that arm starts clear. The MMD
+adapter scales its own copies of the bodies by the same factors.
 Corrections persist and decay. When gradient steps leave more than half the
 margin (0.015 of a segment), a continuous guard weight moves the arm toward
 the guard pose: it follows the smallest clearing weight (16 samples, because

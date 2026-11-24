@@ -221,8 +221,10 @@ describe('canonical geometry', () => {
     const body = (centre: { x: number, y: number, z: number }, segment: 'thigh' | 'shin'): BodyCollider => ({ bone: 'hips', shape: 'sphere', radius: 0.5, centre: at(centre), rotation: { yaw: 0, pitch: 0, roll: 0 }, leg: { side: 'left', segment } })
     const thighMiddle = { x: (hip.x + knee.x) / 2, y: (hip.y + knee.y) / 2, z: (hip.z + knee.z) / 2 }
     const rig = { ...traits, colliders: [body(thighMiddle, 'thigh'), body(ankle, 'shin')] }
-    const channels = new Float32Array(BODY_CHANNELS.length)
+    // The rest hang, which the leg bodies leave room around, so they keep their size (`BodyCollision.fit`).
+    const channels = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
     const collision = new BodyCollision(rig, channels)
+    expect(collision.fit).toEqual([1, 1])
     const reach = Math.hypot(ankle.x - hip.x, ankle.y - hip.y, ankle.z - hip.z)
     const thigh = Math.hypot(knee.x - hip.x, knee.y - hip.y, knee.z - hip.z)
     const along = (direction: { y: number, z: number }, length: number) => ({ x: hip.x, y: hip.y + direction.y * length, z: hip.z + direction.z * length })

@@ -9,7 +9,8 @@ import { deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, KEY_HEADROOM, writeHandShape } from './gesture-forms'
+import { KEY_HEADROOM } from './collision'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeHandShape } from './gesture-forms'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
