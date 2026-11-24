@@ -1,7 +1,7 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
 import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { ClipKind, ClipLayer, ClipMetaNote } from '@proj-airi/motion-driver-humanoid/clip-meta'
-import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { GaitBaseline, LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyCapabilities } from '@proj-airi/motion-driver-humanoid/performance'
 import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
@@ -15,7 +15,9 @@ import type { MMDRoamMode } from './performance-settings'
 
 import { createContext, defineEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
+import { GaitBaselineSchema } from '@proj-airi/stage-shared/character-state'
 import { defineStore } from 'pinia'
+import { safeParse } from 'valibot'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 
 import { MMDFrameMetrics, MMDUsageTotals } from '../composables/mmd/frame-metrics'
@@ -155,6 +157,7 @@ export type MMDMotionCommand
     | { type: 'command', name: 'playClip', value: { name: string, loop?: boolean } }
     | { type: 'command', name: 'stopClip', value?: undefined }
     | { type: 'command', name: 'setPerformanceLayer', value: { layer: string, enabled: boolean } }
+    | { type: 'command', name: 'previewWalk', value: { baseline: GaitBaseline } }
     | MMDMotionTraceCommand
 
 function isRoamMode(value: unknown): value is MMDRoamMode {
@@ -167,6 +170,32 @@ function isLocomotionPace(value: unknown): value is LocomotionPace {
 
 function finiteX(value: unknown): number | null {
   return typeof value === 'object' && value !== null && 'x' in value && typeof value.x === 'number' && Number.isFinite(value.x) ? value.x : null
+}
+
+/** How far a walk preview walks, in leg lengths. */
+const WALK_PREVIEW_STEPS = 3
+
+/** The parts of a stage snapshot a walk preview reads. */
+export interface WalkPreviewStage {
+  readonly driver: MMDMotionSnapshot['driver']
+  readonly world: { readonly ground: { readonly minX: number, readonly maxX: number } } | null
+  readonly locomotion: { readonly position: { readonly x: number } } | null
+  readonly rig: { readonly legLength: number | null } | null
+}
+
+/**
+ * Where a walk preview walks her: up to three leg lengths from where she stands, toward the side of the ground with
+ * more room. `null` when the snapshot's stage cannot walk her: no desktop stage world, no Natural body, or no rig.
+ */
+export function walkPreviewGoalX(snapshot: WalkPreviewStage): number | null {
+  const legLength = snapshot.rig?.legLength
+  if (snapshot.driver !== 'natural' || !snapshot.world || !snapshot.locomotion || !legLength)
+    return null
+  const x = snapshot.locomotion.position.x
+  const { minX, maxX } = snapshot.world.ground
+  const room = Math.max(maxX - x, x - minX)
+  const direction = maxX - x >= x - minX ? 1 : -1
+  return x + direction * Math.min(room, WALK_PREVIEW_STEPS * legLength)
 }
 
 function isSnapshotMessage(data: unknown): data is { type: 'snapshot', snapshot: MMDMotionSnapshot } {
@@ -204,6 +233,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   const clipRequest = shallowRef<{ seq: number, name: string | null, loop: boolean | undefined } | null>(null)
   /** The latest lab request to turn one performance layer on or off; a new `seq` marks a new request. */
   const performanceLayerRequest = shallowRef<{ seq: number, layer: string, enabled: boolean } | null>(null)
+  /** The card editor's latest walk preview; a new `seq` marks a new preview, which the stage walks with `baseline`. */
+  const walkPreview = shallowRef<{ seq: number, baseline: GaitBaseline } | null>(null)
   /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
   let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
@@ -338,6 +369,15 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         }
         performanceLayerRequest.value = { seq: (performanceLayerRequest.value?.seq ?? 0) + 1, layer: value.layer, enabled: value.enabled }
         break
+      case 'previewWalk': {
+        const baseline = typeof value === 'object' && value !== null && 'baseline' in value ? safeParse(GaitBaselineSchema, value.baseline) : null
+        if (!baseline?.success) {
+          warn()
+          return
+        }
+        walkPreview.value = { seq: (walkPreview.value?.seq ?? 0) + 1, baseline: baseline.output }
+        break
+      }
       case 'startTrace':
       case 'markTrace':
       case 'stopTrace':
@@ -415,6 +455,19 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     channel?.postMessage(message)
   }
 
+  /**
+   * Walks the stage character a few steps with `baseline` in place of her card's, for a card editor's preview. Returns
+   * false, and sends nothing, when the last snapshot shows no stage that can walk her (see {@link walkPreviewGoalX}).
+   */
+  function previewWalk(baseline: GaitBaseline): boolean {
+    const x = walkPreviewGoalX(snapshot.value)
+    if (x === null)
+      return false
+    command({ type: 'command', name: 'previewWalk', value: { baseline } })
+    command({ type: 'command', name: 'requestGoal', value: { x, pace: 'walk' } })
+    return true
+  }
+
   return {
     snapshot,
     debugFlags,
@@ -425,8 +478,10 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     roamModeRequest,
     clipRequest,
     performanceLayerRequest,
+    walkPreview,
     publish,
     command,
+    previewWalk,
     setOverlays,
     setMetrics: (next: MMDFrameMetrics) => {
       metrics.drainUsage(pendingUsage)

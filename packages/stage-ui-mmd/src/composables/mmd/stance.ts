@@ -292,6 +292,16 @@ export class MMDStanceDirector {
     return { motion, changed, reports }
   }
 
+  /**
+   * Where a debug goal (a devtools or card-editor walk) stands: `held` while a gate holds it unissued, as speech and
+   * full-body clips do, `issued` while she has it as her goal, null otherwise.
+   */
+  get debugGoal(): 'held' | 'issued' | null {
+    if (this.memory.pendingGoal?.reason === 'debug')
+      return 'held'
+    return this.memory.goalX !== null && this.memory.reason === 'debug' ? 'issued' : null
+  }
+
   /** The latest body directives; null before the first frame. */
   get intent(): BodyIntent | null {
     return this.lastIntent

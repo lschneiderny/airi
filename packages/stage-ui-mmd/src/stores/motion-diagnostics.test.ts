@@ -1,4 +1,4 @@
-import type { MMDMotionCommand } from './motion-diagnostics'
+import type { MMDMotionCommand, WalkPreviewStage } from './motion-diagnostics'
 
 import { MotionTraceRecorder } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { createPinia, disposePinia } from 'pinia'
@@ -7,7 +7,7 @@ import { watch } from 'vue'
 
 import { MMDFrameMetrics, MMDFrameRing, MMDUsageTotals } from '../composables/mmd/frame-metrics'
 import { mmdOverlaysOff } from '../composables/mmd/overlay-flags'
-import { mmdOverlaySetEvent, useMMDMotionDiagnostics } from './motion-diagnostics'
+import { mmdOverlaySetEvent, useMMDMotionDiagnostics, walkPreviewGoalX } from './motion-diagnostics'
 
 describe('mmd motion diagnostics channel', () => {
   it('publishes the complete unloaded snapshot over the real channel', async () => {
@@ -321,6 +321,56 @@ describe('mmd motion diagnostics channel', () => {
     finally {
       warning.mockRestore()
       peer.close()
+      disposePinia(pinia)
+    }
+  })
+
+  it('accepts a walk preview baseline and rejects one outside the gait baseline schema with one warning', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      store.command({ type: 'command', name: 'previewWalk', value: { baseline: { width: -0.6, sway: 0.6 } } })
+      expect(store.walkPreview).toEqual({ seq: 1, baseline: { width: -0.6, sway: 0.6 } })
+      store.command({ type: 'command', name: 'previewWalk', value: { baseline: { width: 2 } } })
+      store.command(JSON.parse('{ "type": "command", "name": "previewWalk", "value": { "baseline": { "speed": 1 } } }') as MMDMotionCommand)
+      store.command(JSON.parse('{ "type": "command", "name": "previewWalk" }') as MMDMotionCommand)
+      expect(store.walkPreview).toEqual({ seq: 1, baseline: { width: -0.6, sway: 0.6 } })
+      expect(warning).toHaveBeenCalledTimes(1)
+    }
+    finally {
+      warning.mockRestore()
+      disposePinia(pinia)
+    }
+  })
+
+  it('walks a preview three leg lengths toward the side with more room, and only on a stage that can walk her', () => {
+    const stage: WalkPreviewStage = {
+      driver: 'natural',
+      world: { ground: { minX: -10, maxX: 20 } },
+      locomotion: { position: { x: 4 } },
+      rig: { legLength: 2 },
+    }
+    const goal = (patch: Partial<WalkPreviewStage>) => walkPreviewGoalX({ ...stage, ...patch })
+    expect(goal({})).toBe(10)
+    expect(goal({ locomotion: { position: { x: 18 } } })).toBe(12)
+    expect(goal({ rig: { legLength: 20 } })).toBe(20)
+    expect(goal({ driver: 'classic' })).toBeNull()
+    expect(goal({ world: null })).toBeNull()
+    expect(goal({ locomotion: null })).toBeNull()
+    expect(goal({ rig: null })).toBeNull()
+
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    try {
+      expect(store.previewWalk({ bounce: 0.8 })).toBe(false)
+      expect(store.walkPreview).toBeNull()
+      store.snapshot = { ...store.snapshot, ...stage } as typeof store.snapshot
+      expect(store.previewWalk({ bounce: 0.8 })).toBe(true)
+      expect(store.walkPreview).toEqual({ seq: 1, baseline: { bounce: 0.8 } })
+      expect(store.goalRequest).toEqual({ seq: 1, x: 10, pace: 'walk' })
+    }
+    finally {
       disposePinia(pinia)
     }
   })

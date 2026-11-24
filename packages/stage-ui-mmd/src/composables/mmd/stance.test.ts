@@ -310,10 +310,12 @@ describe('mmd stance director in the stage world', () => {
 
     frame(director, 9_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
     expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: -6, reason: 'debug' } })
+    expect(director.debugGoal).toBe('held')
     frame(director, 20_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
     expect(director.diagnostics.pendingGoal).not.toBeNull()
     frame(director, 21_000, world({ speaking: false, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
     expect(director.diagnostics).toMatchObject({ goalX: -6, reason: 'debug', pendingGoal: null })
+    expect(director.debugGoal).toBe('issued')
   })
 
   it('drops a held goal after the time to live, and treats the talking performance as speaking', () => {
