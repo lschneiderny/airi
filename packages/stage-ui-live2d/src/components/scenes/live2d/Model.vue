@@ -1170,6 +1170,9 @@ watch([themeColorsHueDynamic, live2dShadowEnabled], ([dynamic, shadowEnabled]) =
   else {
     cancelAnimationFrame(dropShadowAnimationId.value)
     dropShadowAnimationId.value = 0
+    // The loop left the color of its last frame. The stored hue did not
+    // change, so no other watcher restores the static color.
+    updateDropShadow()
   }
 }, { immediate: true })
 
