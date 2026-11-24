@@ -435,7 +435,7 @@ export class MMDBody {
     const first = this.clock.ticks - due
     const lift = this.arms.lift({ swingWeight: this.gait?.weight ?? 0, owned: this.owned, hangDeg: input.armRestHangDeg ?? null })
     this.resolveGaze(input)
-    walkStyleFrom({ mood: input.intent.mood, energy: input.energy ?? 0.5, baseline: input.walkBaseline }, this.walkStyle)
+    walkStyleFrom({ mood: input.intent.mood, energy: input.energy ?? 0.5, baseline: input.walkBaseline, urgency: this.goal?.urgency }, this.walkStyle)
     this.intent.capture({
       intent: input.intent,
       frame: input.frame,

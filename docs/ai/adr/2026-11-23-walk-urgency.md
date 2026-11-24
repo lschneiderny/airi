@@ -23,6 +23,7 @@ The body director asked for one of two paces, `stroll` (0.6 of the reference spe
    | `debug` | as requested | | as requested |
 
    A chase and the corrective step share the `approach-cursor` reason; the director tells them apart by their urgency.
+4. **A hurried walk leans forward.** `walkStyleFrom` takes the goal's urgency as an optional factor: above `WALK_URGENCY` it adds up to 6 degrees of trunk lean at urgency 1, as rushed and active acted walks lean; at or below it, every style stays exactly as it was. The MMD body passes the current goal's urgency, so a chase leans 2.25 degrees more.
 
 ## Consequences
 

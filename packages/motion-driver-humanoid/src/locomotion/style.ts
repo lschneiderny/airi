@@ -1,5 +1,8 @@
 import type { GaitBaseline } from '@proj-airi/stage-shared/character-state'
 
+import { WALK_URGENCY } from '../types'
+import { clampUrgency } from './urgency'
+
 const radians = Math.PI / 180
 
 /**
@@ -109,6 +112,8 @@ export interface WalkFactors {
   /** The host energy handed to Natural, 0 to 1, 0.5 at rest. */
   readonly energy: number
   readonly baseline?: GaitBaseline
+  /** The goal's urgency in [0, 1]; omitted or at most `WALK_URGENCY`, it leaves the style alone. */
+  readonly urgency?: number
 }
 
 /** The resting tension of the default character profile: tension below it does not loosen the walk. */
@@ -129,6 +134,8 @@ function unit(value: number | undefined, min = -1) {
  *   further forward than a normal walk, with the arms nearly still; proud walks carry it back.
  * - Tension bends the elbows (44 to 73 degrees), shrinks the swing, the roll and the foot lift, and leans the trunk.
  * - Low energy is fatigue: trunk and head forward, shorter steps, less arm swing, a wider stance; the bounce stays.
+ * - Urgency above the walk's leans the trunk forward, up to 6 degrees more at urgency 1: rushed and active walks lean
+ *   (100STYLE Rushed 11 degrees, set 1 active 4 degrees against normal's 2). The urgency sets the speed elsewhere.
  *
  * The gains are sized so a factor at its end reaches about the end style; the values are a visual review's to settle.
  * Neutral factors give exactly `NEUTRAL_GAIT_STYLE`.
@@ -144,6 +151,7 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   const glad = Math.max(0, v)
   const base = factors.baseline ?? {}
   const b = (key: keyof GaitBaseline) => unit(base[key])
+  const hurry = factors.urgency === undefined ? 0 : Math.max(0, clampUrgency(factors.urgency) - WALK_URGENCY) / (1 - WALK_URGENCY)
   out.speed = Math.exp(0.2 * a + 0.06 * v - 0.2 * f)
   // Acted happy and angry walks step faster with steps of about normal length, so rising arousal takes back the step
   // length its speed would add; falling arousal shortens the step as well as slowing it.
@@ -158,7 +166,7 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   out.armSwing = Math.exp(0.5 * a + 0.35 * v - 0.8 * t - 0.5 * f + 0.5 * b('armSwing'))
   out.elbowCarry = radians * (18 * up + 28 * t + 20 * Math.max(0, b('armCarry')))
   out.armOut = radians * 3 * b('armCarry')
-  out.lean = radians * (6 * f + 4 * sad + 4 * t - 3 * b('posture'))
+  out.lean = radians * (6 * f + 4 * sad + 4 * t - 3 * b('posture') + 6 * hurry)
   out.head = radians * (12 * sad + 10 * f - 5 * glad * (1 - up) - 6 * b('posture'))
   return boundGaitStyle(out, out)
 }
