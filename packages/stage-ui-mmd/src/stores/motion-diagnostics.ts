@@ -3,7 +3,7 @@ import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { ClipKind, ClipLayer, ClipMetaNote } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { GaitBaseline, LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyCapabilities } from '@proj-airi/motion-driver-humanoid/performance'
-import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
+import type { BodyLocomotionReason } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { FrameMeasurement, MMDFrameRing, StageTiming } from '../composables/mmd/frame-metrics'
@@ -15,6 +15,7 @@ import type { MMDRoamMode } from './performance-settings'
 
 import { createContext, defineEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { GaitBaselineSchema } from '@proj-airi/stage-shared/character-state'
 import { defineStore } from 'pinia'
 import { safeParse } from 'valibot'
@@ -78,7 +79,7 @@ export interface MMDMotionSnapshot {
     yaw: number
     goalX: number | null
     reason: BodyLocomotionReason | null
-    pace: LocomotionPace | null
+    urgency: number | null
     speed: number
     phase: number
     weight: number
@@ -151,7 +152,7 @@ export type MMDMotionCommand
     | { type: 'command', name: 'setDebugFlag', value: { flag: 'disableFootContact' | 'disableLookAt', on: boolean } | { flag: 'armRestHangDeg', value: number | null } }
     | { type: 'command', name: 'advanceDirectorClock', value: number }
     | { type: 'command', name: 'setOverlay', value: Partial<MMDOverlayFlags> }
-    | { type: 'command', name: 'requestGoal', value: { x: number, pace: LocomotionPace } }
+    | { type: 'command', name: 'requestGoal', value: { x: number, urgency: number } }
     | { type: 'command', name: 'setHome', value: { x: number } }
     | { type: 'command', name: 'setRoamMode', value: { mode: MMDRoamMode } }
     | { type: 'command', name: 'playClip', value: { name: string, loop?: boolean } }
@@ -164,8 +165,8 @@ function isRoamMode(value: unknown): value is MMDRoamMode {
   return value === 'stay' || value === 'roam'
 }
 
-function isLocomotionPace(value: unknown): value is LocomotionPace {
-  return value === 'stroll' || value === 'walk'
+function isUrgency(value: unknown): value is number {
+  return typeof value === 'number' && value >= 0 && value <= 1
 }
 
 function finiteX(value: unknown): number | null {
@@ -221,7 +222,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   const directorClockOffsetMs = ref(0)
   const overlays = shallowRef<MMDOverlayFlags>({ ...mmdOverlaysOff })
   /** The latest walk goal from the lab; a new `seq` marks a new request, even to the same x. */
-  const goalRequest = shallowRef<{ seq: number, x: number, pace: LocomotionPace } | null>(null)
+  const goalRequest = shallowRef<{ seq: number, x: number, urgency: number } | null>(null)
   /** Home x set from the lab; todo 12's director reads it as its home spot. */
   const homeX = ref<number | null>(null)
   /** The roam mode the lab asked for; the stage writes it to the `mmd` store's `roamMode` setting. */
@@ -321,11 +322,11 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         break
       case 'requestGoal': {
         const x = finiteX(value)
-        if (x === null || typeof value !== 'object' || value === null || !('pace' in value) || !isLocomotionPace(value.pace)) {
+        if (x === null || typeof value !== 'object' || value === null || !('urgency' in value) || !isUrgency(value.urgency)) {
           warn()
           return
         }
-        goalRequest.value = { seq: (goalRequest.value?.seq ?? 0) + 1, x, pace: value.pace }
+        goalRequest.value = { seq: (goalRequest.value?.seq ?? 0) + 1, x, urgency: value.urgency }
         break
       }
       case 'setHome': {
@@ -464,7 +465,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     if (x === null)
       return false
     command({ type: 'command', name: 'previewWalk', value: { baseline } })
-    command({ type: 'command', name: 'requestGoal', value: { x, pace: 'walk' } })
+    command({ type: 'command', name: 'requestGoal', value: { x, urgency: WALK_URGENCY } })
     return true
   }
 

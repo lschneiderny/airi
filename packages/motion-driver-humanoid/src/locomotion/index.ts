@@ -1,6 +1,6 @@
 import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
-import type { BodyLocomotionIntent, LocomotionPace, RigTraits, Vec3 } from '../types'
+import type { BodyLocomotionIntent, RigTraits, Vec3 } from '../types'
 import type { GaitStyle, GaitStyleKey, MutableGaitStyle } from './style'
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
@@ -8,9 +8,11 @@ import { planFootSteps } from '../foot-contact'
 import { createDriftNoise, deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
 import { easeGaitStyle, GAIT_STYLE_BOUNDS, NEUTRAL_GAIT_STYLE } from './style'
+import { urgencySpeedShare } from './urgency'
 
 export type { GaitBaseline, GaitStyle, GaitStyleKey, MutableGaitStyle, WalkFactors } from './style'
 export { boundGaitStyle, GAIT_STYLE_BOUNDS, GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE, walkStyleFrom } from './style'
+export { clampUrgency, urgencySpeedShare } from './urgency'
 
 /**
  * The ground contacts a foot rolls over, in model units in the foot's own frame: the heel `heelBack` behind and the ball
@@ -62,7 +64,8 @@ export interface LocomotionInput {
   readonly now: number
   /** World x on the ground line; null means stay. */
   readonly goalX: number | null
-  readonly pace: LocomotionPace
+  /** How urgently she walks, in [0, 1]; `urgencySpeedShare` turns it into a share of the reference speed. */
+  readonly urgency: number
   /** Checked at departure against SIDESTEP_MAX_LEGS; an accepted sidestep keeps yaw instead of arriveFacing. */
   readonly step?: BodyLocomotionIntent['step']
   /** Facing at arrival, in radians; 0 faces the camera. */
@@ -300,7 +303,6 @@ const preparationDuration = 0.22
 const drawBackLean = -1.5 * radians
 const preparationDropShare = 0.008
 const stopDipShare = 0.006
-const paceSpeeds: Record<LocomotionPace, number> = { stroll: 0.6, walk: 1 }
 /** The gait's tick, seconds: it runs on a 120 Hz grid. */
 const gaitTick = 1 / 120
 /** Architecture 5.1: heel-strike and toe-off pitch at a full stride, scaled by min(1, strideScale). */
@@ -1088,7 +1090,7 @@ class Locomotion {
     else if (turns && Math.abs(delta) > mergedTurnMax)
       this.startTurn(facing - Math.sign(delta) * mergedTurn, true)
     else
-      this.startWalk(direction, facing, input.idleSupport, sidestep ? { goalX: goal, rate: this.stepRate(paceSpeeds[input.pace] * (sidestepPairShare * this.traits.legLength * sidestepReferenceRate)) } : undefined)
+      this.startWalk(direction, facing, input.idleSupport, sidestep ? { goalX: goal, rate: this.stepRate(urgencySpeedShare(input.urgency) * (sidestepPairShare * this.traits.legLength * sidestepReferenceRate)) } : undefined)
   }
 
   private startTurn(facing: number, flows: boolean) {
@@ -1237,7 +1239,7 @@ class Locomotion {
       return this.advanceSidestep(walk, walk.sidestep, input, dt, events)
     // A faster walk lengthens the step, so the limit caps the speed as well: past the top cadence for the style, and by a
     // few percent where a stride's variation would lengthen a step at the limit. Only the style's own cap is reported.
-    const asked = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor * this.style.speed
+    const asked = urgencySpeedShare(input.urgency) * this.referenceSpeed * this.speedFactor * this.style.speed
     const command = Math.min(asked, this.fastestSpeed())
     if (asked / this.speedFactor > this.stepLimit * this.referenceLength * maxRate)
       this.limited = this.limited === strideLimited ? strideSpeedLimited : speedLimited

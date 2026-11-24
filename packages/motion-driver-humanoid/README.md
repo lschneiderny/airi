@@ -137,10 +137,11 @@ world targets aim eyes forward. Negative or non-finite `dt` advances no time.
 
 ```ts
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 const locomotion = createLocomotion({ traits, seed: 7 })
 locomotion.rebase({ x: homeX, yaw: 0 })
-const frame = locomotion.step({ now, goalX, pace: 'walk', arriveFacing: 0, enabled: true, idleSupport, plantedFeet }, 1 / 120)
+const frame = locomotion.step({ now, goalX, urgency: WALK_URGENCY, arriveFacing: 0, enabled: true, idleSupport, plantedFeet }, 1 / 120)
 ```
 
 `traits` are `GaitTraits`: leg length L, ankle baseline, bind hip-to-ankle height,
@@ -148,7 +149,9 @@ bind ankles, and bind hip joints (`bindHips`). Pass the hips: without them each 
 a rig whose ankles stand behind its hips walks with its feet ahead of its body and its knees bent. Step on the fixed 120 Hz grid. Positions are world model units on
 the ground line (y = 0, travel along x). Yaw 0 faces the camera, and walking faces
 +/-90 degrees. The reference step is 0.625 L at 1.44 Hz, so `v_ref = 0.9 L` per
-second; `pace` (`LocomotionPace` from `./types`) scales it by 0.6 or 1.0. Speed ramps at up to `v_ref` per second,
+second; `urgency`, in [0, 1], scales it by `urgencySpeedShare`, linear through (0, 0.4), (0.3, 0.6), (0.6, 1) and
+(1, 1.35), so `STROLL_URGENCY` (0.3) and `WALK_URGENCY` (0.6) from `./types` keep the former stroll and walk speeds
+exactly. Speed ramps at up to `v_ref` per second,
 leaves rest at a quarter of that, and stops exactly at `goalX`. The stride, the swing, the foot roll, the pelvis and the
 turns were refitted to walking adults on 2026-11-23; the
 [natural walk refit ADR](../../docs/ai/adr/2026-11-23-natural-walk-refit.md) holds the measures.
@@ -286,7 +289,7 @@ and looser still while she dozes.
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
-`stay`) and the pace. She approaches the chat on a new `attend.chatOpenSeq`, chases the cursor while
+`stay`) and the urgency. She approaches the chat on a new `attend.chatOpenSeq`, chases the cursor while
 `attend.untilMs` is open (the host stamps it from the character mind's `attend`
 intent, 60 s after a poke, pet start, drag or sent message; the conductor
 dispatches it only under the Natural driver, so under the classic driver the

@@ -1,5 +1,6 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { STROLL_URGENCY, WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { moveStep, restHold } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { expect, it, vi } from 'vitest'
 
@@ -111,12 +112,12 @@ it('asks the mind\'s poke dedupe on the run clock, so a poke within 2 s only fli
 
 it('scales goals by leg length and signals cancellation', () => {
   const { driver, events } = boundary()
-  driver.apply({ at: 0, kind: 'goal', x: 30, pace: 'stroll' }, 0)
-  expect(driver.debugGoal).toEqual({ seq: 1, x: 60, pace: 'stroll' })
-  driver.apply({ at: 1, kind: 'goal', x: null, pace: 'walk' }, 1)
+  driver.apply({ at: 0, kind: 'goal', x: 30, urgency: STROLL_URGENCY }, 0)
+  expect(driver.debugGoal).toEqual({ seq: 1, x: 60, urgency: STROLL_URGENCY })
+  driver.apply({ at: 1, kind: 'goal', x: null, urgency: WALK_URGENCY }, 1)
   expect(driver.debugGoal).toBeNull()
   expect(driver.goalCancelled).toBe(true)
-  expect(events[1]).toEqual({ t: 1, kind: 'goal', x: null, pace: null })
+  expect(events[1]).toEqual({ t: 1, kind: 'goal', x: null, urgency: null })
 })
 
 it('sets energy, shows and hides the chat with an unfold read, and drives the clip with labelled markers', () => {

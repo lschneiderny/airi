@@ -10,7 +10,7 @@ const band = v.picklist(['slight', 'clear', 'strong'])
 const provenance = v.picklist(['scenario', 'derived'])
 const eventSchema = v.variant('kind', [
   v.object({ t: time, kind: v.literal('marker'), label: v.string() }),
-  v.object({ t: time, kind: v.literal('goal'), x: v.nullable(finite), pace: v.nullable(v.picklist(['stroll', 'walk'])) }),
+  v.object({ t: time, kind: v.literal('goal'), x: v.nullable(finite), urgency: v.nullable(v.pipe(finite, v.minValue(0), v.maxValue(1))) }),
   v.object({ t: time, kind: v.literal('gesture'), gesture: v.string() }),
   v.object({ t: time, kind: v.literal('mode'), mode: v.string() }),
   v.object({ t: time, kind: v.literal('touch'), touch: v.picklist(['poke', 'pet-start', 'pet-end']), region: v.optional(v.picklist(['head', 'body'])) }),

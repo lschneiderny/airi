@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 import { createRun } from '../evidence/run'
 import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
@@ -118,13 +119,14 @@ function planExpression(): string {
 function legExpression(goalX: number, limitMs: number): string {
   return `(async () => {${pagePrelude}
   const goalX = ${JSON.stringify(goalX)}
+  const WALK_URGENCY = ${JSON.stringify(WALK_URGENCY)}
   const rows = []
   record = (s, now) => {
     if (s.locomotion && s.world)
       rows.push([now, s.locomotion.mode, s.locomotion.skate, s.feet?.maxError ?? 0, s.locomotion.position.x, s.world.originX, goalX, s.characterPlacement?.x ?? null, s.characterPlacement?.width ?? null, s.locomotion.skateContactPeak])
   }
   try {
-    send('requestGoal', { x: goalX, pace: 'walk' })
+    send('requestGoal', { x: goalX, urgency: WALK_URGENCY })
     let timedOut = false
     await until(s => s.locomotion.mode !== 'idle', 10000, 'the walk to start')
     await until(s => s.locomotion.mode === 'idle' && Math.abs(s.locomotion.position.x - goalX) <= 0.2, ${limitMs}, 'her to arrive').catch(() => {

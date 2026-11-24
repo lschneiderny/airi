@@ -31,7 +31,7 @@ export interface MMDStanceDiagnostics {
   /** The locomotion reason: `approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or `stay`. */
   reason: BodyIntent['locomotion']['reason']
   goalX: number | null
-  pace: BodyIntent['locomotion']['pace']
+  urgency: BodyIntent['locomotion']['urgency']
   pendingGoal: { x: number, reason: string } | null
   /** Director-clock times until which the movement tools and the look tool are refused, from the character mind's refractories. */
   moveRefractoryUntilMs: number
@@ -335,7 +335,7 @@ export class MMDStanceDirector {
       stanceReason: this.reason,
       reason: this.memory.reason,
       goalX: this.memory.goalX,
-      pace: this.memory.goalPace,
+      urgency: this.memory.goalUrgency,
       pendingGoal: this.memory.pendingGoal && { x: this.memory.pendingGoal.x, reason: this.memory.pendingGoal.reason },
       moveRefractoryUntilMs: this.refractory.moveToolUntilMs,
       lookRefractoryUntilMs: this.refractory.lookToolUntilMs,

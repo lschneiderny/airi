@@ -27,7 +27,7 @@ export type MotionTraceEvent
     | { t: number, kind: 'emotion', emotion: string, band: 'slight' | 'clear' | 'strong', phase: 'pulse' | 'hold-start' | 'hold-end' | 'placebo', trialId?: string }
     | { t: number, kind: 'gesture', gesture: string }
     | { t: number, kind: 'gait', gait: 'liftOff' | 'heelStrike', foot: 'left' | 'right' }
-    | { t: number, kind: 'goal', x: number | null, pace: 'stroll' | 'walk' | null }
+    | { t: number, kind: 'goal', x: number | null, urgency: number | null }
     | { t: number, kind: 'touch', touch: 'poke' | 'pet-start' | 'pet-end', region?: 'head' | 'body' }
     | { t: number, kind: 'mode', mode: string }
     | { t: number, kind: 'marker', label: string }

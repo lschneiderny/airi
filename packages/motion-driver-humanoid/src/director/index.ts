@@ -1,9 +1,10 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { LocomotionFrame } from '../locomotion'
-import type { BodyIntent, BodyLocomotionReason, BodyLookTarget, LocomotionPace } from '../types'
+import type { BodyIntent, BodyLocomotionReason, BodyLookTarget } from '../types'
 
 import { createRandomStream } from '../random'
+import { STROLL_URGENCY, WALK_URGENCY } from '../types'
 
 export type { BodyLookTarget } from '../types'
 
@@ -142,7 +143,8 @@ export interface BodyActionFeedback {
 /** A locomotion goal request before the gates are applied. */
 export interface BodyGoalRequest {
   x: number
-  pace: LocomotionPace
+  /** In [0, 1]; see `BodyLocomotionIntent.urgency`. */
+  urgency: number
   reason: BodyLocomotionReason
 }
 
@@ -203,7 +205,7 @@ export interface BodyDirectorInput {
   cursorOnStage: boolean
   toolRequest: BodyToolRequest | null
   /** Lab "Walk here" goal; same gates as every other reason, no refractory. */
-  debugGoal: { seq: number, x: number, pace: LocomotionPace } | null
+  debugGoal: { seq: number, x: number, urgency: number } | null
   /** Leg length in model units; every distance rule scales by it. */
   legLength: number
   seed: number
@@ -259,7 +261,7 @@ export interface BodyDirectorMemory {
   readonly stanceSinceMs: number | null
   readonly goalX: number | null
   readonly goalSinceMs: number | null
-  readonly goalPace: LocomotionPace
+  readonly goalUrgency: number
   readonly reason: BodyLocomotionReason
   /** A chase ended within reach; once at rest she may take one step onto the cursor. */
   readonly cursorStepPending: boolean
@@ -309,7 +311,7 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   stanceSinceMs: null,
   goalX: null,
   goalSinceMs: null,
-  goalPace: 'walk',
+  goalUrgency: WALK_URGENCY,
   reason: 'stay',
   cursorStepPending: false,
   pendingGoal: null,
@@ -405,7 +407,7 @@ export function decideBody(
   let rngState = previous.rngState ?? input.seed >>> 0
   let goalX = ground === null ? null : previous.goalX
   let goalSinceMs = previous.goalSinceMs
-  let goalPace = previous.goalPace
+  let goalUrgency = previous.goalUrgency
   let reason = ground === null ? 'stay' : previous.reason
   let cursorStepPending = previous.cursorStepPending
   let pending = previous.pendingGoal
@@ -445,7 +447,7 @@ export function decideBody(
     && (reachedCursor || (input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE))
   if (arrived) {
     // Chases walk; the corrective approach strolls, so its own arrival never arms a second step.
-    if (reachedCursor && reason === 'approach-cursor' && goalPace === 'walk')
+    if (reachedCursor && reason === 'approach-cursor' && goalUrgency === WALK_URGENCY)
       cursorStepPending = true
     // A walk of her own choosing has a destination worth staying at: she does not turn around after 20 seconds, but
     // stays as long as the mind drew with the errand.
@@ -576,7 +578,7 @@ export function decideBody(
       else {
         // The walk resumes after the clip: the goal in progress waits as a pending goal (a newer pending goal wins).
         if (goalX !== null) {
-          pending ??= { x: goalX, pace: goalPace, reason, requestedAtMs: nowMs }
+          pending ??= { x: goalX, urgency: goalUrgency, reason, requestedAtMs: nowMs }
           goalX = null
           goalSinceMs = null
           reason = 'stay'
@@ -652,7 +654,7 @@ export function decideBody(
   if (input.attend.chatOpenSeq > previous.lastChatOpenSeq && ground !== null && input.chatX !== null) {
     request = {
       x: chatStandGoal(input.chatX, input.homeX, leg, zones),
-      pace: 'walk',
+      urgency: WALK_URGENCY,
       reason: 'approach-chat',
     }
   }
@@ -689,13 +691,13 @@ export function decideBody(
         const toolX = tool.kind === 'come-here' && input.chatX !== null
           ? chatStandGoal(input.chatX, input.homeX, leg, zones)
           : clampToZones(input.homeX, zones)
-        request = { x: toolX, pace: 'walk', reason: 'tool' }
+        request = { x: toolX, urgency: WALK_URGENCY, reason: 'tool' }
       }
     }
   }
 
   if (input.debugGoal !== null && input.debugGoal.seq > previous.lastDebugSeq && ground !== null) {
-    request = { x: clampToZones(input.debugGoal.x, zones), pace: input.debugGoal.pace, reason: 'debug' }
+    request = { x: clampToZones(input.debugGoal.x, zones), urgency: input.debugGoal.urgency, reason: 'debug' }
   }
 
   if (request !== null)
@@ -720,7 +722,7 @@ export function decideBody(
     if (goal.reason !== 'wander' && goal.reason !== 'visit')
       wanderStay = null
     goalX = goal.x
-    goalPace = goal.pace
+    goalUrgency = goal.urgency
     reason = goal.reason
     goalSinceMs = nowMs
     lastReasonMs = nowMs
@@ -734,7 +736,7 @@ export function decideBody(
 
   // D16: wait for the braking slide to finish, then spend the chase's one correction before any new idle goal.
   if (cursorStepPending && !arrived && goalX === null && pending === null && input.locomotionMode === 'idle' && input.cursorX !== null && canIssue())
-    issue({ x: clampToZones(input.cursorX, zones), pace: 'stroll', reason: 'approach-cursor' })
+    issue({ x: clampToZones(input.cursorX, zones), urgency: STROLL_URGENCY, reason: 'approach-cursor' })
 
   const chasing = attendingCursor
     && input.cursorX !== null
@@ -743,7 +745,7 @@ export function decideBody(
     const chaseX = clampToZones(input.cursorX - Math.sign(input.cursorX - input.rootX) * CHASE_STOP_LEGS * leg, zones)
     const sameGoal = reason === 'approach-cursor' && goalX !== null && Math.abs(chaseX - goalX) <= ARRIVAL_TOLERANCE
     if (!sameGoal && Math.abs(chaseX - input.rootX) > ARRIVAL_TOLERANCE)
-      issue({ x: chaseX, pace: 'walk', reason: 'approach-cursor' })
+      issue({ x: chaseX, urgency: WALK_URGENCY, reason: 'approach-cursor' })
   }
 
   if (
@@ -756,7 +758,7 @@ export function decideBody(
     && nowMs >= lingerUntilMs
     && !atHome
   ) {
-    issue({ x: clampToZones(input.homeX, zones), pace: 'stroll', reason: 'return-home' })
+    issue({ x: clampToZones(input.homeX, zones), urgency: STROLL_URGENCY, reason: 'return-home' })
   }
   // A stay that ends at home needs no walk home.
   if (wanderStay !== null && goalX === null && nowMs >= lingerUntilMs && atHome)
@@ -764,7 +766,7 @@ export function decideBody(
 
   // A root at rest in a wing is unseen, so she walks to the nearest zone. Issuing here also keeps a wander from starting there.
   if (inWing && input.reach !== undefined && pending === null && goalX === null && input.locomotionMode === 'idle' && canIssue())
-    issue({ x: clampToZones(input.rootX, input.reach), pace: 'walk', reason: 'enter-stage' })
+    issue({ x: clampToZones(input.rootX, input.reach), urgency: WALK_URGENCY, reason: 'enter-stage' })
 
   const watching = input.performance.mode === 'watching'
   if (
@@ -794,7 +796,7 @@ export function decideBody(
       if (visitInPlace)
         arriveInPlace()
       else if (visitX !== null)
-        issue({ x: visitX, pace: 'stroll', reason: 'visit' })
+        issue({ x: visitX, urgency: STROLL_URGENCY, reason: 'visit' })
     }
     else {
       const visiting = (visitInPlace || visitX !== null) && asked.pick < VISIT_SHARE
@@ -802,7 +804,7 @@ export function decideBody(
         arriveInPlace()
       }
       else if (visiting && visitX !== null) {
-        issue({ x: visitX, pace: 'stroll', reason: 'visit' })
+        issue({ x: visitX, urgency: STROLL_URGENCY, reason: 'visit' })
       }
       else {
         const longestSide = Math.max(input.rootX - ground.minX, ground.maxX - input.rootX)
@@ -818,7 +820,7 @@ export function decideBody(
           const x = offset < leftLength
             ? ground.minX + offset
             : input.rootX + minDistance + (offset - leftLength)
-          issue({ x, pace: 'stroll', reason: 'wander' })
+          issue({ x, urgency: STROLL_URGENCY, reason: 'wander' })
         }
       }
       // Without room to wander, the request is spent like a refused act.
@@ -848,15 +850,15 @@ export function decideBody(
       look: lookOverride === null ? null : { seq: lookOverride.seq, target: lookOverride.target, holdMs: LOOK_OVERRIDE_MS },
       facingYaw: 0,
       locomotion: ground === null
-        ? { homeX: input.homeX, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' }
+        ? { homeX: input.homeX, goalX: null, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'stay' }
         : {
             homeX: input.homeX,
             goalX,
-            pace: goalPace,
+            urgency: goalUrgency,
             arriveFacing,
             reason,
             // Only the one corrective approach strolls; every chase walks.
-            ...(goalX !== null && reason === 'approach-cursor' && goalPace === 'stroll' ? { step: 'sidestep' as const } : {}),
+            ...(goalX !== null && reason === 'approach-cursor' && goalUrgency === STROLL_URGENCY ? { step: 'sidestep' as const } : {}),
           },
       action: performing === null
         ? null
@@ -870,7 +872,7 @@ export function decideBody(
       stanceSinceMs,
       goalX,
       goalSinceMs,
-      goalPace,
+      goalUrgency,
       reason,
       cursorStepPending,
       pendingGoal: pending,

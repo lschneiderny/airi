@@ -6,6 +6,7 @@ import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { Motion3dIdleDrive } from './idle-drive'
 
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { createRandomStream, deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
@@ -58,7 +59,7 @@ export type Motion3dCue
     | { at: number, kind: 'placebo', trialId: string }
     | { at: number, kind: 'gesture', gesture: CueGestureKind, count?: number }
     | { at: number, kind: 'touch', touch: 'poke' | 'pet-start' | 'pet-end', region: 'head' | 'body', x: number, y: number }
-    | { at: number, kind: 'goal', x: number | null, pace: 'stroll' | 'walk' }
+    | { at: number, kind: 'goal', x: number | null, urgency: number }
     /** Recorded as a `mode` event naming the mode, or `away` while the user is away. */
     | { at: number, kind: 'activity', mode: PerformanceMode, away?: boolean }
     | { at: number, kind: 'marker', label: string }
@@ -389,7 +390,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
   },
   {
     /**
-     * Version 3 (goal 4, plan D1 as unit M revised it, with 2 s of slack after each leg): every goal at walk pace (owner
+     * Version 3 (goal 4, plan D1 as unit M revised it, with 2 s of slack after each leg): every goal at walk urgency (owner
      * decision O5). A long leg to the right (about 22 s of walking, so the gate places three 10 s windows), back to the
      * left, a goal behind her while she walks left (the turn-around), then short legs, for 8 turns in 60 s. Goals are in
      * leg lengths and at least the director's goal dwell apart; only the seeded observation marker depends on the seed.
@@ -401,7 +402,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     seconds: 60,
     timeline: (seed, seconds) => [
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
-      ...WALK_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
+      ...WALK_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, urgency: WALK_URGENCY })),
     ].filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime),
   },
   {
@@ -413,7 +414,7 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     maxSeconds: 150,
     timeline: (seed, seconds) => [
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
-      ...MOOD_ARC_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
+      ...MOOD_ARC_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, urgency: WALK_URGENCY })),
       ...MOOD_ARC,
     ].filter(cue => cue.at < Math.min(seconds, 150)).sort(byTime),
   },

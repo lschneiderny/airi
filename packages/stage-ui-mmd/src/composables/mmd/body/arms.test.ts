@@ -2,6 +2,7 @@ import type { IdleBehaviourKind, IdleBehaviourRecord } from '@proj-airi/motion-d
 
 import type { ExtraBody } from './fixture'
 
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -252,7 +253,7 @@ describe('mmd arm measurement and hang solver', () => {
       play(fixture, clip)
       for (let frame = 0; frame < 30; frame++)
         fixture.pipeline.step(1 / 60)
-      fixture.body.setLocomotionGoal({ goalX: 4, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+      fixture.body.setLocomotionGoal({ goalX: 4, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
       for (let frame = 0; frame < 900; frame++)
         fixture.pipeline.step(1 / 60)
       return { enabled: fixture.body.diagnostics.locomotion?.enabled, x: fixture.mesh.position.x, ownership: fixture.body.ownership() }

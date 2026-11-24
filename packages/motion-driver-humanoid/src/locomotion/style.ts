@@ -13,7 +13,7 @@ const radians = Math.PI / 180
  * `GAIT_STYLE_BOUNDS` keeps each value inside that range.
  */
 export interface GaitStyle {
-  /** Walking speed as a share of the speed the pace asks for. */
+  /** Walking speed as a share of the speed the urgency asks for. */
   readonly speed: number
   /** Step length at a given speed as a share of the cadence law's; the step rate makes up the rest. */
   readonly stride: number
@@ -66,7 +66,7 @@ export const GAIT_STYLE_KEYS = Object.keys(NEUTRAL_GAIT_STYLE) as readonly GaitS
 
 /**
  * Each value's range. Ratios span the acted styles' range about the normal walk: speed sad 0.39 to active 1.22 (the
- * pace sets the rest), bounce 0.35 to 3, arm swing 0.13 to 1.6, elbow carry up to 59 degrees more than normal, trunk
+ * urgency sets the rest), bounce 0.35 to 3, arm swing 0.13 to 1.6, elbow carry up to 59 degrees more than normal, trunk
  * lean up to 17 degrees, head carriage up to 36 degrees forward. Head carriage stops at 18 degrees: the gaze must still
  * reach the viewer over it.
  */

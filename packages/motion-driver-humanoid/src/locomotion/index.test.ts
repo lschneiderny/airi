@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 
 import { describe, expect, it } from 'vitest'
 
+import { STROLL_URGENCY, WALK_URGENCY } from '../types'
 import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
@@ -70,7 +71,7 @@ function createRun(start: Pose, seed = 7, gaitTraits: GaitTraits = traits, optio
         const frame = locomotion.step({
           now,
           goalX: null,
-          pace: 'walk',
+          urgency: WALK_URGENCY,
           arriveFacing: start.yaw,
           enabled: true,
           idleSupport: 0,
@@ -96,10 +97,10 @@ const scenarioDefinitions = {
     seconds: 22,
     drive: (now: number): Partial<LocomotionInput> => {
       if (now < 3)
-        return { goalX: 200, pace: 'walk', arriveFacing: Math.PI / 2 }
+        return { goalX: 200, urgency: WALK_URGENCY, arriveFacing: Math.PI / 2 }
       if (now < 5)
-        return { goalX: 200, pace: 'stroll', arriveFacing: Math.PI / 2 }
-      return { goalX: -40, pace: 'walk', arriveFacing: -Math.PI / 2 }
+        return { goalX: 200, urgency: STROLL_URGENCY, arriveFacing: Math.PI / 2 }
+      return { goalX: -40, urgency: WALK_URGENCY, arriveFacing: -Math.PI / 2 }
     },
   },
 } satisfies Record<string, { start: Pose, seconds: number, drive: Drive }>
@@ -131,7 +132,7 @@ describe('sidestep', () => {
     const start = { x: 3, yaw }
     const goalX = start.x + legs * legLength
     const run = createRun(start)
-    run.advance(8, () => ({ goalX, step: 'sidestep' as const, pace: 'stroll', arriveFacing: 0 }))
+    run.advance(8, () => ({ goalX, step: 'sidestep' as const, urgency: STROLL_URGENCY, arriveFacing: 0 }))
     const last = run.frames.at(-1)!
     expect(last.mode).toBe('idle')
     expect(Math.abs(last.root.position.x - goalX)).toBeLessThanOrEqual(0.05 * legLength)
@@ -163,7 +164,7 @@ describe('sidestep', () => {
       expect(distance(strike.frame.feet[strike.foot].target.position, pairFeet[strike.foot].position)).toBeLessThan(1e-9)
     })
     const replay = createRun(start)
-    replay.advance(8, () => ({ goalX, step: 'sidestep' as const, pace: 'stroll', arriveFacing: 0 }))
+    replay.advance(8, () => ({ goalX, step: 'sidestep' as const, urgency: STROLL_URGENCY, arriveFacing: 0 }))
     expect(replay.frames).toEqual(run.frames)
   })
 
@@ -191,7 +192,7 @@ describe('sidestep', () => {
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
     const run = createRun({ x: 0, yaw: 0 })
-    run.advance(8, now => ({ goalX: now < 0.5 ? 0.55 * legLength : null, step: 'sidestep', pace: now < 0.5 ? 'stroll' : 'walk' }))
+    run.advance(8, now => ({ goalX: now < 0.5 ? 0.55 * legLength : null, step: 'sidestep', urgency: now < 0.5 ? STROLL_URGENCY : WALK_URGENCY }))
     const last = run.frames.at(-1)!
     expect(last.mode).toBe('idle')
     expect(last.root.position.x).toBeCloseTo(0.5 * legLength)
@@ -200,7 +201,7 @@ describe('sidestep', () => {
     expect(eventsOf(run.frames, 'heelStrike')).toHaveLength(2)
     expect(run.frames.some(frame => frame.mode === 'turning')).toBe(false)
     const uninterrupted = createRun({ x: 0, yaw: 0 })
-    uninterrupted.advance(8, () => ({ goalX: 0.55 * legLength, step: 'sidestep', pace: 'stroll' }))
+    uninterrupted.advance(8, () => ({ goalX: 0.55 * legLength, step: 'sidestep', urgency: STROLL_URGENCY }))
     const firstPairEnd = eventsOf(run.frames, 'heelStrike')[1]!.tick
     expect(run.frames.slice(0, firstPairEnd + 1).map(frame => frame.root))
       .toEqual(uninterrupted.frames.slice(0, firstPairEnd + 1).map(frame => frame.root))
@@ -208,7 +209,7 @@ describe('sidestep', () => {
 
   it('finishes the pair before a replacement beyond the sidestep limit walks', () => {
     const run = createRun({ x: 0, yaw: 0 })
-    run.advance(12, now => ({ goalX: now < 0.5 ? 0.55 * legLength : 2 * legLength, step: 'sidestep', pace: 'stroll' }))
+    run.advance(12, now => ({ goalX: now < 0.5 ? 0.55 * legLength : 2 * legLength, step: 'sidestep', urgency: STROLL_URGENCY }))
     const last = run.frames.at(-1)!
     expect(last.mode).toBe('idle')
     expect(last.root.position.x).toBeCloseTo(2 * legLength)
@@ -475,16 +476,16 @@ describe('procedural gait', () => {
   })
 
   it('rest point: a walk that loses its goal comes to rest where the frame before said it would', () => {
-    for (const [seconds, pace] of [[0.6, 'walk'], [1.2, 'walk'], [4, 'walk'], [4, 'stroll']] as const) {
+    for (const [seconds, urgency] of [[0.6, WALK_URGENCY], [1.2, WALK_URGENCY], [4, WALK_URGENCY], [4, STROLL_URGENCY]] as const) {
       const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, traits, {})
-      run.advance(seconds, () => ({ goalX: 500, pace, arriveFacing: Math.PI / 2 }))
+      run.advance(seconds, () => ({ goalX: 500, urgency, arriveFacing: Math.PI / 2 }))
       const before = run.frames.at(-1)
       run.advance(4, () => ({ goalX: null }))
       const last = run.frames.at(-1)
 
-      expect(before?.speed, `${pace} ${seconds} s`).toBeGreaterThan(0)
-      expect(before?.restX, `${pace} ${seconds} s`).toBeGreaterThan(before?.root.position.x ?? Infinity)
-      expect(Math.abs((last?.root.position.x ?? 0) - (before?.restX ?? 0)), `${pace} ${seconds} s`).toBeLessThan(1e-9)
+      expect(before?.speed, `urgency ${urgency} ${seconds} s`).toBeGreaterThan(0)
+      expect(before?.restX, `urgency ${urgency} ${seconds} s`).toBeGreaterThan(before?.root.position.x ?? Infinity)
+      expect(Math.abs((last?.root.position.x ?? 0) - (before?.restX ?? 0)), `urgency ${urgency} ${seconds} s`).toBeLessThan(1e-9)
       expect(last?.restX).toBe(last?.root.position.x)
     }
   })
@@ -986,7 +987,7 @@ describe('procedural gait', () => {
     const behind: number[] = []
     let deepest = 0
     for (let tick = 0; tick < 1200; tick++) {
-      const frame = locomotion.step({ now: tick * dt, goalX: 500, pace: 'walk', arriveFacing: Math.PI / 2, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
+      const frame = locomotion.step({ now: tick * dt, goalX: 500, urgency: WALK_URGENCY, arriveFacing: Math.PI / 2, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
       planted = { left: frame.feet.left.target, right: frame.feet.right.target }
       if (tick * dt < 4)
         continue

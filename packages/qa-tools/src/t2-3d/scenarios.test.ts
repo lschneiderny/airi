@@ -1,4 +1,5 @@
 import { GOAL_MIN_DWELL_MS } from '@proj-airi/motion-driver-humanoid/director'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { describe, expect, it } from 'vitest'
@@ -44,14 +45,14 @@ describe('motion3d scenario timelines', () => {
     })
   })
 
-  it('walks version 3: right, back left, a turn-around and short legs at walk pace, each cue at least 2 s after the previous leg ends', () => {
+  it('walks version 3: right, back left, a turn-around and short legs at walk urgency, each cue at least 2 s after the previous leg ends', () => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'walk')
     if (!scenario)
       throw new Error('Missing walk scenario')
     expect([scenario.version, scenario.seconds]).toEqual([3, 60])
     for (const seed of [1, 2]) {
       const goals = scenario.timeline(seed, 120).flatMap(cue => cue.kind === 'goal' ? [cue] : [])
-      expect(goals.map(goal => [goal.at, goal.x, goal.pace])).toEqual([[0.5, 19.5, 'walk'], [28, 8, 'walk'], [33, 19, 'walk'], [45, 16, 'walk'], [54.5, 19, 'walk'], [64, 16, 'walk']])
+      expect(goals.map(goal => [goal.at, goal.x, goal.urgency])).toEqual([[0.5, 19.5, WALK_URGENCY], [28, 8, WALK_URGENCY], [33, 19, WALK_URGENCY], [45, 16, WALK_URGENCY], [54.5, 19, WALK_URGENCY], [64, 16, WALK_URGENCY]])
       goals.slice(1).forEach((goal, i) => expect(goal.at - goals[i].at).toBeGreaterThanOrEqual(GOAL_MIN_DWELL_MS / 1000))
     }
   })
@@ -61,8 +62,8 @@ describe('motion3d scenario timelines', () => {
     if (!scenario)
       throw new Error('Missing walk-mood-arc scenario')
     const timeline = scenario.timeline(1, scenario.seconds)
-    const goals = timeline.flatMap(cue => cue.kind === 'goal' ? [[cue.at, cue.x, cue.pace]] : [])
-    expect(goals).toEqual([[0.5, 19.5, 'walk'], [30, 0, 'walk'], [60, 19.5, 'walk'], [90, 0, 'walk'], [120, 19.5, 'walk']])
+    const goals = timeline.flatMap(cue => cue.kind === 'goal' ? [[cue.at, cue.x, cue.urgency]] : [])
+    expect(goals).toEqual([[0.5, 19.5, WALK_URGENCY], [30, 0, WALK_URGENCY], [60, 19.5, WALK_URGENCY], [90, 0, WALK_URGENCY], [120, 19.5, WALK_URGENCY]])
     const changes = [...new Set(timeline.flatMap(cue => (cue.kind === 'mood' || cue.kind === 'energy') && cue.at > 0 ? [cue.at] : []))]
     expect(changes).toEqual([15, 45, 75, 105, 135])
     expect(timeline.find(cue => cue.kind === 'mood')?.at).toBe(0)

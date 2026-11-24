@@ -92,13 +92,13 @@ function simulate(scenario: PressScenario) {
       wander: scenario.wanderAtS !== null && t >= scenario.wanderAtS ? { seq: 1, pick: 0.5, lingerSeconds: 60 } : null,
     }, memory)
     const goal = result.intent.locomotion
-    if (goal.goalX !== null && goal.reason === 'approach-cursor' && goal.pace === 'stroll' && result.memory.goalSinceMs !== memory.goalSinceMs) {
+    if (goal.goalX !== null && goal.reason === 'approach-cursor' && goal.step === 'sidestep' && result.memory.goalSinceMs !== memory.goalSinceMs) {
       correctiveGoals++
       correctiveDistance = Math.abs(goal.goalX - rootX)
       correcting = true
     }
     memory = result.memory
-    const frame = locomotion.step({ now: t, goalX: goal.goalX, pace: goal.pace, step: goal.step, arriveFacing: 0, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
+    const frame = locomotion.step({ now: t, goalX: goal.goalX, urgency: goal.urgency, step: goal.step, arriveFacing: 0, enabled: true, idleSupport: 0, plantedFeet: planted }, dt)
     if (aim !== null && frame.mode === 'idle')
       chaseRestAtS ??= t
     if (correcting) {

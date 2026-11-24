@@ -781,7 +781,7 @@ function renderLoop(now = performance.now()) {
     // Sent every frame: the body drops a goal set while a clip owns the root, so the intent is the only source of truth.
     const locomotion = stance.intent?.locomotion
     body?.setLocomotionGoal(locomotion && locomotion.goalX !== null
-      ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason, step: locomotion.step }
+      ? { goalX: locomotion.goalX, urgency: locomotion.urgency, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason, step: locomotion.step }
       : null)
   }
   layerClip = animation?.snapshot().layer?.name ?? null
@@ -1518,9 +1518,9 @@ async function loadModel(src: string) {
           for (const event of gait?.events ?? [])
             sampler.recorder.event({ t: source.seconds, kind: 'gait', gait: event.kind, foot: event.foot })
           const goal = stance?.intent?.locomotion
-          const key = `${goal?.goalX ?? null}:${goal?.pace ?? null}`
+          const key = `${goal?.goalX ?? null}:${goal?.urgency ?? null}`
           if (key !== lastGoal) {
-            sampler.recorder.event({ t: source.seconds, kind: 'goal', x: goal?.goalX ?? null, pace: goal?.pace ?? null })
+            sampler.recorder.event({ t: source.seconds, kind: 'goal', x: goal?.goalX ?? null, urgency: goal?.urgency ?? null })
             lastGoal = key
           }
           if (source.seconds >= source.maxSeconds)

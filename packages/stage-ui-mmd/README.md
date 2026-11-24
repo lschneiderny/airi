@@ -81,7 +81,7 @@ reaching feature parity with the Live2D and VRM renderers:
   cursor rests in 60 % of cases (`visit`), and always while the user is active;
   she then stays 45 to 150 s before she strolls home. Goals wait while she speaks, and a goal held longer than 30 s is
   dropped. `director` in the diagnostics snapshot reports `reason` (the
-  locomotion reason), `goalX`, `pace`, `pendingGoal` and the tool refractories;
+  locomotion reason), `goalX`, `urgency`, `pendingGoal` and the tool refractories;
   `stanceReason` is the stance's reason. The `requestGoal` command is the
   director's `debugGoal`. Without a stage world no goal is ever issued.
   A corrective goal after a chase forwards `step: 'sidestep'` through the body
@@ -519,7 +519,7 @@ running (no model, the Classic driver, or the classic window).
 | `characterPlacement { x, y, width, height }` | Stage mode: the character's projected rect in work-area DIP with the root at its current x. |
 | `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
 | `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip, originX, reach }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). `originX` is the world x of the work area's left edge; it changes when the stage window has moved to another display. `reach` lists every display's ground line while she can walk between displays, and is `null` otherwise. |
-| `locomotion { mode, position { x, z }, yaw, goalX, reason, pace, speed, phase, weight, skate, leashClamps, enabled, skateContact, skateContactPeak }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and pace, the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). `skateContact` (appended) is `skate` measured at each planted foot's contact point: the ankle while the foot is flat (then it equals `skate` bit for bit), or the rig's heel or ball point when the foot stage's `measure(pivot)` names that kind: the ball is the toe bone (つま先), the heel lies under the ankle at the toe bone's height, both read from the bind skeleton (a rig without a toe bone reads the ankle). Only the pivot kind is the performer's report: the body passes each foot's gait roll pivot (`LocomotionFoot.roll`) while the gait weight is above 0, and the foot stage rolls the foot about the same heel and ball points (`MMDFootContact.rollGeometry`, on rigs with toe bones and toe IK bones). `qa:stage gate` judges it when present (owner decision O6), and `qa:stage measure` records it. `skateContactPeak` (appended) is the largest per-frame `skateContact` since the previous diagnostics snapshot (model units per frame): the scene resets it after each 10 Hz snapshot it publishes, so the stage measure sees a one-frame slide between snapshots. |
+| `locomotion { mode, position { x, z }, yaw, goalX, reason, urgency, speed, phase, weight, skate, leashClamps, enabled, skateContact, skateContactPeak }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and urgency (0 to 1), the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). `skateContact` (appended) is `skate` measured at each planted foot's contact point: the ankle while the foot is flat (then it equals `skate` bit for bit), or the rig's heel or ball point when the foot stage's `measure(pivot)` names that kind: the ball is the toe bone (つま先), the heel lies under the ankle at the toe bone's height, both read from the bind skeleton (a rig without a toe bone reads the ankle). Only the pivot kind is the performer's report: the body passes each foot's gait roll pivot (`LocomotionFoot.roll`) while the gait weight is above 0, and the foot stage rolls the foot about the same heel and ball points (`MMDFootContact.rollGeometry`, on rigs with toe bones and toe IK bones). `qa:stage gate` judges it when present (owner decision O6), and `qa:stage measure` records it. `skateContactPeak` (appended) is the largest per-frame `skateContact` since the previous diagnostics snapshot (model units per frame): the scene resets it after each 10 Hz snapshot it publishes, so the stage measure sees a one-frame slide between snapshots. |
 | `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip, headPenetration { left, right }, correctionDeg { left, right } }` | The arm measurement: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect, `handBelowHip` whether both hands sit below the hips bone, `headPenetration` the same overlap with the kinematic head and neck bodies, and `correctionDeg` the performer's arm collision correction in degrees. |
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
@@ -535,7 +535,7 @@ holds: `idle-timeout`, `away`, `rest-fallback`, `doze-fallback`, `dwell`,
 `no-sleep-slot`, `idle`, `no-sit-slot` or `active`), `reason` (the locomotion reason: `approach-chat`,
 `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
 `stay`),
-`goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),
+`goalX`, `urgency`, `pendingGoal { x, reason }` (a goal held while she speaks),
 `moveRefractoryUntilMs` and
 `lookRefractoryUntilMs` (director-clock times until which `come_here` and
 `go_home`, or `look_at`, are refused; the character mind's refractories, which
@@ -555,7 +555,7 @@ holds) and `wanderAnswer { seq, accepted }`. `nextWanderAtMs` was removed on
 | `setDebugFlag` | `{ flag: 'disableFootContact' \| 'disableLookAt', on }` or `{ flag: 'armRestHangDeg', value }` | Disables a body stage for QA, or overrides the rest hang in degrees below horizontal (0-90; `null` restores the default and the per-rig solver). |
 | `advanceDirectorClock` | milliseconds | Adds to the director's clock only; Natural and physics keep real time. |
 | `setOverlay` | `Partial<MMDOverlayFlags>` | Turns overlays on or off (the lab uses `mmdOverlaySetEvent`). |
-| `requestGoal` | `{ x, pace: 'stroll' \| 'walk' }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`. Any other pace is rejected with one warning. |
+| `requestGoal` | `{ x, urgency }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`, at `urgency` in [0, 1]. An urgency outside [0, 1] is rejected with one warning. |
 | `setHome` | `{ x }` | Moves the resting root x the director returns to. |
 | `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Awaits a leader action that updates `roamMode` in `settings/mmd/performance`. |
 | `playClip` | `{ name, loop? }` | Queues the clip on the director as a `debug` request. The asleep, dragging, refractory and busy rules apply; `loop: true` skips only the gesture repeat cooldown. `loop` unset keeps the clip's curated or derived loop. An empty or non-string name is rejected with one warning. |
@@ -793,9 +793,9 @@ Electron app, Settings > System > Developer > MMD Motion Lab
 (`/devtools/mmd-motion`) reads the diagnostics store from the main window's
 stage and toggles its overlays. Its World card shows the `world` calibration,
 `stageModel` and `characterPlacement`; its Locomotion card shows the
-`locomotion` fields with the director's `reason`, `pace`, `goalX` and
+`locomotion` fields with the director's `reason`, `urgency`, `goalX` and
 `pendingGoal`, posts `requestGoal` ("Walk here", a DIP offset from the
-root along the floor line), `setHome` and `setRoamMode`; its Arms card shows
+root along the floor line, at the walk urgency 0.6), `setHome` and `setRoamMode`; its Arms card shows
 the `arms` fields; its Clips card lists `clips` with a Play button per row
 (`playClip`, disabled with the derivation notes as its title for an `unusable`
 clip) and a Stop button on the performing row (`stopClip`), reads out `action`

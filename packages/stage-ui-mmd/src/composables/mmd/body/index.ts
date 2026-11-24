@@ -16,6 +16,7 @@ import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
 import { NEUTRAL_GAIT_STYLE, walkStyleFrom } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { Quaternion, Vector3 } from 'three'
 
 import { fnv1a32 } from '../natural/seed'
@@ -458,7 +459,7 @@ export class MMDBody {
         const frame = this.locomotion.tick({
           now: (first + k + 1) * BODY_TICK,
           goalX: this.goal?.goalX ?? null,
-          pace: this.goal?.pace ?? 'walk',
+          urgency: this.goal?.urgency ?? WALK_URGENCY,
           step: this.goal?.step,
           arriveFacing: this.goal?.arriveFacing ?? 0,
           enabled: this.gaitEnabled,
@@ -648,7 +649,7 @@ export class MMDBody {
             yaw: this.gait.root.yaw,
             goalX: this.goal?.goalX ?? null,
             reason: this.goal?.reason ?? null,
-            pace: this.goal?.pace ?? null,
+            urgency: this.goal?.urgency ?? null,
             speed: this.gait.speed,
             phase: this.gait.phase,
             weight: this.gait.weight,

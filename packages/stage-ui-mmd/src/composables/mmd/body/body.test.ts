@@ -3,6 +3,7 @@ import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { LayerEvent } from '../animation-manager'
 import type { MMDBodyEvent, MMDBodyInput } from './index'
 
+import { STROLL_URGENCY, WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -150,7 +151,7 @@ describe('mmd full-body stages', () => {
       })
       for (let frame = 0; frame < 30; frame++)
         pipeline.step(1 / 60)
-      body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+      body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
       // The gaze goal of a frame reads the gait the previous frame left, so key each frame's kind by that gait.
       const kinds = { traveling: new Set<string>(), stopping: new Set<string>() }
       let walked = false
@@ -403,7 +404,7 @@ describe('mmd full-body stages', () => {
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
     resets = 0
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     let skate = 0
     let walked = false
     let maxError = 0
@@ -452,7 +453,7 @@ describe('mmd full-body stages', () => {
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
     const goalX = direction * 0.3 * rig.legLength!
-    body.setLocomotionGoal({ goalX, pace: 'stroll', arriveFacing: 0, reason: 'approach-cursor', step: 'sidestep' })
+    body.setLocomotionGoal({ goalX, urgency: STROLL_URGENCY, arriveFacing: 0, reason: 'approach-cursor', step: 'sidestep' })
     let stepped = false
     let skate = 0
     let maxError = 0
@@ -479,7 +480,7 @@ describe('mmd full-body stages', () => {
     setInput({ rootMotion: true })
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     const head = () => {
       const forward = new Vector3(0, 0, 1).applyQuaternion(bone('頭').getWorldQuaternion(new Quaternion()))
       return Math.atan2(forward.x, forward.z)
@@ -506,7 +507,7 @@ describe('mmd full-body stages', () => {
     setInput({ rootMotion: true })
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     for (let frame = 0; frame < 20; frame++)
       pipeline.step(1 / 60)
     expect(body.diagnostics.locomotion?.mode).not.toBe('idle')
@@ -533,7 +534,7 @@ describe('mmd full-body stages', () => {
     setInput({ rootMotion: true, stanceClips: new Set(['sit']) })
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     for (let frame = 0; frame < 120; frame++) {
       pipeline.step(1 / 60)
       expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: false, goalX: null })
@@ -551,7 +552,7 @@ describe('mmd full-body stages', () => {
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
     expect(body.ownership()).toMatchObject({ leftArm: 1, root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, upperBody: 0 })
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     let skate = 0
     let maxError = 0
     let walked = false
@@ -621,7 +622,7 @@ describe('mmd full-body stages', () => {
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
     expect(body.ownership()).toMatchObject({ root: 1, leftLegIk: 1, rightLegIk: 1, leftArm: 1, lowerBody: 0 })
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     for (let frame = 0; frame < 120; frame++) {
       pipeline.step(1 / 60)
       expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: false, goalX: null })
@@ -658,7 +659,7 @@ describe('mmd full-body stages', () => {
         expect(body.diagnostics.locomotion?.enabled).toBe(false)
         // A goal set while the clip owns the root is dropped, not deferred.
         if (performed === 5)
-          body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+          body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
       }
     }
     expect(performed).toBeGreaterThan(10)
@@ -669,7 +670,7 @@ describe('mmd full-body stages', () => {
     expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: true, goalX: null })
     expect(mesh.position.x).toBe(0)
 
-    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    body.setLocomotionGoal({ goalX: 10, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     for (let frame = 0; frame < 120; frame++)
       manager.update(1 / 60)
     expect(body.diagnostics.locomotion?.mode).not.toBe('idle')

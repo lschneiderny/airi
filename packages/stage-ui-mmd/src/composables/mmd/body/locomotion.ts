@@ -4,9 +4,10 @@ import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-h
 
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { BODY_TICK, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 /** The director's goal, including the optional corrective sidestep. */
-export type MMDLocomotionGoal = Pick<BodyLocomotionIntent, 'goalX' | 'pace' | 'arriveFacing' | 'reason' | 'step'>
+export type MMDLocomotionGoal = Pick<BodyLocomotionIntent, 'goalX' | 'urgency' | 'arriveFacing' | 'reason' | 'step'>
 
 /**
  * Moves the model root on the ground line. Per-frame root motion never requests a physics reset, so hair and skirts
@@ -77,7 +78,7 @@ export class MMDLocomotion {
     this.current = this.gait.step({
       now: 0,
       goalX: null,
-      pace: 'walk',
+      urgency: WALK_URGENCY,
       arriveFacing: 0,
       enabled: false,
       idleSupport: 0,
@@ -106,7 +107,7 @@ export class MMDLocomotion {
     this.current = this.gait.step({
       now,
       goalX: null,
-      pace: 'walk',
+      urgency: WALK_URGENCY,
       arriveFacing: yaw,
       enabled: true,
       idleSupport: 0,
