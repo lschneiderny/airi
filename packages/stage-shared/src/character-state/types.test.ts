@@ -121,6 +121,19 @@ describe('characterProfileSchema', () => {
     for (const gait of [{ width: 1.01 }, { bounce: -1.5 }, { posture: Number.NaN }, { stride: Number.POSITIVE_INFINITY }, { speed: 0.5 }, { sway: '0.5' }, null])
       expect(safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, gait }).success, JSON.stringify(gait)).toBe(false)
   })
+
+  it('keeps pep absent when omitted and keeps a pep in [0, 1]', () => {
+    expect(safeParse(CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE).output).not.toHaveProperty('pep')
+    for (const pep of [0, 0.35, 1]) {
+      const result = safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, pep })
+      expect(result.success && result.output.pep, String(pep)).toBe(pep)
+    }
+  })
+
+  it('rejects a pep outside [0, 1], not finite, or not a number', () => {
+    for (const pep of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY, '0.5', null])
+      expect(safeParse(CharacterProfileSchema, { ...DEFAULT_CHARACTER_PROFILE, pep }).success, String(pep)).toBe(false)
+  })
 })
 
 describe('characterStateRecordSchema', () => {

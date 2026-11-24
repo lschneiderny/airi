@@ -98,19 +98,25 @@ export const GaitBaselineSchema = strictObject({
   posture: optional(signedUnit),
 }) satisfies GenericSchema<unknown, GaitBaseline>
 
-/** The resting disposition, starting relationship, and walking baseline a character card sets. */
+/** The resting disposition, starting relationship, walking baseline, and pep a character card sets. */
 export interface CharacterProfile {
   /** The mood temperament is anchored to. */
   readonly resting: MoodAxes
   readonly startingStage: StartingStage
   /** Her walking baseline; the neutral walk when absent. */
   readonly gait?: GaitBaseline
+  /**
+   * How animated the Natural driver plays her, in [0, 1]: 0, or absent, is the calm default and 1 is bouncy. Read it
+   * with `pepOf`.
+   */
+  readonly pep?: number
 }
 
 export const CharacterProfileSchema = strictObject({
   resting: MoodAxesSchema,
   startingStage: picklist(['stranger', 'friendly', 'close']),
   gait: optional(GaitBaselineSchema),
+  pep: optional(unit),
 }) satisfies GenericSchema<unknown, CharacterProfile>
 
 export const DEFAULT_CHARACTER_PROFILE: CharacterProfile = Object.freeze({
