@@ -26,6 +26,7 @@ const reportTopics: Record<string, (args: string[], context: Motion3dCliContext)
   'pops': async (args, context) => (await import('../src/t2-3d/cli/pops')).popsMotion3d(args, context),
   'idle-acts': async (args, context) => (await import('../src/t2-3d/cli/idle-acts')).idleActsMotion3d(args, context),
   'walk-form': async (args, context) => (await import('../src/t2-3d/cli/walk-form')).walkFormMotion3d(args, context),
+  'walk-style': async (args, context) => (await import('../src/t2-3d/cli/walk-style')).walkStyleMotion3d(args, context),
   'rest': async (args, context) => (await import('../src/t2-3d/cli/rest')).restMotion3d(args, context),
 }
 
@@ -41,6 +42,11 @@ async function main(): Promise<number> {
   const json = takeJsonOption(given)
   if ('error' in json) {
     console.error(`lab:motion3d ${command}: ${json.error}`)
+    return 2
+  }
+  // walk-style measures and never judges: refused before a recorder exists, so no verdict file is written.
+  if (command === 'report' && json.args[0] === 'walk-style' && json.path !== null) {
+    console.error('lab:motion3d report walk-style measures and records no verdict; read each run\'s walk-style.json instead of --json')
     return 2
   }
   const cwd = process.env.INIT_CWD ?? process.cwd()
