@@ -665,8 +665,13 @@ of each kind, and `diagnostics.gesture.activation` is the weight the stack
 applied to each arm through gesture-order layers; `diagnostics.actActivation` is
 the same for act-order layers (an idle behaviour's form, the clip-free rest). Hosts turn report sequence
 changes into trace events. `HAND_SHAPES` holds architecture 4a's six hand
-shapes as data; the emotion layer blends the open and fist shapes, and the
-gesture layer shapes each stroke and arm form from them. Layers implement clip admission/cancellation
+shapes as data, each digit written out: `relaxed` is the rest hand (a curl
+cascade toward the little finger and a soft fan), `open` the presenting hand
+(palm-up, press, frame and the hair touch), `flat` only the chop's blade, `cup`
+a hold, and `fist` and `point` close to the knee of the finger limits with the
+thumb across the outside of the index and middle fingers. The emotion layer
+blends the open and fist shapes, and the gesture layer shapes each stroke and
+arm form from them. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 
