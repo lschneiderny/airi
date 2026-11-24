@@ -249,6 +249,10 @@ acted walking styles span. Between walks the style follows its input at once; a 
 new one with a 0.5 s time constant, so a change shows within a step or two. A bouncy style bends the knee after each
 heel strike, not at it; a list wider than the gait's lowers the pelvis by how far it raises the stance hip; the style's
 roll acts on full strides only, and the roll is scaled against the style's own full stride.
+The rig limits a style's step: `stepLimit` is the longest full step, as a share of the gait's, whose trailing leg asks
+a bob of at most 0.06 L at lift-off. A rig whose ball sits under its ankle (stilettos, short robot feet) gets a limit
+under 1 and walks with shorter, quicker steps; a rig without `traits.foot` is not limited. `frame.limited` names the
+style values the rig held below the style's ask, and `qa:motion3d run` records each change as a `gait-limit` marker.
 `walkStyleFrom({ mood, energy, baseline })` turns the performer's mood, the host energy and a character's
 `GaitBaseline` into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting
 tension and energy 0.5 with no baseline gives the neutral style.

@@ -183,12 +183,10 @@ describe('sidestep', () => {
       const forwarded = createRun(definition.start)
       forwarded.advance(definition.seconds, now => ({ ...definition.drive(now), step: undefined }))
       expect(forwarded.frames).toEqual(ordinary.frames)
-      // `neckPitch` came with the walk style and is 0 in the neutral style; the digest covers the fields before it.
-      expect(ordinary.frames.every(frame => frame.body.neckPitch === 0)).toBe(true)
-      hash.update(JSON.stringify(ordinary.frames, (key, value: unknown) => key === 'neckPitch' ? undefined : typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
+      hash.update(JSON.stringify(ordinary.frames, (_, value: unknown) => typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
     }
     // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers.
-    expect(hash.digest('hex')).toBe('7963327df9819c02300c619ab3d7af636a247c15de9d91eb873fbd1c323906af')
+    expect(hash.digest('hex')).toBe('b52b37538dac097a458cae3982b098e660491da96a3576efcc0f01380004e8fb')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -942,12 +940,13 @@ describe('procedural gait', () => {
     run.advance(14, () => ({ goalX: 60, arriveFacing: 0 }))
     const { frames } = run
     expect(frames.some(frame => frame.mode === 'turning')).toBe(false)
-    // The root is already under way when she has turned half way, and still under way when she is half way back.
+    // The root is already under way when she has turned half way, and still under way when she is half way back: the
+    // arrival turn starts before the braking, so it is not made on the spot after she has all but stopped.
     const halfOut = frames.find(frame => frame.root.yaw > Math.PI / 4)!
     expect(halfOut.speed).toBeGreaterThan(0.2 * referenceSpeed)
     const cruise = frames.findIndex(frame => frame.mode === 'walking')
     const halfBack = frames.slice(cruise).find(frame => frame.root.yaw < Math.PI / 4)!
-    expect(halfBack.speed).toBeGreaterThan(0)
+    expect(halfBack.speed).toBeGreaterThan(0.2 * referenceSpeed)
     // No planted foot ever stands more than 60 degrees off her facing.
     for (const frame of frames) {
       for (const side of sides) {
@@ -959,9 +958,10 @@ describe('procedural gait', () => {
     expect(last.mode).toBe('idle')
     expect(last.root.position.x).toBeCloseTo(60, 9)
     expect(last.root.yaw).toBeCloseTo(0, 9)
+    // A foot already within its closing tolerance stays where it landed, a few millimetres from the bind stance.
     const square = bindFeet({ x: 60, yaw: 0 })
     for (const side of sides) {
-      expect(distance(last.feet[side].target.position, square[side].position)).toBeLessThan(1e-6)
+      expect(distance(last.feet[side].target.position, square[side].position)).toBeLessThan(0.005 * legLength)
       expect(Math.abs(wrap(last.feet[side].target.yaw))).toBeLessThan(1e-9)
     }
     expect(run.locomotion.leashClamps).toBe(0)
@@ -1012,6 +1012,80 @@ describe('procedural gait', () => {
     // The pelvis drops under 0.08 L; with the hips taken to sit above the ankles it dropped 0.11 L on the measured rig.
     expect(deepest).toBeLessThan(0.08 * legLength)
     expect(locomotion.leashClamps).toBe(0)
+  })
+
+  it('arrival: a goal withdrawn while the arrival turn leads the braking turns her over the braking\'s steps', () => {
+    const run = createRun({ x: 0, yaw: Math.PI / 2 })
+    let withdrawnAt = -1
+    run.advance(10, () => {
+      const last = run.frames.at(-1)
+      if (withdrawnAt < 0 && last?.mode === 'walking' && Math.abs(wrap(last.root.yaw - Math.PI / 2)) > rad)
+        withdrawnAt = run.frames.length
+      return { goalX: withdrawnAt >= 0 ? null : 40, arriveFacing: 0 }
+    })
+    // She was in the lead: still walking, already turning to the viewer.
+    expect(withdrawnAt).toBeGreaterThan(0)
+    const strikes = eventsOf(run.frames.slice(0, withdrawnAt), 'heelStrike').map(event => event.tick)
+    const step = strikes.at(-1)! - strikes.at(-2)!
+    const faced = run.frames.findIndex((frame, tick) => tick >= withdrawnAt && Math.abs(wrap(frame.root.yaw)) < rad)
+    // The braking turn takes 1.6 steps (1.43 to within a degree); kept on the arrival turn's plan she took 1.94.
+    expect((faced - withdrawnAt) / step).toBeLessThan(1.7)
+  })
+
+  it('arrival: a foot a full step behind rolls off while she turns to face the viewer', () => {
+    // Along her turning facing the trailing foot stood closer behind than along the path, so it lifted flat.
+    const shoe = { ankleHeight: 1.3, ballForward: 1.8, heelBack: 0.25 }
+    const run = createRun({ x: 0, yaw: 0 }, 7, { ...traits, foot: { left: shoe, right: shoe } })
+    run.advance(14, () => ({ goalX: 60, arriveFacing: 0 }))
+    const { frames } = run
+    const cruise = frames.findIndex(frame => frame.mode === 'walking')
+    const lifts = frames.slice(cruise).flatMap((frame, k) => frame.events.filter(event => event.kind === 'liftOff').map(event => ({ k: cruise + k, foot: event.foot }))).filter(({ k }) => frames[k].root.yaw < 80 * rad).filter(({ k, foot }) => frames[k].root.position.x - frames[k - 1].feet[foot].target.position.x > 0.2 * legLength)
+    expect(lifts.length).toBeGreaterThan(0)
+    for (const { k, foot } of lifts)
+      expect(Math.min(...frames.slice(k - 10, k).map(frame => frame.feet[foot].roll.pitch))).toBeLessThan(-10 * rad)
+  })
+
+  it('step limit: a rig whose ball sits under its ankle takes shorter steps, so its trailing leg does not pull the pelvis down', () => {
+    const walk = (foot: { ankleHeight: number, ballForward: number, heelBack: number }, style: Partial<GaitStyle> = {}, { seconds = 8, seed = 7, options = periodic } = {}) => {
+      const run = createRun({ x: 0, yaw: Math.PI / 2 }, seed, { ...traits, foot: { left: foot, right: foot } }, options)
+      run.advance(seconds, () => ({ goalX: 500, arriveFacing: Math.PI / 2, style: { ...NEUTRAL_GAIT_STYLE, ...style } }))
+      const steady = run.frames.slice(4 * 120)
+      const drops = steady.map(frame => frame.body.pelvisDrop)
+      const strikes = steady.filter(frame => frame.events.some(event => event.kind === 'heelStrike')).map(frame => frame.root.position.x)
+      const step = Math.max(...strikes.slice(1).map((x, k) => x - strikes[k])) / legLength
+      return { limit: run.locomotion.stepLimit, limited: steady.map(frame => frame.limited.join()), bob: (Math.max(...drops) - Math.min(...drops)) / legLength, step }
+    }
+    const shoe = walk({ ankleHeight: 1.3, ballForward: 1.8, heelBack: 0.25 })
+    const stiletto = walk({ ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 })
+    expect(shoe.limit).toBeGreaterThan(1)
+    expect(new Set(shoe.limited)).toEqual(new Set(['']))
+    // At the gait's full step the stiletto's pelvis bobbed 0.083 L, the shoe's 0.049 L.
+    expect(stiletto.limit).toBeLessThan(0.9)
+    expect(new Set(stiletto.limited)).toEqual(new Set(['stride']))
+    expect(stiletto.bob).toBeLessThan(0.06)
+    // The widest style asks the most of both: the least roll on the shoe, and on the stiletto a speed whose top cadence
+    // would still lengthen the step past the limit, so the limit caps the speed too.
+    const fast = { speed: 1.35, stride: 1.2, roll: 0.6 }
+    expect(walk({ ankleHeight: 1.3, ballForward: 1.8, heelBack: 0.25 }, fast).bob).toBeLessThan(0.06)
+    const hurried = walk({ ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 }, fast)
+    expect(new Set(hurried.limited)).toEqual(new Set(['stride,speed']))
+    expect(hurried.step).toBeLessThan(hurried.limit * 0.625 + 0.01)
+    // A stride's variation drifts some steps longer; at the limit the speed gives way instead. Seed 15 stepped 0.556 L.
+    const varied = walk({ ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 }, {}, { seconds: 20, seed: 15, options: {} })
+    expect(varied.step).toBeLessThan(varied.limit * 0.625 + 0.01)
+    expect(new Set(varied.limited)).toEqual(new Set(['stride']))
+  })
+
+  it('settle: the stop hands the feet back flat, since the standing feet take over without the gait\'s roll', () => {
+    const stiletto = { ankleHeight: 1.3, ballForward: 0.3, heelBack: 0 }
+    const run = createRun({ x: 0, yaw: Math.PI / 2 }, 7, { ...traits, foot: { left: stiletto, right: stiletto } }, {})
+    run.advance(12, () => ({ goalX: 28.22, arriveFacing: Math.PI }))
+    const released = run.frames.findIndex((frame, k) => k > 0 && frame.weight === 0 && run.frames[k - 1].weight > 0)
+    expect(released).toBeGreaterThan(0)
+    // Without the fade one foot stood 3.5 deg on its ball on the last weighted frame.
+    const last = run.frames[released - 1]
+    for (const side of sides)
+      expect(Math.abs(last.feet[side].roll.pitch)).toBeLessThan(0.5 * rad)
   })
 
   it('determinism: equal seeds and inputs replay equal frames; ties use the seed', () => {
