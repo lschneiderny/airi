@@ -72,10 +72,11 @@ async function dispatch(command: string | undefined, args: string[], context: Mo
     case 'verdicts': return (await import('../src/t2-3d/cli/verdicts')).verdictsMotion3d(args, context)
     case 'frames': return (await import('../src/t2-3d/cli/frames')).framesMotion3d(args, context)
     case 'clip': return (await import('../src/t2-3d/cli/clip')).clipMotion3d(args, context)
+    case 'hands': return (await import('../src/t2-3d/cli/hands')).handsMotion3d(args, context)
     case 'inject': return (await import('../src/t2-3d/cli/inject')).injectMotion3d(args, context)
     case 'matrix': return (await import('../src/t2-3d/cli/matrix')).matrixMotion3d(args, context)
     default:
-      console.error('Usage: lab:motion3d <gate|reference|report <topic>|verdicts|frames|clip|inject|matrix> [arguments] [--json <verdict file>]\nRuns, diffs, and affected checks are qa:motion3d commands.')
+      console.error('Usage: lab:motion3d <gate|reference|report <topic>|verdicts|frames|clip|hands|inject|matrix> [arguments] [--json <verdict file>]\nRuns, diffs, and affected checks are qa:motion3d commands.')
       return 2
   }
 }
