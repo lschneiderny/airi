@@ -251,8 +251,9 @@ performer's heel raise: a host turns the foot toe-down about its ball by the per
 `input.style` (`GaitStyle`, default `NEUTRAL_GAIT_STYLE`) sizes the walk without changing its structure: speed,
 stride at a given speed, bounce, foot lift, roll, pelvis twist and list, step width, the torso's counter-twist, arm
 swing, elbow carry, arm hang, trunk lean, head carriage (`frame.body.neckPitch`), the wrist's carriage beyond the rest's
-10 degrees of extension (`armSwing[side].wristFlex`, palmar positive) and the finger curl as a share of the rest curl
-(`frame.handCurl`; the MMD adapter writes it as each finger joint's offset from `DEFAULT_ARM_REST_POSE`). Like every arm
+10 degrees of extension (`armSwing[side].wristFlex`, palmar positive) and the hand's closure (`frame.handCurl`: 1 the
+rest hand; the MMD adapter's `writeWalkHand` blends it into the `open` shape toward the low end of
+`GAIT_STYLE_BOUNDS.handCurl` and into the `fist` toward the high end, as offsets from `DEFAULT_ARM_REST_POSE`). Like every arm
 term, the hand rides the gait's weight: standing, the hand shape stays the emotion layer's. Ratios are 1 and offsets 0 in the
 neutral style, which reproduces the refitted walk exactly, and `GAIT_STYLE_BOUNDS` holds each value inside the range
 acted walking styles span. Between walks the style follows its input at once; a walk or a turn under way eases into a
@@ -670,8 +671,10 @@ cascade toward the little finger and a soft fan), `open` the presenting hand
 (palm-up, press, frame and the hair touch), `flat` only the chop's blade, `cup`
 a hold, and `fist` and `point` close to the knee of the finger limits with the
 thumb across the outside of the index and middle fingers. The emotion layer
-blends the open and fist shapes, and the gesture layer shapes each stroke and
-arm form from them. Layers implement clip admission/cancellation
+moves the whole hand (thumb, spread and opposition included) from the hand she
+holds, the rest hand plus the walk's, toward the open or fist shape with
+`addHandShape`, so an angry fist on a closed walking hand stays a fist. The
+gesture layer shapes each stroke and arm form from them. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 

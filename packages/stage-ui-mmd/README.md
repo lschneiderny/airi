@@ -446,7 +446,9 @@ its outer joints, lies across the outside of the index and middle fingers. A
 side without a hand bone or two knuckles keeps the uncalibrated write: curls
 about the model Z axis on top of the bind pose and the thumb about `thumbAxis`,
 with spread and opposition unwritten. The gait's arm swing arrives in
-the performer's channels. A clip owns the arm and finger bones
+the performer's channels, and so does the walk's hand: `writeWalkHand` turns
+the gait's hand closure into a blend of the rest hand toward the `open` shape
+or the `fist`. A clip owns the arm and finger bones
 it keys: `registerClip` builds a `ClipBoneMask` once and `body.ownership()`
 returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
 `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,

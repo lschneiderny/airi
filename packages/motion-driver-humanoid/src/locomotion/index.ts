@@ -173,7 +173,7 @@ export interface LocomotionFrame {
     readonly pronation: number
     readonly wristFlex: number
   }>
-  /** The finger curl the walk asks for as a share of the rest curl (`GaitStyle.handCurl`); 1 outside the walk. */
+  /** The hand's closure the walk asks for (`GaitStyle.handCurl`); 1, the rest hand, outside the walk. */
   readonly handCurl: number
   /**
    * Where she is about to face, a world yaw: during a turn, a minimum-jerk sweep from the facing the turn starts at to its
