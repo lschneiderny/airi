@@ -65,13 +65,18 @@ export function characterStateContext(nowMs: number): AdvanceContext {
 }
 
 /**
- * The character profile a card field `extensions.airi.modules.character` holds: the value when it is a valid profile,
- * otherwise a copy of {@link DEFAULT_CHARACTER_PROFILE}. Always a new, unfrozen object, so a card can store it.
+ * The character profile a card field `extensions.airi.modules.character` holds: the value, walking baseline included,
+ * when it is a valid profile, otherwise a copy of {@link DEFAULT_CHARACTER_PROFILE}. Always a new, unfrozen object, so
+ * a card can store it.
  */
 export function characterProfileOf(value: unknown): CharacterProfile {
   const result = safeParse(CharacterProfileSchema, value)
   const profile = result.success ? result.output : DEFAULT_CHARACTER_PROFILE
-  return { resting: { ...profile.resting }, startingStage: profile.startingStage }
+  return {
+    resting: { ...profile.resting },
+    startingStage: profile.startingStage,
+    ...profile.gait === undefined ? {} : { gait: { ...profile.gait } },
+  }
 }
 
 /**

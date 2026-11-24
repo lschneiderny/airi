@@ -107,7 +107,7 @@ The [character mind](glossary.md#character-mind)'s slow state is the per-card ch
 - A mind that never spoke as a card keeps `pacing` `null`, so a record that "Delete all data" reset stays unsaved.
 - The user's slice (`SavedGateMemory`: the floor's last fire and the ritual day) is saved in the gate's inner state, and the hourly cap's fires restart at each launch. A card switch carries the floor, the fires, and the ritual day to the reloaded mind through the situation store's `VoiceRun.user`.
 
-A card leaves the device in one of two packages (`exportAiriCardPackage` in `packages/stage-ui/src/services/airi-card-import-export.ts`). A share carries the card and its profile (`CharacterProfile`) and its display model only; it never carries the card's memories or its character-state record, and its import starts the record fresh from the profile. A backup carries the card, its own memories, and the whole record, pacing included, and its import restores them.
+A card leaves the device in one of two packages (`exportAiriCardPackage` in `packages/stage-ui/src/services/airi-card-import-export.ts`). A share carries the card and its profile (`CharacterProfile`, walking baseline `gait` included) and its display model only; it never carries the card's memories or its character-state record, and its import starts the record fresh from the profile. A backup carries the card, its own memories, and the whole record, pacing included, and its import restores them.
 
 A chat session record stores no system message: each request composes it. A session record names one character, and `characterMembersOfMeta` (`packages/stage-ui/src/stores/chat/session-members.ts`) derives the session's character members from it.
 
