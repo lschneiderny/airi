@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { STROLL_URGENCY, WALK_URGENCY } from '../types'
 import { boundGaitStyle, GAIT_STYLE_BOUNDS, GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE, walkStyleFrom } from './style'
 
 const calm = { valence: 0, arousal: 0, tension: 0 }
@@ -67,6 +68,22 @@ describe('walkStyleFrom', () => {
     const upright = style({}, 0.5, { posture: 1 })
     expect(upright.lean).toBeLessThan(0)
     expect(upright.head).toBeLessThan(0)
+  })
+
+  it('leaves every style alone at or below the walk urgency', () => {
+    const sad = { mood: { valence: -0.7, arousal: -0.4, tension: 0.5 }, energy: 0.2, baseline: { posture: 0.5 } }
+    for (const urgency of [0, STROLL_URGENCY, WALK_URGENCY]) {
+      expect(walkStyleFrom({ mood: calm, energy: 0.5, urgency })).toEqual(NEUTRAL_GAIT_STYLE)
+      expect(walkStyleFrom({ ...sad, urgency })).toEqual(walkStyleFrom(sad))
+    }
+  })
+
+  it('leans a hurried walk forward, up to 6 degrees more at urgency 1, and changes nothing else', () => {
+    const degrees = (urgency: number) => walkStyleFrom({ mood: calm, energy: 0.5, urgency }).lean * 180 / Math.PI
+    expect(degrees(0.8)).toBeCloseTo(3, 12)
+    expect(degrees(1)).toBeCloseTo(6, 12)
+    expect(degrees(2)).toBeCloseTo(6, 12)
+    expect({ ...walkStyleFrom({ mood: calm, energy: 0.5, urgency: 1 }), lean: 0 }).toEqual(NEUTRAL_GAIT_STYLE)
   })
 
   it('writes into the given object and bounds a style handed in from outside', () => {

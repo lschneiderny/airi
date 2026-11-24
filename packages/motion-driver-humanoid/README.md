@@ -259,9 +259,11 @@ style values the rig held below the style's ask, and `qa:motion3d run` records e
 The performer eases each walking arm's back swing into the room the rig has behind the hip (`BodyCollision.backSwing`,
 probed once per rig in 1 degree steps up to 36 degrees): the swing is unchanged to half the room and never passes it,
 so a wide style's swing slows into a tail or a skirt instead of stepping off it.
-`walkStyleFrom({ mood, energy, baseline })` turns the performer's mood, the host energy and a character's
-`GaitBaseline` (a card's walking baseline, owned by `@proj-airi/stage-shared/character-state`) into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting
-tension and energy 0.5 with no baseline gives the neutral style.
+`walkStyleFrom({ mood, energy, baseline, urgency })` turns the performer's mood, the host energy, a character's
+`GaitBaseline` (a card's walking baseline, owned by `@proj-airi/stage-shared/character-state`) and the goal's urgency
+into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting tension and energy
+0.5 with no baseline gives the neutral style. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
+more at 1; at or below it, or omitted, the urgency changes no style value.
 
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
