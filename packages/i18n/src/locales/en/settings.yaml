@@ -1022,6 +1022,33 @@ pages:
         stranger: Stranger
         friendly: Friendly
         close: Close
+      walk: Walk
+      walk_help: How she walks before her mood changes it. A cheerful or tired mood still changes each of these values.
+      walk_preset: Walking style
+      walk_preset_help: Sets all values below. Change a value to make a walk of your own.
+      walk_preset_custom: Custom
+      walk_presets:
+        neutral: Neutral
+        graceful: Graceful
+        bold: Bold
+        light: Light
+        reserved: Reserved
+        heavy: Heavy
+      gait:
+        stride: Short to long steps
+        stride_help: How far she steps at a given speed.
+        sway: Still to swaying hips
+        sway_help: How much her hips rise, drop, and turn with each step.
+        width: Narrow to wide stance
+        width_help: How far apart her feet land.
+        bounce: Smooth to bouncy
+        bounce_help: How much her body rises and falls with each step.
+        arm_swing: Still to swinging arms
+        arm_swing_help: How far her arms swing.
+        arm_carry: Loose to bent arms
+        arm_carry_help: How much she bends her elbows and holds her arms out while she walks.
+        posture: Stooped to upright
+        posture_help: Whether she carries her head and back forward or stands tall.
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
     no_cards: No characters yet. Click the button above to import one!

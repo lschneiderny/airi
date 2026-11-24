@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 角色卡编辑页的核心表单，路由壳只负责把卡片 ID 和当前分区传进来。
 import type { Card } from '@proj-airi/ccc'
-import type { CharacterProfile, MoodAxes, StartingStage } from '@proj-airi/stage-shared/character-state'
+import type { CharacterProfile, GaitBaseline, GaitBaselinePreset, MoodAxes, StartingStage } from '@proj-airi/stage-shared/character-state'
 import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
@@ -9,6 +9,7 @@ import type { Ref } from 'vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { GAIT_BASELINE_PRESET_NAMES, GAIT_BASELINE_PRESETS, gaitBaselinePresetOf, withGaitBaselineValue } from '@proj-airi/stage-shared/character-state'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettingsSearchReveal } from '@proj-airi/stage-ui/composables/use-settings-search'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
@@ -169,6 +170,39 @@ const startingStageSelection = computed({
 const startingStageOptions = computed(() => startingStages.map(stage => ({
   value: stage,
   label: t(`settings.pages.card.character_profile.stages.${stage}`),
+})))
+
+// Walking baseline: each value in [-1, 1], the range of `GaitBaselineSchema`; 0 is the neutral walk.
+const gaitFields = [
+  { key: 'stride', label: 'stride' },
+  { key: 'sway', label: 'sway' },
+  { key: 'width', label: 'width' },
+  { key: 'bounce', label: 'bounce' },
+  { key: 'armSwing', label: 'arm_swing' },
+  { key: 'armCarry', label: 'arm_carry' },
+  { key: 'posture', label: 'posture' },
+] as const satisfies ReadonlyArray<{ key: keyof GaitBaseline, label: string }>
+
+function setGaitField(key: keyof GaitBaseline, value: number) {
+  const { gait: _previous, ...rest } = selectedCharacter.value
+  const gait = withGaitBaselineValue(selectedCharacter.value.gait, key, value)
+  selectedCharacter.value = gait ? { ...rest, gait } : rest
+}
+
+// A baseline that matches no preset leaves the picker empty, and its placeholder reads "Custom".
+const gaitPresetSelection = computed({
+  get: () => gaitBaselinePresetOf(selectedCharacter.value.gait) ?? undefined,
+  set: (preset: GaitBaselinePreset | undefined) => {
+    if (!preset)
+      return
+    const { gait: _previous, ...rest } = selectedCharacter.value
+    selectedCharacter.value = preset === 'neutral' ? rest : { ...rest, gait: { ...GAIT_BASELINE_PRESETS[preset] } }
+  },
+})
+
+const gaitPresetOptions = computed(() => GAIT_BASELINE_PRESET_NAMES.map(preset => ({
+  value: preset,
+  label: t(`settings.pages.card.character_profile.walk_presets.${preset}`),
 })))
 
 function formatRestingValue(value: number) {
@@ -1114,6 +1148,38 @@ function handleBack() {
                     :label="t('settings.pages.card.character_profile.starting_stage')"
                     :description="t('settings.pages.card.character_profile.starting_stage_help')"
                     :options="startingStageOptions"
+                  />
+                  <h4 :class="['text-sm font-medium']">
+                    {{ t('settings.pages.card.character_profile.walk') }}
+                  </h4>
+                  <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                    {{ t('settings.pages.card.character_profile.walk_help') }}
+                  </p>
+                  <FieldSelect
+                    v-model="gaitPresetSelection"
+                    :label="t('settings.pages.card.character_profile.walk_preset')"
+                    :description="t('settings.pages.card.character_profile.walk_preset_help')"
+                    :placeholder="t('settings.pages.card.character_profile.walk_preset_custom')"
+                    :options="gaitPresetOptions"
+                  >
+                    <!-- The shared select's default value omits its placeholder, so a custom walk would read blank. -->
+                    <template #value="{ option, placeholder }">
+                      <span :class="['block truncate', option ? 'text-neutral-700 dark:text-neutral-200' : 'text-neutral-400 dark:text-neutral-500']">
+                        {{ option?.label ?? placeholder }}
+                      </span>
+                    </template>
+                  </FieldSelect>
+                  <FieldRange
+                    v-for="field in gaitFields"
+                    :key="field.key"
+                    :model-value="selectedCharacter.gait?.[field.key] ?? 0"
+                    :min="-1"
+                    :max="1"
+                    :step="characterRestingStep"
+                    :label="t(`settings.pages.card.character_profile.gait.${field.label}`)"
+                    :description="t(`settings.pages.card.character_profile.gait.${field.label}_help`)"
+                    :format-value="formatRestingValue"
+                    @update:model-value="setGaitField(field.key, $event)"
                   />
                 </div>
               </section>
