@@ -8,7 +8,9 @@ import { createRandomStream } from '../random'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
 import { BodySkeleton } from './skeleton'
 
-/** Angles from a straight-down arm with palm toward thigh, not from an MMD bind pose. */
+/**
+ * Angles from a straight-down arm with palm toward thigh, not from an MMD bind pose. Positive `wflex` is palmar flexion.
+ */
 export interface ArmRestPose {
   readonly clavElev: number
   readonly clavProt: number
@@ -22,6 +24,11 @@ export interface ArmRestPose {
   readonly fingerCurl: readonly (readonly [number, number, number])[]
 }
 
+/**
+ * The hanging arm. The wrist rests 10 degrees extended: every reference walk, authored and captured, carries the hand
+ * extended and none carries it flexed (authored MMD walks hold 10 in normal walks and 15 to 30 in feminine ones; acted
+ * mocap walks 7 to 51; arm-hand plan, section 1).
+ */
 export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
   clavElev: -5 * DEG,
   clavProt: 0,
@@ -30,7 +37,7 @@ export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
   twist: 0,
   elbow: 12 * DEG,
   pron: 0,
-  wflex: 8 * DEG,
+  wflex: -10 * DEG,
   wdev: 0,
   fingerCurl: [[10 * DEG, 0, 0], [15 * DEG, 20 * DEG, 10 * DEG], [17.25 * DEG, 23 * DEG, 11.5 * DEG], [19.5 * DEG, 26 * DEG, 13 * DEG], [21.75 * DEG, 29 * DEG, 14.5 * DEG]],
 }
