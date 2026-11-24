@@ -899,7 +899,8 @@ Measured on 2026-11-12 on both rigs and every scenario (two timings each), a run
   per side with their rest values, in degrees) and `clip` (only with the
   synthetic claim clip: per scored frame, its analytic rotation of the right
   upper arm, lower arm and hand relative to their trace parents, in the trace
-  basis, or null while it has no weight).
+  basis, or null while it has no weight). With `--clearance` it also carries
+  `clearance`; see [Arm clearance](#arm-clearance).
 - `run.json`: the standard QA manifest with command, environment, source
   revision, artifact hashes and result.
 
@@ -931,6 +932,51 @@ behavior. It cannot judge skinning, silhouettes, materials, camera framing,
 window integration or perceived naturalness. Exit codes are 0 completed,
 1 run or determinism failure, 2 invalid arguments or setup refusal, and
 130 interrupted.
+
+### Arm clearance
+
+```bash
+pnpm qa:motion3d run --model "/models/rig.pmx" --scenario idle-drive --seconds 40 --out .temp/qa/idle-clearance --clearance
+```
+
+`--clearance` measures how often the arms pass through her body and clothing,
+and adds a `clearance` block to `summary.json`. The module is
+`src/t2-3d/clearance/`. Before the run, it loads a second copy of the model and
+classes each triangle by the dominant bones of its corners: upper or lower body,
+rigid or simulated cloth (two corners on bones that a simulated rigid body
+drives), head, or hair. A triangle leaves the test when the arm wears it: when
+a corner carries arm-bone weight, when a corner lies within 1.25 measured
+sleeve radii of the bind-pose arm from the middle of the upper arm down, or
+when the arm's centreline crosses it after the copy has stood 3 s in the bind
+pose with physics on, together with the triangles within two forearm sleeve
+radii of it. A triangle with a corner on a bone outside the body's regions,
+such as a prop, is not tested.
+
+During the run it reads every second scored frame (30 Hz) through the
+runner's read-only `onFrame` hook. It skins the tested vertices on the CPU from
+the posed bones, physics-driven bones included, and tests three segments per
+arm against the triangles: the middle of the upper arm to the elbow, the elbow
+to the wrist, and the wrist to the base of the middle finger. A frame is
+pierced when a segment crosses her body or clothing below the neck. The block
+reports `piercedShare`; the share of frames crossed per class (`byClass`, head
+and hair included), per segment and per material (`topMaterials`, the five most
+pierced); `depth`, the share of the arm from the shoulder beyond the first
+crossing (median, 90th percentile, and `deepShare`, the share of frames deeper
+than 0.25); `episodes`, runs of pierced frames joined across one clear sample
+(count and longest in seconds); `upperArmDeg`, the upper-arm angle from
+vertical (mean, 10th and 90th percentile); and `cloth`, the simulated cloth's
+travel per sample with the hips' travel removed (median and 99th percentile of
+each sample's 99th percentile) and the mean share of cloth vertices that
+reverse direction between samples. The performer's ticks without a clear arm
+pose stay in `collisions`.
+
+The measure writes nothing to the run: a run with `--clearance` has the same
+trace as one without, and `--verify-determinism` replays without the measure.
+It counts centreline crossings, not sleeve-surface overlap, so a sleeve that
+overlaps her coat while its arm's centreline stays outside is not counted. It
+does not judge legs. It does not judge clip-driven arms either: a crossing
+while a clip drives an arm belongs to the clip, which the arm guard does not
+steer.
 
 ### Trace format
 

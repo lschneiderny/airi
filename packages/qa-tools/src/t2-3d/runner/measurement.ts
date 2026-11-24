@@ -2,6 +2,8 @@ import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { MMDBody, MMDBodyOwnership } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 
+import type { Motion3dClearance } from '../clearance/measure'
+
 import { MMDFrameMetrics } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-metrics'
 
 /** The bone groups the MMD performer writes, as its diagnostics name them. */
@@ -51,6 +53,8 @@ export interface Motion3dRunSummary {
    * its trace parent in the trace basis (xyzw, flattened), or null while the clip has no weight.
    */
   clip: { bones: string[], expected: (number[] | null)[] } | null
+  /** Only with `--clearance`: how often and how deeply the arms pass through her body and clothing. */
+  clearance?: Motion3dClearance
 }
 
 const OWNED_GROUPS: ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk', 'lowerBody', 'leftArm', 'rightArm', 'leftFingers', 'rightFingers', 'upperBody', 'head']

@@ -76,3 +76,11 @@ it.each([
 ])('refuses %s with exit 2 before a run starts', async (_, args) => {
   expect(await runMotion3d(args, fixture())).toBe(2)
 })
+
+it('takes the clearance measure, and refuses it for a scenario in which a clip claims an arm', () => {
+  const context = fixture()
+  const parse = (scenario: string, extra: string[]) => parseRunArguments(['--model', 'model.pmx', '--scenario', scenario, '--out', 'capture', ...extra], context.cwd)
+  expect([parse('idle', []).clearance, parse('idle', ['--clearance']).clearance]).toEqual([false, true])
+  expect(parse('gesture-under-clip', []).clearance).toBe(false)
+  expect(() => parse('gesture-under-clip', ['--clearance'])).toThrow('clip-driven arms')
+})
