@@ -704,6 +704,15 @@ The profile also reports structural facts for body adapters:
   controls as `{ name, fixedAxis }`, or `null`. `fixedAxis` copies the parser's
   optional PMX `axisLimit` vector without normalizing it; absent axes are `null`.
   This only describes the controls and does not pose them.
+- `hands.left/right` is the hand calibration (`MMDHandCalibration`), or `null`
+  without a posable hand bone and two posable knuckles. It holds unit `axis`
+  (wrist to middle knuckle) and `normal` (out of the palm) at bind, the wrist's
+  bind `flexion` and `deviation` from the forearm line, per finger the
+  `curlAxis`, bind `spread` toward the thumb, per-joint `bend` (flexion
+  positive) and the knuckle-to-tip `chord`, and for the thumb its `curlAxis`,
+  `opposition` and `bend`, all in radians and post-parse model axes. It reads
+  bone positions and fingertip tails only, never PMX local axes. A tail offset
+  is negated in Z, as three-mmd leaves tail vectors in file axes.
 - `structure` reports posable bone classes: `intermediateSpine` means a chain
   link beyond the mapped `spine` and `chest`; `shoulders`, `fingers` and `toes`
   have per-side booleans. Fingers means at least one mapped finger joint, and

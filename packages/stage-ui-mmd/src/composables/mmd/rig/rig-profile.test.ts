@@ -368,6 +368,16 @@ describe('readMMDRigProfile fingers and arm helpers', () => {
     expect(profileOf(carlottaRig).thumbAxis).toEqual({ left: null, right: null })
   })
 
+  it('calibrates a hand from its posable knuckles and leaves a side without two of them uncalibrated', () => {
+    const left = profile.hands.left
+    expect(left?.fingers.index).not.toBeNull()
+    expect(left?.fingers.middle).toBeNull()
+    expect(left?.thumb).not.toBeNull()
+    // The right little finger is physics-owned, so only the index knuckle remains on that side.
+    expect(profile.hands.right).toBeNull()
+    expect(profileOf(carlottaRig).hands).toEqual({ left: null, right: null })
+  })
+
   it('reports per-side upper-arm and forearm bind angles whose upper-arm mean is restArmAngle', () => {
     const { restArmAngles, restForearmAngles, restArmAngle } = profileOf(carlottaRig)
     expect(restArmAngles.left).not.toBeNull()

@@ -1,16 +1,20 @@
 import type { PmxObject } from '@moeru/three-mmd'
 import type { HumanoidBoneName, HumanoidFingerBoneName, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
+import type { MMDHandCalibration, MMDHandPoints } from './hand-calibration'
+
 import { EYE_PITCH_LIMIT, EYE_YAW_LIMIT } from '../gaze'
 import { HUMANOID_BONE_CANDIDATES, HUMANOID_FINGER_CANDIDATES, MMD_ARM_HELPER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES, MMD_TOE_BEND_CANDIDATES, MMD_TWIST_BONE_CANDIDATES } from './bone-map'
+import { readMMDHandCalibration } from './hand-calibration'
 
 /**
  * The PMX fields the rig profile reads. `mmd.pmx` satisfies it directly. Positions and IK
  * limits are post-parse values: three-mmd negates Z positions and X/Y rotations before it
  * builds the mesh, so knee limits read here have the opposite X sign from the PMX file.
+ * A tail offset (`tailPosition` as a vector) is left as the file stores it, so its Z is negated here.
  */
 export interface MMDRigSource {
-  bones: readonly (Pick<PmxObject.Bone, 'name' | 'position' | 'parentBoneIndex' | 'ik'> & Partial<Pick<PmxObject.Bone, 'axisLimit'>>)[]
+  bones: readonly (Pick<PmxObject.Bone, 'name' | 'position' | 'parentBoneIndex' | 'ik'> & Partial<Pick<PmxObject.Bone, 'axisLimit' | 'tailPosition'>>)[]
   rigidBodies: readonly Pick<PmxObject.RigidBody, 'name' | 'boneIndex' | 'physicsMode'>[]
 }
 
@@ -94,6 +98,11 @@ export interface MMDRigProfile {
    * without thumb bones.
    */
   thumbAxis: Record<'left' | 'right', MMDVec3 | null>
+  /**
+   * Per-side hand calibration from bind bone positions: the palm frame, the wrist's bind bend, and each finger's curl
+   * axis, bind spread and per-joint bind bend. Null on a side without a hand bone or two knuckles.
+   */
+  readonly hands: Readonly<Record<'left' | 'right', MMDHandCalibration | null>>
   /** Finger bones present and not physics-owned. */
   fingerBones: Partial<Record<HumanoidFingerBoneName, string>>
   /** Twist and shoulder-helper bones present per side. They group clip tracks for ownership and are never posed. */
@@ -236,6 +245,23 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
     const [x, y, z] = pmx.bones[indexByName.get(name)!].position
     return [x, y, z]
   }
+  // The end of a distal finger bone: its tail bone or tail offset, else its first child bone.
+  const tipOf = (name: string | undefined): MMDVec3 | null => {
+    const index = name === undefined ? undefined : indexByName.get(name)
+    if (index === undefined)
+      return null
+    const bone = pmx.bones[index]
+    const tail = bone.tailPosition
+    if (typeof tail === 'number') {
+      if (tail >= 0 && tail < pmx.bones.length && tail !== index)
+        return [...pmx.bones[tail].position]
+    }
+    else if (tail && Math.hypot(tail[0], tail[1], tail[2]) > 1e-6) {
+      return [bone.position[0] + tail[0], bone.position[1] + tail[1], bone.position[2] - tail[2]]
+    }
+    const child = pmx.bones.find(other => other.parentBoneIndex === index)
+    return child ? [...child.position] : null
+  }
   const armHelpers: MMDRigProfile['armHelpers'] = {
     left: MMD_ARM_HELPER_CANDIDATES.left.filter(name => indexByName.has(name)),
     right: MMD_ARM_HELPER_CANDIDATES.right.filter(name => indexByName.has(name)),
@@ -304,6 +330,7 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
   const restArmAngles: MMDRigProfile['restArmAngles'] = { left: null, right: null }
   const restForearmAngles: MMDRigProfile['restForearmAngles'] = { left: null, right: null }
   const thumbAxis: MMDRigProfile['thumbAxis'] = { left: null, right: null }
+  const hands: Record<'left' | 'right', MMDHandCalibration | null> = { left: null, right: null }
   for (const side of ['left', 'right'] as const) {
     const hip = positionOf(`${side}UpperLeg`)
     const knee = positionOf(`${side}LowerLeg`)
@@ -333,6 +360,20 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
       const length = Math.hypot(x, z)
       if (length > 0)
         thumbAxis[side] = [x / length, 0, z / length]
+    }
+
+    if (wrist) {
+      const chain = (finger: 'Thumb' | 'Index' | 'Middle' | 'Ring' | 'Little'): MMDHandPoints['thumb'] => {
+        const joints = finger === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] as const : ['Proximal', 'Intermediate', 'Distal'] as const
+        const [a, b, c] = joints.map(joint => fingerPositionOf(`${side}${finger}${joint}`))
+        return [a, b, c, tipOf(fingerBones[`${side}${finger}${joints[2]}`])]
+      }
+      hands[side] = readMMDHandCalibration(side === 'left' ? 1 : -1, {
+        elbow,
+        wrist,
+        thumb: chain('Thumb'),
+        fingers: { index: chain('Index'), middle: chain('Middle'), ring: chain('Ring'), little: chain('Little') },
+      })
     }
   }
 
@@ -364,6 +405,7 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
     restArmAngles,
     restForearmAngles,
     thumbAxis,
+    hands,
     fingerBones,
     armHelpers,
     eyeSource,
