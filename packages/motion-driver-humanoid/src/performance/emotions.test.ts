@@ -82,9 +82,9 @@ describe('emotion posture layer', () => {
     const walking: Script = t => ({ ...quietInput(t), gait: { mode: 'walking', walkForm: true, weight: 1, support: 0, channels, ankles: null } })
     const trace = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer()] }), 4, held('angry', () => 1, 1, walking))
     const knuckle = HAND_SHAPES.fist.fingers[0][0]
-    const half = (HAND_SHAPES.relaxed.fingers[0][0] + knuckle) / 2
-    // Added to the walking hand instead, the fist's offset from the rest hand would pass the knuckle's limit.
-    expect(trace[c('rightIndex0')].at(-1)! / DEG).toBeCloseTo(half + 0.8 * (knuckle - half), -1)
+    // Added to the walking hand instead, the fist's offset from the rest hand would pass the knuckle's limit. The
+    // knuckle leads the closing hand (`orderedShare`): 0.8 of the hand's way is all of the knuckle's.
+    expect(trace[c('rightIndex0')].at(-1)! / DEG).toBeCloseTo(knuckle, -1)
   })
 
   it('moves the body for every held emotion except neutral, which writes nothing', () => {

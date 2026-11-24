@@ -44,14 +44,19 @@ describe('hand sheet', () => {
     expect(handSheetChannels(REST, cell('pronated'))[channelIndex('rightPron')]).toBeGreaterThan(0)
   })
 
-  it('puts a blend cell halfway between its two shapes', () => {
-    // Halfway in the shapes' own angles, then through the joint limits like every cell.
+  it('puts a blend cell halfway between its two shapes, the knuckles ahead of the fingertips', () => {
+    // Halfway along the blend's closing order (`addHandShape`), then through the joint limits like every cell: the
+    // middle joint halfway, the knuckle further and the fingertip less far.
     const half = handSheetChannels(REST, cell('relaxed-to-fist'))
     const { relaxed, fist } = HAND_SHAPES
-    for (const [channel, from, to] of [['leftIndex1', relaxed.fingers[0][1], fist.fingers[0][1]], ['rightOpposition', relaxed.opposition, fist.opposition]] as const) {
+    const gone = (channel: 'leftIndex0' | 'leftIndex1' | 'leftIndex2', joint: number) => {
       const i = channelIndex(channel)
-      expect(half[i]).toBeCloseTo(limitChannel(i, (from + to) / 2 * DEG), 6)
+      const [from, to] = [limitChannel(i, relaxed.fingers[0][joint] * DEG), limitChannel(i, fist.fingers[0][joint] * DEG)]
+      return (half[i] - from) / (to - from)
     }
+    expect(half[channelIndex('leftIndex1')]).toBeCloseTo(limitChannel(channelIndex('leftIndex1'), (relaxed.fingers[0][1] + fist.fingers[0][1]) / 2 * DEG), 6)
+    expect(gone('leftIndex0', 0)).toBeGreaterThan(0.7)
+    expect(gone('leftIndex2', 2)).toBeLessThan(0.3)
   })
 
   it('moves the angry walking hand toward the fist and never past it, inside the joint limits', () => {

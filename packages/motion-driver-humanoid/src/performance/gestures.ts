@@ -11,7 +11,7 @@ import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
 import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo } from './gesture-forms'
-import { writeHandShape } from './hand-shapes'
+import { handOrder, ORDER_PEAK_SLOPE, orderedCurve, orderedShare, orderedSlope, writeHandShape } from './hand-shapes'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -145,6 +145,12 @@ interface Segment {
    * its input slope, so a large turn of the forearm, wrist or fingers arrives after the hit (4a: the hand shape last).
    */
   readonly durations: ArmPose
+  /**
+   * Each hand channel's closing order (`handOrder`, channels 9 to 25): a finger closes from its knuckle and opens from
+   * its tip, so a closing hand's fingertips arrive last and an opening one's leave first. The arm channels keep
+   * minimum jerk in time.
+   */
+  readonly order: ArmPose
 }
 
 /** One stroke's trunk and head participation: the torso pulse peaks at 4a's stroke time, the head beat at the landing. */
@@ -181,7 +187,7 @@ class ArmTrack {
   readonly home = pose()
   readonly ready = pose()
   readonly key = pose()
-  readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1) }
+  readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1), order: pose() }
   readonly accents: StrokeAccent[] = []
   state: TrackState = 'rest'
   weight = 0
@@ -255,8 +261,7 @@ class ArmTrack {
     s.to.set(to)
     s.start = now
     s.carried = false
-    for (let j = 0; j < 26; j++)
-      s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    this.schedule(fed)
     return fed
   }
 
@@ -282,9 +287,22 @@ class ArmTrack {
     s.to.set(to)
     s.start = now
     s.carried = carried
-    for (let j = 0; j < 26; j++)
-      s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, MIN_JERK_PEAK_SLOPE * Math.abs(to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    this.schedule(fed)
     return fed
+  }
+
+  /**
+   * Sets the current segment's channel durations and hand order for a segment of `fed` seconds: a channel whose change
+   * would ask its follower for more than its input slope takes longer, a leading or trailing hand joint by its order's
+   * steeper peak too.
+   */
+  private schedule(fed: number): void {
+    const s = this.segment
+    handOrder(s.from, s.to, s.order)
+    for (let j = 0; j < 26; j++) {
+      const peak = MIN_JERK_PEAK_SLOPE * (j >= 9 ? ORDER_PEAK_SLOPE : 1)
+      s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, peak * Math.abs(s.to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
+    }
   }
 
   /** Writes the plan of channel `j` at `time` on the current segment, and its velocity and acceleration, into the release scratch. */
@@ -300,8 +318,14 @@ class ArmTrack {
     const delta = s.to[j] - s.from[j]
     const v0 = s.velocity[j]
     const a0 = s.carried ? s.acceleration[j] : 0
-    this.releaseVelocity[j] = delta * 30 * u ** 2 * (1 - u) ** 2 / duration + v0 * decaySlope(u) + a0 * duration * carrySlope(u)
-    this.releaseAcceleration[j] = delta * 60 * u * (1 - u) * (1 - 2 * u) / duration ** 2 + v0 * decayCurve(u) / duration + a0 * carryCurve(u)
+    // Minimum jerk of the hand order's warp w(u) (`orderedShare`): slope s'(w) w', curvature s''(w) w'^2 + s'(w) w''.
+    const hand = j >= 9
+    const w = hand ? orderedShare(s.order[j], u) : u
+    const slope = hand ? orderedSlope(s.order[j], u) : 1
+    const curve = hand ? orderedCurve(s.order[j], u) : 0
+    const shapeSlope = 30 * w ** 2 * (1 - w) ** 2
+    this.releaseVelocity[j] = delta * shapeSlope * slope / duration + v0 * decaySlope(u) + a0 * duration * carrySlope(u)
+    this.releaseAcceleration[j] = delta * (60 * w * (1 - w) * (1 - 2 * w) * slope ** 2 + shapeSlope * curve) / duration ** 2 + v0 * decayCurve(u) / duration + a0 * carryCurve(u)
   }
 
   /**
@@ -409,7 +433,7 @@ class ArmTrack {
     const s = this.segment
     const duration = s.durations[j]
     const u = Math.max(0, Math.min(1, (time - s.start) / duration))
-    const shape = minJerk(u)
+    const shape = minJerk(j >= 9 ? orderedShare(s.order[j], u) : u)
     // h(u) = u - 6u^3 + 8u^4 - 3u^5: unit initial slope, zero value, slope and curvature at u = 1.
     const decay = duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
     const planned = s.from[j] + (s.to[j] - s.from[j]) * shape + s.velocity[j] * decay

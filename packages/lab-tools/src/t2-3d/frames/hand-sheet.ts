@@ -23,7 +23,7 @@ export interface HandSheetCell {
   /** The hand shape written through `writeHandShape`; null keeps the performer's rest hand and wrist, how she stands. */
   readonly shape: HandShape | null
   readonly wrist: WristAngles
-  /** A hand part of the way from `shape` to `to`, channel by channel, as the finger followers pass it in a blend. */
+  /** A hand part of the way from `shape` to `to`, in the hand's closing order (`addHandShape`), as a blend passes it. */
   readonly blend?: { readonly to: HandShape, readonly share: number }
   /**
    * The rest hand and wrist with the walk's hand curl (`GaitStyle.handCurl`) written by the MMD adapter's
