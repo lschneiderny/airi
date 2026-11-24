@@ -820,8 +820,16 @@ architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
 the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies' margin with every
 joint 2 degrees inside its limit; a contact form touches the body, so it takes
-no settling headroom. An arm keeps whichever performance holds it, and speech
-uses the other hand.
+no settling headroom. The thinking hand puts the index fingertip on the face
+instead of the wrist at an anchor: the fingertip point marches in at the chin
+seed, toward the midline where the face is narrower than the anchor's side
+offset, and the wrist tries a hand length from it in 600 directions, the hand
+turned at the wrist to point there with the palm toward the head or rolled from
+it by up to 90 degrees; the palm clears the proxies by the hand capsule's
+radius, and the most upright hand wins. The elbow's 142 degree limit keeps the
+fingertip a few hundredths of an arm length off the face on the real rigs. A
+rig with no such key takes the wrist anchor. An arm keeps whichever performance
+holds it, and speech uses the other hand.
 The two-hand contact `clasp` (6.3's front-low anchor, the hips' midline pushed
 forward; 4e act 6 and 4f's rest) is requested for `both` hands: it starts
 only when both arms are free and both keys solve, and both arms travel for the
