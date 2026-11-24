@@ -165,3 +165,43 @@ it('reads the ankle for every kind on a foot without a toe bone', () => {
   const measured = feet.measure({ left: 'heel' })
   expect(measured.skateContact).toBe(measured.skate)
 })
+
+it('lets the pelvis down into the standing reach as the gait fades, not in one frame when it lets go', () => {
+  const fixture = bodyFixture(0, Math.PI, { toes: true })
+  const feet = new MMDFootContact(new MMDBodyPose(fixture.mmd, fixture.rig))
+  fixture.pipeline.poseStages.length = 0
+  fixture.pipeline.surfaceStages.length = 0
+  let gait: Parameters<MMDFootContact['apply']>[1]['gait'] = null
+  fixture.pipeline.poseStages.push({ id: 'foot-contact', run: context => feet.apply(context, { offset: new Vector3(), duck: 1, contactDuck: 1, disabled: false, turnSteps: [], footSteps: [], now: 0, clips: new Map(), root: { x: 0, yaw: 0 }, gait }) })
+  const groove = fixture.bone('グルーブ')
+  const heights: number[] = []
+  const frames = (count: number) => {
+    for (let frame = 0; frame < count; frame++) {
+      fixture.pipeline.step(1 / 60)
+      heights.push(groove.getWorldPosition(new Vector3()).y)
+    }
+  }
+  frames(60)
+  const standing = heights.at(-1)!
+  const planted = feet.anchors()
+  const foot = (side: 'left' | 'right') => ({ target: planted[side], planted: true, swing: null, roll: { pitch: 0, ankleOffset: [0, 0], pivot: 'flat' } as const })
+  const at = (weight: number): typeof gait => ({ feet: { left: foot('left'), right: foot('right') }, walkForm: true, weight })
+  gait = at(1)
+  frames(60)
+  const walking = heights.at(-1)!
+  heights.length = 0
+  // The gait's weight eases out over 0.3 s, then the gait lets go of the feet.
+  for (let frame = 1; frame <= 18; frame++) {
+    gait = at(1 - frame / 18)
+    frames(1)
+  }
+  gait = null
+  frames(10)
+  const legs = feet.bindLegs!
+  const length = legs.left.hip.y - legs.left.ankle.y
+  const steps = heights.slice(1).map((y, i) => Math.abs(y - heights[i]))
+  expect(Math.max(...steps)).toBeLessThan(0.002 * length)
+  // The gait's reach holds the pelvis 0.008 L higher; the fade ends at the standing height.
+  expect(walking - standing).toBeGreaterThan(0.006 * length)
+  expect(heights.at(-1)!).toBeCloseTo(standing, 4)
+})
