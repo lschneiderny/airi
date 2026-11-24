@@ -155,6 +155,13 @@ export class BodyCollision {
   private readonly normal = { x: 0, y: 0, z: 0 }
   /** `over` is the deepest sample's depth beyond the depth budget, half the margin: 0.015 of its segment length. */
   private readonly deepest = { depth: 0, head: 0, over: -Infinity, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, forearm: false }
+  /**
+   * Every sample inside a proxy at the latest recording `measure`, as the deepest is kept: its id (sample by proxy), depth,
+   * place from the shoulder, outward normal and segment.
+   */
+  private readonly contacts: { count: number, readonly id: Int32Array, readonly depth: Float64Array, readonly at: Float64Array, readonly normal: Float64Array, readonly forearm: Uint8Array }
+  /** The depth each contact may keep in this projection (`project`), by contact id; NaN until the contact is first seen. */
+  private readonly keep: Float64Array
 
   constructor(private readonly traits: BodyRigTraits, rest: Float32Array) {
     this.skeleton = new BodySkeleton(traits)
@@ -165,6 +172,9 @@ export class BodyCollision {
     this.skin = { left: skin('left'), right: skin('right') }
     this.colliders = (traits.colliders.length ? traits.colliders : proxyColliders(traits)).slice()
     this.posed = this.colliders.map(() => identityTransform())
+    const slots = 10 * this.colliders.length
+    this.contacts = { count: 0, id: new Int32Array(slots), depth: new Float64Array(slots), at: new Float64Array(3 * slots), normal: new Float64Array(3 * slots), forearm: new Uint8Array(slots) }
+    this.keep = new Float64Array(slots)
     this.prepare(rest)
     this.fit = this.colliders.map((_, i) => this.fitToRest(i, rest))
     const gestures = { left: false, right: false }
@@ -370,13 +380,15 @@ export class BodyCollision {
   /**
    * Margin-inclusive depth against torso AND head; borrowed result. Call prepare after trunk changes. `extra` grows
    * each capsule's radius by that share of its segment length, for poses that need room beyond the margin; `only`
-   * measures against that one proxy.
+   * measures against that one proxy. `record` also keeps every sample inside a proxy in `contacts`.
    */
-  measure(side: BodySide, channels: ArrayLike<number>, extra = 0, only = -1) {
+  measure(side: BodySide, channels: ArrayLike<number>, extra = 0, only = -1, record = false) {
     const pose = this.skeleton.arm(side, channels)
     const d = this.deepest
+    const contacts = this.contacts
     d.depth = d.head = 0
     d.over = -Infinity
+    contacts.count = 0
     for (let segment = 0; segment < 2; segment++) {
       const from = segment === 0 ? pose.shoulder : pose.elbow
       const to = segment === 0 ? pose.elbow : pose.wrist
@@ -405,6 +417,18 @@ export class BodyCollision {
             d.head = Math.max(d.head, depth)
           // The margin is 0.03 of the segment and the radius 0.15 of it, so half the margin is a tenth of the radius.
           d.over = Math.max(d.over, depth - radius / 10)
+          if (record && depth > 0) {
+            const k = contacts.count++
+            contacts.id[k] = (segment * 5 + sample) * this.colliders.length + i
+            contacts.depth[k] = depth
+            contacts.at[3 * k] = x - pose.shoulder.x
+            contacts.at[3 * k + 1] = y - pose.shoulder.y
+            contacts.at[3 * k + 2] = z - pose.shoulder.z
+            contacts.normal[3 * k] = frame[0] * this.normal.x + frame[1] * this.normal.y + frame[2] * this.normal.z
+            contacts.normal[3 * k + 1] = frame[3] * this.normal.x + frame[4] * this.normal.y + frame[5] * this.normal.z
+            contacts.normal[3 * k + 2] = frame[6] * this.normal.x + frame[7] * this.normal.y + frame[8] * this.normal.z
+            contacts.forearm[k] = segment
+          }
           if (depth <= d.depth)
             continue
           d.depth = depth
@@ -484,46 +508,77 @@ export class BodyCollision {
   }
 
   /**
-   * Architecture 6.2's projection: up to three smallest rotations of the upper arm (and 0.3 of each on the elbow, for a
-   * forearm contact) that move one arm out of the proxies as last prepared. It keeps no state. True when the 6 degree cap
-   * bounded a step.
+   * Architecture 6.2's projection: up to three rotations of the upper arm (and 0.3 of each on the elbow, for a forearm
+   * contact) that move one arm out of the proxies as last prepared. It keeps no state across ticks. True when the 6
+   * degree cap bounded a step.
    *
-   * With a `skinWeight` above 0, the arm is measured with that share of the skin added to its radius. With `x` its
-   * depth into the skin of thickness `s`, it is pushed back by `x^2 / 4s` until `x = 2s` and by `x - s` beyond: the push
-   * and its slope are 0 at the skin's edge and the arm keeps at most the skin's depth, so it ends clear of the margin. A
-   * body that moves into the arm slows it while it crosses the skin instead of stopping it in one tick.
+   * With a `skinWeight` above 0, the arm is measured with that share of the skin added to its radius. With `x` a
+   * contact's depth into the skin of thickness `s`, it is pushed back by `x^2 / 4s` until `x = 2s` and by `x - s` beyond:
+   * the push and its slope are 0 at the skin's edge and the arm keeps at most the skin's depth, so it ends clear of the
+   * margin. A body that moves into the arm slows it while it crosses the skin instead of stopping it in one tick.
+   *
+   * Every contact asks for its own smallest clearing rotation, and the step is their mean weighted by each rotation's
+   * fourth power: the most demanding contact governs, and a contact's share grows from nothing as it enters the skin and
+   * meets the governing one's as their rotations meet. Pushing the deepest sample alone stepped the push's speed when
+   * the deepest moved to another segment or proxy, since the same depth asks a rotation inversely proportional to its
+   * lever: a walking arm's push went from 4 to 34 degrees per second in one tick as its forearm left a tail and its
+   * upper arm stayed in it (Ellen, walk, seed 1).
    */
   project(side: BodySide, channels: Float32Array, skinWeight = 0): boolean {
     const start = ARM_START[side]
     const skin = this.skin[side] * skinWeight
+    const contacts = this.contacts
+    const chest = this.skeleton.frames[(['spine0', 'spine1', 'spine2', 'spine3'] as const)[this.traits.spineChain.length - 1]]
+    const sigma = side === 'left' ? 1 : -1
     let capped = false
-    let keep = 0
+    this.keep.fill(Number.NaN)
     for (let attempt = 0; attempt < 3; attempt++) {
-      const d = this.measure(side, channels, SKIN * skinWeight)
-      if (skinWeight > 0 && attempt === 0)
-        keep = d.depth < 2 * skin ? d.depth - d.depth * d.depth / (4 * skin) : skin
-      if (d.depth <= keep)
+      this.measure(side, channels, SKIN * skinWeight, -1, true)
+      let weights = 0
+      let flex = 0
+      let abduct = 0
+      let elbow = 0
+      for (let k = 0; k < contacts.count; k++) {
+        const id = contacts.id[k]
+        const depth = contacts.depth[k]
+        // Each contact keeps what its depth into the skin allowed when this projection first met it.
+        if (Number.isNaN(this.keep[id]))
+          this.keep[id] = skin > 0 ? (depth < 2 * skin ? depth - depth * depth / (4 * skin) : skin) : 0
+        if (depth <= this.keep[id])
+          continue
+        const x = contacts.at[3 * k]
+        const y = contacts.at[3 * k + 1]
+        const z = contacts.at[3 * k + 2]
+        const nx = contacts.normal[3 * k]
+        const ny = contacts.normal[3 * k + 1]
+        const nz = contacts.normal[3 * k + 2]
+        const crossX = y * nz - z * ny
+        const crossY = z * nx - x * nz
+        const crossZ = x * ny - y * nx
+        const gx = -(chest[0] * crossX + chest[3] * crossY + chest[6] * crossZ)
+        const gz = sigma * (chest[2] * crossX + chest[5] * crossY + chest[8] * crossZ)
+        const norm = Math.hypot(gx, gz)
+        if (norm < 1e-9)
+          continue
+        // A turn moves the contact along its normal by the turn times `norm` (d x n on the chest X and Z axes), so this is
+        // the smallest clearing turn. The 1e-6 lever skin lands it just outside the margin: a grazing contact clears
+        // without the guard scan's step.
+        const clearing = (depth - this.keep[id] + 1e-6 * Math.hypot(x, y, z)) / norm
+        const weight = clearing ** 4
+        weights += weight
+        flex += weight * clearing * gx / norm
+        abduct += weight * clearing * gz / norm
+        if (contacts.forearm[k])
+          elbow += weight * 0.3 * clearing * Math.sign(gx)
+      }
+      if (weights === 0)
         break
-      const crossX = d.y * d.nz - d.z * d.ny
-      const crossY = d.z * d.nx - d.x * d.nz
-      const crossZ = d.x * d.ny - d.y * d.nx
-      const chest = this.skeleton.frames[(['spine0', 'spine1', 'spine2', 'spine3'] as const)[this.traits.spineChain.length - 1]]
-      const gx = -(chest[0] * crossX + chest[3] * crossY + chest[6] * crossZ)
-      const gz = (side === 'left' ? 1 : -1) * (chest[2] * crossX + chest[5] * crossY + chest[8] * crossZ)
-      const norm = Math.hypot(gx, gz)
-      if (norm < 1e-9)
-        break
-      // Turning by `angle` about the controllable axis moves the contact along its normal by `angle * norm`, and
-      // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
-      // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
-      // instead of falling through to the guard scan's one-sixteenth step.
-      const clearing = (d.depth - keep + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm
-      capped ||= clearing > 6 * DEG
-      const angle = Math.min(6 * DEG, clearing)
-      channels[start + 2] += angle * gx / norm
-      channels[start + 3] += angle * gz / norm
-      if (d.forearm)
-        channels[start + 5] += 0.3 * angle * Math.sign(gx)
+      const turn = Math.hypot(flex, abduct) / weights
+      capped ||= turn > 6 * DEG
+      const share = Math.min(1, 6 * DEG / turn) / weights
+      channels[start + 2] += share * flex
+      channels[start + 3] += share * abduct
+      channels[start + 5] += share * elbow
       for (let j = 2; j <= 5; j++)
         channels[start + j] = Math.max(JOINT_LIMITS[start + j][0], Math.min(JOINT_LIMITS[start + j][1], channels[start + j]))
     }

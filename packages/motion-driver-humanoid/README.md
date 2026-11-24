@@ -554,15 +554,20 @@ bodies with the leg as the MMD foot stage seeds its IK: the knee bends until hip
 to ankle spans the target, the hip turns the leg onto it, both scaled by the
 gait weight. Without the gait they stay with the hips, as at bind, so a still
 body is corrected exactly as before. While the gait carries the body, every
-proxy also has a soft skin outside its margin, one margin thick (0.03 of the
-shorter arm segment) at gait weight 1 and thinner by the weight while the gait
-blends in or out: an arm `x` deep in the skin of thickness `s` is pushed back by
+proxy also has a soft skin outside its margin, 0.1 of the shorter arm segment
+thick at gait weight 1 and thinner by the weight while the gait blends in or
+out: an arm `x` deep in the skin of thickness `s` is pushed back by
 `x^2 / 4s` up to `x = 2s` and by `x - s` beyond, before the hard projection
 runs. The push starts with zero slope and never leaves the arm inside the
 margin, so a thigh swinging into the hand, or a trunk the walk twists into the
 upper arm, slows it over several ticks instead of stopping it in one. Without
 the gait every proxy keeps the hard projection, which gesture paths are planned
-to graze.
+to graze. Both projections push every contact at once: each asks for its own
+smallest clearing turn, and the step is their mean weighted by each turn's
+fourth power. The most demanding contact governs, a new contact's share grows
+from nothing, and the push keeps its speed when the deepest contact moves to
+another segment or proxy, where the same depth asks a larger turn of a shorter
+lever.
 
 `BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
 radians, and `head.terms` keeps the seven other terms separate. `head.slow` is the
