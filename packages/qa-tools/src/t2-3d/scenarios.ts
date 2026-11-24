@@ -459,3 +459,8 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     },
   },
 ]
+
+/** Whether a clip claims an arm in the scenario's timeline, as in `gesture-under-clip`: the performer does not drive such an arm. */
+export function clipClaimsAnArm(scenario: Motion3dScenario, seed: number, seconds: number): boolean {
+  return scenario.timeline(seed, seconds).some(cue => cue.kind === 'clip-claim')
+}

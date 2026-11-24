@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 import { GAIT_STYLE_BOUNDS, GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE } from '@proj-airi/motion-driver-humanoid/locomotion'
 
-import { motion3dScenarios } from '../scenarios'
+import { clipClaimsAnArm, motion3dScenarios } from '../scenarios'
 
 export class Motion3dUsageError extends Error {
   override readonly name = 'Motion3dUsageError'
@@ -71,6 +71,7 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
         'mood': { type: 'string' },
         'energy': { type: 'string' },
         'pep': { type: 'string' },
+        'clearance': { type: 'boolean', default: false },
       },
       strict: true,
       allowPositionals: false,
@@ -94,6 +95,8 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
     const warmupSeconds = Number(values.warmup ?? scenario.warmupSeconds)
     if (!Number.isSafeInteger(seed))
       throw new Motion3dUsageError('--seed must be a safe integer')
+    if (values.clearance && clipClaimsAnArm(scenario, seed, seconds))
+      throw new Motion3dUsageError(`--clearance does not judge clip-driven arms, and a clip claims an arm in ${scenario.id}`)
     const maxSeconds = scenario.maxSeconds ?? 120
     if (!Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds || Math.round(seconds * 60) < 1)
       throw new Motion3dUsageError(`--seconds must be positive, at most ${maxSeconds} for ${scenario.id}, and include at least one 60 Hz frame`)
@@ -110,7 +113,7 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
     const pep = values.pep === undefined ? 0 : values.pep.trim() === '' ? Number.NaN : Number(values.pep)
     if (!(pep >= 0) || !(pep <= 1))
       throw new Motion3dUsageError('--pep must lie in [0, 1]')
-    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'], acts, walkStyle, mood, energy, pep }
+    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'], acts, walkStyle, mood, energy, pep, clearance: values.clearance }
   }
   catch (error) {
     if (error instanceof Motion3dUsageError)

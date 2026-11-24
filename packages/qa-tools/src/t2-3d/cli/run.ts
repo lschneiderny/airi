@@ -7,6 +7,7 @@ import { writeFileSync } from 'node:fs'
 import { errorMessageFrom } from '@moeru/std'
 
 import { createRun, readGitStateFromRepo } from '../../evidence/run'
+import { analyseClearanceModel, MMDClearanceRecorder } from '../clearance/mmd'
 import { Motion3dUsageError, parseRunArguments } from '../runner/arguments'
 import { runMotion3dScenario } from '../runner/run'
 
@@ -25,7 +26,10 @@ export async function runMotion3d(args: readonly string[], context: Motion3dCliC
       readGitState: () => git,
     })
     const input = { ...options, git, signal: context.signal }
-    const result = await runMotion3dScenario(input)
+    // The measure reads each frame through the read-only hook; the determinism replay runs without it, so a measure that
+    // wrote to the run would fail that check.
+    const clearance = options.clearance ? new MMDClearanceRecorder(await analyseClearanceModel(options.model), Math.round(options.warmupSeconds * 60)) : null
+    const result = await runMotion3dScenario({ ...input, onFrame: clearance?.onFrame })
     const blockHash = (trace: typeof result.trace) => createHash('sha256').update(JSON.stringify([trace.rot, trace.root, trace.channels])).digest('hex')
     const hash = blockHash(result.trace)
     if (options.verifyDeterminism) {
@@ -36,6 +40,8 @@ export async function runMotion3d(args: readonly string[], context: Motion3dCliC
     }
     result.summary.provenance.blockSha256 = hash
     result.summary.provenance.determinismVerified = options.verifyDeterminism
+    if (clearance)
+      result.summary.clearance = clearance.finish()
     writeFileSync(run.path('trace.json'), `${JSON.stringify(result.trace)}\n`)
     run.addArtifact('trace.json', 'motion-trace')
     writeFileSync(run.path('summary.json'), `${JSON.stringify(result.summary, null, 2)}\n`)
