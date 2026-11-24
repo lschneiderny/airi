@@ -117,6 +117,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
   const loaded = await loadHeadlessMMD(options.model)
   const { mmd } = loaded
   let pipeline: MMDFramePipeline | undefined
+  let gaitLimited = ''
   const mixer = new AnimationMixer(mmd.mesh)
   try {
     const modelKey = `qa-${options.seed}`
@@ -242,6 +243,12 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           sampler.stage.run(context)
           for (const event of gait?.events ?? [])
             sampler.recorder.event({ t: naturalSeconds, kind: 'gait', gait: event.kind, foot: event.foot })
+          // The style values the rig held below the style's ask, recorded when they change: a run on an unlimited rig has none.
+          const limited = gait?.limited.join(',') ?? gaitLimited
+          if (limited !== gaitLimited) {
+            sampler.recorder.event({ t: naturalSeconds, kind: 'marker', label: `gait-limit ${limited || 'none'}` })
+            gaitLimited = limited
+          }
         },
       },
     })

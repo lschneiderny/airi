@@ -1,7 +1,7 @@
 import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { BodyLocomotionIntent, LocomotionPace, RigTraits, Vec3 } from '../types'
-import type { GaitStyle, MutableGaitStyle } from './style'
+import type { GaitStyle, GaitStyleKey, MutableGaitStyle } from './style'
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
@@ -172,6 +172,8 @@ export interface LocomotionFrame {
   /** Blend factor: lower-body channels override the idle pose by it, torso and arm channels add. */
   readonly weight: number
   readonly events: readonly GaitEvent[]
+  /** The style values this rig held below what the style asked for (`gaitStepLimit`); empty when none. */
+  readonly limited: readonly GaitStyleKey[]
 }
 
 const radians = Math.PI / 180
@@ -186,7 +188,11 @@ const stanceShare = 0.6
 const doubleSupport = 2 * stanceShare - 1
 /** Landing targets follow the predicted root until this swing progress, then freeze. */
 const replanUntil = 0.75
-const planReach = 0.988
+/**
+ * The share of a leg's length the bob plans a planted ankle to stand from its hip. At 0.988 the knee read 20 to 22
+ * degrees at recorded heel strikes on two rigs (walking adults 4 to 10); 0.990 reads 18.5 and keeps the leash idle.
+ */
+const planReach = 0.990
 const hardReach = 0.993
 /** The share of a leg's length the gait lets a planted ankle stand from its hip: the leash's limit. */
 export const GAIT_REACH_SHARE = hardReach
@@ -220,6 +226,17 @@ const styleTau = 0.5
 /** Extra knee softening at a style's lowest bounce, and extra bob at a bounce of 2, each in leg lengths. */
 const bounceCrouchShare = 0.01
 const bounceDipShare = 0.02
+/**
+ * The deepest bob, leg lengths, that a full stride's reach may ask of a rig before its step is shortened. Walking adults
+ * bob 0.015 to 0.129 L across acted styles, and the neutral walk 0.046 to 0.050 L on rigs whose heel-off raises the
+ * ankle; a rig whose ball sits under its ankle (stilettos, short robot feet) bobbed 0.08 to 0.09 L at the same stride,
+ * because its trailing leg must reach (measured on 13 rigs, 2026-11-23). The style's own bounce adds on top.
+ */
+const maxReachBobShare = 0.06
+const noLimits: readonly GaitStyleKey[] = Object.freeze([])
+const strideLimited: readonly GaitStyleKey[] = Object.freeze(['stride'])
+const speedLimited: readonly GaitStyleKey[] = Object.freeze(['speed'])
+const strideSpeedLimited: readonly GaitStyleKey[] = Object.freeze(['stride', 'speed'])
 /** Goals closer than this share of the leg length are not worth a walk. */
 const minWalkShare = 0.05
 /**
@@ -249,12 +266,16 @@ const turnTolerance = radians
 const turnSwingShare = 0.03
 /**
  * A walk that starts or ends at another facing turns while it steps: the body turns over this many steps from the first
- * weight shift (a start) or from the first braking tick (an arrival). Adults turning a quarter while walking take about
- * three steps and 1.4 s for the middle 80 % of the turn (190 walking quarter turns, Bandai Namco Research Motiondataset
- * 2, styles normal, feminine and youthful; measured 2026-11-23).
+ * weight shift (a start) or, for an arrival, from `arriveLeadSteps` before the braking starts. Adults turning a quarter
+ * while walking take about three steps and 1.4 s for the middle 80 % of the turn (190 walking quarter turns, Bandai Namco
+ * Research Motiondataset 2, styles normal, feminine and youthful; measured 2026-11-23). Turned from the first braking
+ * tick, an arrival was half made after she had all but stopped; a stop without a goal ahead (a reversal) has no step to
+ * lead with, so it turns over `brakeTurnSteps` instead.
  */
 const departTurnSteps = 2.4
 const arriveTurnSteps = 2.6
+const arriveLeadSteps = 0.5
+const brakeTurnSteps = 1.6
 /** A start that must turn further than this first turns the excess on the spot, so she never sets off backwards. */
 const mergedTurnMax = 100 * radians
 const mergedTurn = 90 * radians
@@ -466,8 +487,10 @@ interface Walk {
   starting: boolean
   arrived: boolean
   settle: { readonly phase: number, elapsed: number } | null
-  /** The last facing planned during braking, or null on the way to the goal. */
+  /** The last facing planned for the arrival, or null on the way to the goal. */
   arrivalFacing: number | null
+  /** Braking to the goal: the arrival turn may start before it, the stop does not. */
+  stopping: boolean
   /** One leading/trailing pair. A withdrawn or replaced goal finishes this pair before yielding. */
   sidestep?: { readonly goalX: number, readonly rate: number, fromX: number, toX: number, phase: number }
 }
@@ -581,6 +604,11 @@ class Locomotion {
   private clamps = 0
   /** The style the walk shows now, easing toward the input's. */
   private readonly style: MutableGaitStyle = { ...NEUTRAL_GAIT_STYLE }
+  /** The input style with the rig's limits applied, and which values they held. */
+  private readonly allowed: MutableGaitStyle = { ...NEUTRAL_GAIT_STYLE }
+  private limited = noLimits
+  /** The longest full step at the walk pace this rig takes, as a share of the gait's: `gaitStepLimit`. */
+  readonly stepLimit: number
 
   constructor(private readonly traits: GaitTraits, seed: number, private readonly variability: GaitVariability) {
     this.random = createRandomStream(seed)
@@ -606,6 +634,59 @@ class Locomotion {
     this.halfBindWidth = ankleSpacing / 2
     this.feet = this.bindFeet()
     this.bob = this.bobAmplitude(0, 0)
+    this.stepLimit = this.longestStep()
+  }
+
+  /**
+   * The longest full step, as a share of the gait's, whose reach, the trailing foot's at lift-off included, asks a bob of
+   * at most `maxReachBobShare`, between the style's shortest and longest. The bob grows with the step, so a bisection finds it. A rig without foot geometry keeps
+   * its feet flat and is not limited: its step length is the gait's.
+   */
+  private longestStep() {
+    if (!this.traits.foot)
+      return Number.POSITIVE_INFINITY
+    // The least roll and the narrowest step ask the most bob of a step, so the limit holds in every style.
+    this.style.roll = GAIT_STYLE_BOUNDS.roll[0]
+    this.style.width = GAIT_STYLE_BOUNDS.width[0]
+    try {
+      return this.longestStepInStyle()
+    }
+    finally {
+      this.style.roll = NEUTRAL_GAIT_STYLE.roll
+      this.style.width = NEUTRAL_GAIT_STYLE.width
+    }
+  }
+
+  private longestStepInStyle() {
+    const bob = (share: number) => this.bobAmplitude(stanceShare * share * this.referenceLength, share, true, true) / this.traits.legLength
+    const shortest = GAIT_STYLE_BOUNDS.stride[0]
+    let longest = GAIT_STYLE_BOUNDS.stride[1] * Math.sqrt(GAIT_STYLE_BOUNDS.speed[1])
+    if (bob(longest) <= maxReachBobShare)
+      return longest
+    if (bob(shortest) > maxReachBobShare)
+      return shortest
+    let low = shortest
+    for (let k = 0; k < 24; k++) {
+      const mid = (low + longest) / 2
+      if (bob(mid) <= maxReachBobShare)
+        low = mid
+      else
+        longest = mid
+    }
+    return low
+  }
+
+  /** `style` with the rig's step limit applied: at the walk pace a full step is `stride` times the root of `speed`. */
+  private allow(style: GaitStyle): GaitStyle {
+    const stride = this.stepLimit / Math.sqrt(style.speed)
+    if (style.stride <= stride) {
+      this.limited = noLimits
+      return style
+    }
+    Object.assign(this.allowed, style)
+    this.allowed.stride = stride
+    this.limited = strideLimited
+    return this.allowed
   }
 
   /** Half the walking step width under the current style. */
@@ -669,7 +750,7 @@ class Locomotion {
       this.stepRequest = null
     // Between walks the style follows its input at once; while the gait still owns the body (a walk, a turn, the hand-off
     // between them, or the blend out) it eases into it.
-    const style = input.style ?? NEUTRAL_GAIT_STYLE
+    const style = this.allow(input.style ?? NEUTRAL_GAIT_STYLE)
     if (!this.walk && !this.turn && this.blend === 0)
       Object.assign(this.style, style)
     else if (dt > 0)
@@ -726,8 +807,8 @@ class Locomotion {
   }
 
   /** Fore-aft offset of `point` from the line the ankles stand on. */
-  private foreAft(point: Vec3) {
-    return (point.x - this.x) * Math.sin(this.yaw) + (point.z - this.z) * Math.cos(this.yaw) - this.ankleLine
+  private foreAft(point: Vec3, yaw = this.yaw) {
+    return (point.x - this.x) * Math.sin(yaw) + (point.z - this.z) * Math.cos(yaw) - this.ankleLine
   }
 
   /** The cadence law at the speed without this stride's variation, times this stride's cadence. */
@@ -735,6 +816,21 @@ class Locomotion {
     const length = this.walkForm ? this.referenceLength * this.style.stride : sidestepPairShare * this.traits.legLength
     const referenceSpeed = this.walkForm ? this.referenceSpeed : length * sidestepReferenceRate
     return clamp(Math.sqrt(speed / this.speedFactor * referenceSpeed) / length, minRate, maxRate) * this.cadenceFactor
+  }
+
+  /**
+   * The fastest walk whose step, `speed / stepRate(speed)`, stays within the rig's step limit under this stride's
+   * variation and the eased style. The step grows with the speed, as the root of it while the cadence law holds and in
+   * proportion once the cadence is clamped.
+   */
+  private fastestSpeed() {
+    const step = this.stepLimit * this.referenceLength
+    if (!Number.isFinite(step))
+      return Number.POSITIVE_INFINITY
+    const length = this.referenceLength * this.style.stride
+    const lawful = this.referenceSpeed * (step * this.cadenceFactor / length) ** 2 / this.speedFactor
+    const rate = Math.sqrt(lawful / this.speedFactor * this.referenceSpeed) / length
+    return rate > maxRate ? step * maxRate * this.cadenceFactor : rate < minRate ? step * minRate * this.cadenceFactor : lawful
   }
 
   /**
@@ -848,9 +944,9 @@ class Locomotion {
     this.bob = this.bobAmplitude(0, 0)
   }
 
-  private bobAmplitude(halfSpan: number, strideScale: number) {
+  private bobAmplitude(halfSpan: number, strideScale: number, walkForm = this.walkForm, rolled = false) {
     const legLength = this.traits.legLength
-    if (!this.walkForm) {
+    if (!walkForm) {
       const reach = sidestepPlanReach * legLength
       const lateral = this.halfBindWidth * 0.3 + swayShare * legLength * Math.sin(Math.PI * doubleSupport / 2)
       const required = this.traits.hipToAnkleY - sidestepKneeSoftening * legLength - Math.sqrt(Math.max(0, reach ** 2 - halfSpan ** 2 - lateral ** 2))
@@ -873,9 +969,16 @@ class Locomotion {
     const flatUntil = heelOffAt * (1 + doubleSupport)
     const behind = flatUntil * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (flatUntil - rippleLag))
     const rear = drop(Math.max(0, behind), 0) / shape(flatUntil)
-    // Without roll geometry the heel never rises: the trailing foot stays flat until it lifts, a full stance behind.
+    // At lift-off, a full stance behind, the trailing foot stands on its ball at the toe-off pitch, which carries the ankle
+    // forward and up: a ball far ahead of the ankle lifts it, one under the ankle (a stiletto) hardly does. The reach floor
+    // lowers the pelvis for it at lift-off only, so the bob plans for it only without roll geometry, where the heel never
+    // rises and the foot stays flat until it lifts. `longestStep` reads it with `rolled`.
+    if (foot && !rolled)
+      return Math.max(0, front, rear)
     const stance = 1 + doubleSupport
-    const lift = foot ? 0 : drop(Math.max(0, stance * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag))), 0) / shape(stance)
+    const toeOff = toeOffPitch * this.style.roll * Math.min(1, strideScale)
+    const [ballAhead, ballUp] = foot ? pivotOffset(-(foot.left.ballForward + foot.right.ballForward) / 2, (foot.left.ankleHeight + foot.right.ankleHeight) / 2, -toeOff) : [0, 0]
+    const lift = drop(Math.max(0, stance * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag)) - ballAhead), ballUp) / shape(stance)
     return Math.max(0, front, rear, lift)
   }
 
@@ -1069,7 +1172,7 @@ class Locomotion {
     // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
-    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null, arrivalFacing: null }
+    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null, arrivalFacing: null, stopping: false }
     this.yawPlan = Math.abs(turn) > turnTolerance
       ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate }
       : null
@@ -1132,24 +1235,35 @@ class Locomotion {
     }
     if (walk.sidestep)
       return this.advanceSidestep(walk, walk.sidestep, input, dt, events)
-    const command = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor * this.style.speed
+    // A faster walk lengthens the step, so the limit caps the speed as well: past the top cadence for the style, and by a
+    // few percent where a stride's variation would lengthen a step at the limit. Only the style's own cap is reported.
+    const asked = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor * this.style.speed
+    const command = Math.min(asked, this.fastestSpeed())
+    if (asked / this.speedFactor > this.stepLimit * this.referenceLength * maxRate)
+      this.limited = this.limited === strideLimited ? strideSpeedLimited : speedLimited
     const goal = input.goalX !== null && Number.isFinite(input.goalX) ? input.goalX : null
     const ahead = goal === null ? 0 : (goal - this.x) * walk.direction
     // Without a goal ahead, brake as hard as allowed and stop wherever that lands.
     const braking = goal === null || ahead <= 0
     const profiled = !braking && this.stoppingSpeed(ahead, dt) < command
+    // The arrival turn starts `arriveLeadSteps` of cruise before the braking would.
+    const turnLead = arriveLeadSteps * command / this.stepRate(command)
+    const nearing = !braking && this.stoppingSpeed(Math.max(0, ahead - turnLead), dt) < command
     const target = braking || walk.settle ? 0 : Math.min(command, this.stoppingSpeed(ahead, dt))
     const change = this.maxAcceleration * dt
     const speed = Math.max(0, clamp(target, this.speed - change, this.speed + change * this.startShare(this.speed, command)))
 
     // Keep the departure turn through the first step. The braking cap can be below cruise speed while still accelerating.
     const wasArriving = walk.arrivalFacing !== null
-    const arriving = braking || (profiled && (wasArriving || ((!this.yawPlan || walk.step > 0) && target <= this.speed + epsilon)))
+    const arriving = braking || (nearing && (wasArriving || ((!this.yawPlan || walk.step > 0) && (!profiled || target <= this.speed + epsilon))))
+    const wasStopping = walk.stopping
+    walk.stopping = arriving && (walk.stopping || braking || (profiled && target <= this.speed + epsilon))
     const facing = arriving ? finite(input.arriveFacing) : walk.heading
-    const slowed = arriving ? (1 - Math.min(1, speed / command)) ** 2 : 0
+    const slowed = walk.stopping ? (1 - Math.min(1, speed / command)) ** 2 : 0
     const rate = this.stepRate(speed) + (closingRate - minRate) * slowed
-    if (!walk.settle && (arriving !== wasArriving || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
-      this.yawPlan = this.planYaw(facing, arriving ? arriveTurnSteps : departTurnSteps, rate)
+    // A goal moved behind her during the lead brakes at once, so the turn is planned again over the braking's steps.
+    if (!walk.settle && (arriving !== wasArriving || (braking && !wasStopping) || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
+      this.yawPlan = this.planYaw(facing, arriving ? braking ? brakeTurnSteps : arriveTurnSteps : departTurnSteps, rate)
       walk.arrivalFacing = arriving ? facing : null
     }
     if (walk.settle) {
@@ -1188,7 +1302,7 @@ class Locomotion {
       this.walk = null
       return 'stopping'
     }
-    if (walk.settle || walk.arrived || arriving)
+    if (walk.settle || walk.arrived || walk.stopping)
       return 'stopping'
     if (walk.starting && this.speed < command - epsilon)
       return 'starting'
@@ -1451,11 +1565,13 @@ class Locomotion {
       return { pitch: 0, ankleOffset: [0, 0], pivot: swing ? 'air' : 'flat' }
     // A foot rolls by the reach it landed with and by how far it stands behind the ankle line: one planted at speed
     // still rolls off after she slows, and one beside a stopped root stands flat. A walk's first step has neither and
-    // rolls at 50 % at least.
-    const behind = swing ? 0 : -this.foreAft(this.feet[side].position)
+    // rolls at 50 % at least. The foot stands behind along the path: while she turns, her facing would shorten it.
+    const behind = swing ? 0 : -this.foreAft(this.feet[side].position, this.walk.heading)
     // Both measure against the style's own full stride: the cadence law's step grows as the root of the speed.
     const own = this.style.stride * Math.sqrt(this.style.speed)
+    // The settle hands the feet back flat: a planted foot's roll fades with the gait's weight.
     const scale = Math.min(1, Math.max(strideScale / own, (swing ? swing.reach : Math.min(this.spans[side], Math.max(0, behind))) / (stanceShare * this.referenceLength * own), this.walk.starting ? 0.5 : 0))
+      * (this.walk.settle ? this.blend : 1)
     // The style's roll acts on full strides only: the short steps of a start or a stop keep the gait's own.
     const styled = 1 + (this.style.roll - 1) * clamp(2 * scale - 1, 0, 1)
     const strike = heelStrikePitch * styled * scale
@@ -1581,6 +1697,7 @@ class Locomotion {
       lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.yawPlan ? this.planLookAhead(this.yawPlan) : this.walk && this.walk.arrivalFacing === null ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
       weight: smoothstep(this.blend),
       events,
+      limited: this.limited,
     }
   }
 }
