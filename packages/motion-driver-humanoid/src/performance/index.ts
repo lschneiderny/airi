@@ -7,7 +7,7 @@ import { createTurnPlanner } from '../look-at'
 import { BodyArms } from './arms'
 import { BodyBreath } from './breath'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, channelIndex, DEG, limitChannel, SIDES } from './channels'
-import { BodyCollision } from './collision'
+import { BodyCollision, easeBackSwing } from './collision'
 import { BodyRigError } from './contracts'
 import { BodyGaze } from './gaze'
 import { GestureKeys } from './gesture-forms'
@@ -263,10 +263,9 @@ class BodyPerformer {
       // The followers' inverse of the swing: x = y + lead y' + curvature y'', from the swing's last three ticks.
       const swing = state.gaitSwing
       const tension = this.context.tension
-      const corner = (value: number) => Math.sqrt(value * value + (2 * DEG) ** 2) - 2 * DEG
       GAIT_ARM_CHANNELS.forEach(([c, joint, side], k) => {
-        // The arm opens by its walking clearance, or to the gait's angle where that is wider, and swings back only as far
-        // as the rig has room behind the hip, each through a soft corner of 2 degrees.
+        // The arm opens by its walking clearance, or to the gait's angle where that is wider, through a soft corner of 2
+        // degrees, and eases its back swing into the room the rig has behind the hip.
         const short = gait.channels[c] - targets[c]
         const room = state.collision.backSwing[side]
         const swung = gait.channels[c] - GAIT_FLEX_REST
@@ -274,7 +273,7 @@ class BodyPerformer {
         const shaped = joint === ABDUCT_JOINT
           ? GAIT_ARM_CLEARANCE + (beyond + Math.sqrt(beyond * beyond + (2 * DEG) ** 2)) / 2
           : joint === FLEX_JOINT
-            ? GAIT_FLEX_REST + (1 + room) / 2 * swung + (1 - room) / 2 * corner(swung)
+            ? GAIT_FLEX_REST + easeBackSwing(swung, room)
             : gait.channels[c]
         const y = gait.weight * shaped
         const [lead, curvature] = followerInverse(joint, tension, 0)

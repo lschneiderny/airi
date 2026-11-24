@@ -23,10 +23,24 @@ const SKIN = 0.1
 const SIDESTEP_SKIN = 0.03
 
 /**
- * The pose that probes an arm's room behind the hip, radians: the walk's full back swing (15.5 degrees) beyond the 10
- * degrees the walking arm already trails its shoulder by, at the walk's narrowest hang.
+ * The poses that probe an arm's room behind the hip, radians: back swings in 1 degree steps up to 36 degrees beyond the
+ * 10 degrees the walking arm already trails its shoulder by, at the walk's narrowest hang. 36 degrees clears the widest
+ * style's back swing (1.8 times the walk's 15.5) with room to ease into it.
  */
-const BACK_SWING_PROBE = { swing: 15.5 * DEG, trail: 10 * DEG, abduct: 14 * DEG } as const
+const BACK_SWING_PROBE = { swing: 36 * DEG, steps: 36, trail: 10 * DEG, abduct: 14 * DEG } as const
+
+/** The smallest room an arm's back swing eases into, radians: below it the ease would bend the swing within a tick. */
+const BACK_SWING_MIN_ROOM = 4 * DEG
+
+/**
+ * An arm's back swing (negative, radians) eased into the `room` the rig has behind the hip: unchanged down to half the
+ * room, then bent over the other half and never past it. The bend keeps the swing's speed continuous, so a fast style
+ * that reaches a tail or a skirt slows into it instead of stepping off it.
+ */
+export function easeBackSwing(swung: number, room: number): number {
+  const knee = Math.max(room, BACK_SWING_MIN_ROOM) / 2
+  return swung >= -knee ? swung : -knee - knee * Math.tanh((-swung - knee) / knee)
+}
 
 /** Writes the rotation by `angle` about the unit axis (x, y, z) into a transform's row-major 3x3, as `setRotation` does. */
 function setAxisAngle(out: BodyTransform, x: number, y: number, z: number, angle: number): void {
@@ -77,9 +91,8 @@ export class BodyCollision {
   private readonly colliders: readonly BodyCollider[]
   private readonly posed: ReturnType<typeof identityTransform>[]
   /**
-   * The share of the walk's back swing each arm has room for, 0 to 1: the largest of six steps at which the arm, swung
-   * back from its rest pose, clears every body with the gait's skin to spare. A tail or a wing behind the hips leaves
-   * less than a bare hip does.
+   * The back swing each arm has room for, radians: the largest probed swing at which the arm, swung back from its rest
+   * pose, clears every body with the gait's skin to spare, as every shorter swing does. A tail or a wing behind the hips leaves less than a bare hip.
    */
   readonly backSwing: Record<BodySide, number>
   /** Each leg's thigh and shin motion in the hips frame (about the hips bone), set by `prepare` while the gait carries the feet. */
@@ -131,12 +144,16 @@ export class BodyCollision {
       const start = ARM_START[side]
       const probe = rest.slice()
       probe[start + 3] = Math.max(probe[start + 3], BACK_SWING_PROBE.abduct)
-      for (let share = 1; share > 0; share -= 0.2) {
-        probe[start + 2] = rest[start + 2] - BACK_SWING_PROBE.trail - share * BACK_SWING_PROBE.swing
-        if (this.measure(side, probe, SKIN).depth <= 0)
-          return share
+      // Outward from the trail, so a body the arm would swing through ends the room even where it clears beyond.
+      let room = 0
+      for (let step = 1; step <= BACK_SWING_PROBE.steps; step++) {
+        const swing = step / BACK_SWING_PROBE.steps * BACK_SWING_PROBE.swing
+        probe[start + 2] = rest[start + 2] - BACK_SWING_PROBE.trail - swing
+        if (this.measure(side, probe, SKIN).depth > 0)
+          break
+        room = swing
       }
-      return 0
+      return room
     }
     this.backSwing = { left: backSwing('left'), right: backSwing('right') }
     for (const side of SIDES) {
