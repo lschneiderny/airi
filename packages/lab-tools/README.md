@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This private, Node-only package holds research tooling: it measures and judges quality to inform tuning, and it never gates landing. It scores headless MMD body motion (`lab:motion3d`), evaluates LLM replies against the stage contract (`lab:model`), and simulates the character-state core (`lab:character`). The checks that prove a change works, including the headless runs that `lab:motion3d` scores, are in [`@proj-airi/qa-tools`](../qa-tools/README.md).
+This private, Node-only package holds research tooling: it measures and judges quality to inform tuning, and it never gates landing. It scores headless MMD body motion (`lab:motion3d`), evaluates LLM replies against the stage contract (`lab:model`), simulates the character-state core (`lab:character`), and compares Natural's head motion with reference video (`lab:natural`). The checks that prove a change works, including the headless runs that `lab:motion3d` scores, are in [`@proj-airi/qa-tools`](../qa-tools/README.md).
 
 ## Usage
 
@@ -23,6 +23,7 @@ Every root `lab:*` script runs its entry directly with `node --import tsx`, from
 | `pnpm lab:model help` | Print the model-evaluation command usage. |
 | `pnpm lab:character simulate --scenario <name\|file.json> [--days <n>] [--seed <n>] [--json]` | Drive the pure character-state core through a scenario, check the plan's Appendix A10 invariants, and print a daily table or JSON. An invariant violation exits 1. |
 | `pnpm lab:character render --stage <stranger\|friendly\|close\|intimate> [--mood <bucket words>]` | Print the exact `system:character` text for a relationship stage and optional mood buckets. |
+| `pnpm lab:natural <replay\|fingerprint\|reference\|compare> ...` | Measure a head-motion fingerprint from tracked video or a headless Natural replay, and print it beside reference bands. See [Natural fingerprint](#natural-fingerprint). |
 
 ## Motion scoring
 
@@ -704,6 +705,53 @@ A scenario file is JSON with `name`, `description`, `days`, optional `startDate`
 `render` prints the text the app would send for a stage preset: `friendly` pairs with trust `open`, `close` with `open` and `knows-you`, and `intimate` with `confiding`, `knows-you`, and three milestones. Without `--mood` the buckets rest at the default resting disposition, so `stranger` prints nothing (the app sends no character text at rest). `model-eval/fixtures/character-stages/<stage>.json` holds `{ stage, text }` for each stage for a later live model run (M2); the tests keep them equal to `render`.
 
 The starting values in the ADR's Known gaps depend on the trust and closeness pace. After you change a constant, run `pnpm lab:character simulate --scenario typical-month --days 90` and read the day-30, day-60, and day-90 rows before you change a stage threshold.
+
+## Natural fingerprint
+
+`lab:natural` measures how a 2D avatar's head moves and compares Natural's commanded head with it. It tracks a reference video into a track file, replays the same voice through a headless `NaturalMotion`, prints a fingerprint of each, and places each value beside reference bands. It reports and never gates: results inform tuning of Natural (for example its pep), and a value outside a band is a finding.
+
+A track (`natural-track` version 1) holds per-frame channels at the track's frame rate and the voice: `tilt` (eye-line angle in degrees), `x` and `y` (eye midpoint in face widths), `scale` (face width over its median), `eyeOpen` (mean eye-box height over width), with `null` where nothing was found, plus `voice.level` (RMS envelope over its 95th percentile, clipped to [0, 1]) and `voice.voiced` (within 25 dB of that percentile). A replay writes `source: "natural"`, `tilt` as head roll times 30 degrees, `x` and `y` in Natural's units, `eyeOpen` as blink factor times eye-open multiplier, and an extra `bodyTilt`. Every series is resampled to 60 Hz before measuring: gaps of up to 0.5 s in the motion channels are filled linearly, longer gaps stay gaps, and `eyeOpen` and `scale` are never filled.
+
+Track a video with the PEP 723 script, which needs [`uv`](https://docs.astral.sh/uv/) and `ffmpeg` on PATH. The first run downloads the `dghs-imgutils` detector models; it runs on the CPU, and on a GPU when the environment has `onnxruntime-gpu`. Step so the series is about 30 fps. Keep videos and tracks out of the repository, for example under `.temp/`.
+
+```bash
+uv run packages/lab-tools/scripts/track-avatar-video.py <video> <track.json> [--step n] [--start s] [--end s]
+pnpm lab:natural replay --track <track.json> --out <replay.json> [--seed n] [--pep p] [--valence v] [--energy e] [--beat-bpm n]
+pnpm lab:natural fingerprint <track.json>... [--json <out.json>] [--window <seconds>]
+pnpm lab:natural reference --name <id> --note <text> --out <fixture.json> --window 60 [--segment "<label>"]... <track.json>...
+pnpm lab:natural compare --reference packages/lab-tools/fixtures/natural/reference-talk-v1.json <track.json>...
+```
+
+- `replay` warms Natural up for 180 s, then advances at the track's frame times: talking while voiced within the last 0.4 s, idle otherwise, attention on the camera. `--pep` sets Natural's pep before the warm-up; `--valence` holds the mood valence by setting it once a second; `--energy` is the user energy (default 0.5). `--beat-bpm` replaces talking with beats at that tempo and a repeated idle `sway`, which measures today's groove.
+- `fingerprint` prints one row per track, and with `--window` one row per window (centred, half-window hop).
+- `reference` refuses to overwrite its output. It records each measure's per-window values over every given video track and the band from their minimum to their maximum, the tracker version, and the `--segment` labels.
+- `compare` prints each measure of each whole track beside the band and whether it is below, inside or above it. It exits 0 either way.
+
+Exit codes: 0 done, 2 usage error or an unreadable, malformed or existing file, 130 interrupted.
+
+Tilt is low-passed at 6 Hz (zero phase) before every tilt measure. A measure that cannot be computed (no voice, too few onsets, no eyes) is `null`, printed `-`.
+
+| Measure | Meaning |
+| --- | --- |
+| `tiltSdDeg` | Standard deviation of the tilt, degrees. |
+| `tiltRangeDeg` | 5th to 95th percentile of the tilt, degrees. |
+| `stillShare` | Share of time with tilt speed under 2 deg/s. |
+| `tiltSpeedMedian` | Median absolute tilt speed, deg/s. |
+| `swingsPerMin` | Direction reversals per minute whose swing since the previous reversal is at least 8 degrees. |
+| `swingSizeDeg`, `swingSeconds` | Median size and length of the swings between reversals of at least 3 degrees. |
+| `swingSharpness` | Median of a swing's peak speed over its mean speed (a sine gives 1.57, a minimum-jerk move 1.9). |
+| `midBandShare` | Share of tilt power between 0.5 and 2 Hz, of the power above 0.02 Hz. |
+| `blinksPerMin`, `blinkSeconds` | Closures of 0.05 to 0.5 s per minute and their median length. Closed means `eyeOpen` under 0.6 of its median, or on video a frame with a face and no eye pair. |
+| `eyesClosedShare` | Share of time with the eyes closed. |
+| `longClosuresPerMin` | Closures over 0.5 s per minute. |
+| `talkShare` | Share of time voiced within the last 0.4 s. |
+| `talkSpeedRatio` | Median tilt speed while talking over the median while silent. |
+| `onsetResponse` | Mean tilt speed 0.1 to 0.5 s after each speech onset (voiced after at least 0.6 s of silence, 3 onsets or more) over the mean while talking. Above 1, motion follows speech onsets. |
+| `coverage` | Share of frames where the eye line was found. |
+
+The committed bands are in `fixtures/natural/`; [REFERENCE.md](fixtures/natural/REFERENCE.md) records their segments, tracker version, rebuild commands and limits.
+
+Use it when tuning Natural's head and eye motion against a reference performer, or to see what a Natural change did to the fingerprint across seeds. Do not use it to judge feel, which stays a person's review; to compare renderers (the Natural side is the commanded head angle, not rendered pixels); or to gate a change.
 
 ## When to use
 

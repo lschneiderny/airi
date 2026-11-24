@@ -1,0 +1,208 @@
+{
+  "format": "natural-reference",
+  "version": 1,
+  "name": "reference-song-v1",
+  "note": "Neuro-sama's current 2D model singing one song on stream; head tilt and blinks while the song plays.",
+  "tracker": "track-avatar-video 1",
+  "windowSeconds": 60,
+  "segments": [
+    "stream 2026-09-16, 165 s of one song"
+  ],
+  "measures": {
+    "tiltSdDeg": {
+      "values": [
+        10.6727,
+        11.1655,
+        12.1896,
+        11.1034
+      ],
+      "band": [
+        10.6727,
+        12.1896
+      ]
+    },
+    "tiltRangeDeg": {
+      "values": [
+        37.8493,
+        39.967,
+        43.0014,
+        39.8718
+      ],
+      "band": [
+        37.8493,
+        43.0014
+      ]
+    },
+    "stillShare": {
+      "values": [
+        0.0319,
+        0.0325,
+        0.0339,
+        0.0364
+      ],
+      "band": [
+        0.0319,
+        0.0364
+      ]
+    },
+    "tiltSpeedMedian": {
+      "values": [
+        32.3308,
+        32.8429,
+        34.479,
+        32.6046
+      ],
+      "band": [
+        32.3308,
+        34.479
+      ]
+    },
+    "swingsPerMin": {
+      "values": [
+        98,
+        88,
+        87,
+        91
+      ],
+      "band": [
+        87,
+        98
+      ]
+    },
+    "swingSizeDeg": {
+      "values": [
+        16.371,
+        17.099,
+        15.4265,
+        15.2507
+      ],
+      "band": [
+        15.2507,
+        17.099
+      ]
+    },
+    "swingSeconds": {
+      "values": [
+        0.3833,
+        0.4167,
+        0.3667,
+        0.3667
+      ],
+      "band": [
+        0.3667,
+        0.4167
+      ]
+    },
+    "swingSharpness": {
+      "values": [
+        1.7409,
+        1.7304,
+        1.7286,
+        1.746
+      ],
+      "band": [
+        1.7286,
+        1.746
+      ]
+    },
+    "midBandShare": {
+      "values": [
+        0.5104,
+        0.4449,
+        0.5373,
+        0.4118
+      ],
+      "band": [
+        0.4118,
+        0.5373
+      ]
+    },
+    "blinksPerMin": {
+      "values": [
+        49,
+        48,
+        38,
+        18
+      ],
+      "band": [
+        18,
+        49
+      ]
+    },
+    "blinkSeconds": {
+      "values": [
+        0.0833,
+        0.1,
+        0.1,
+        0.15
+      ],
+      "band": [
+        0.0833,
+        0.15
+      ]
+    },
+    "eyesClosedShare": {
+      "values": [
+        0.1006,
+        0.1344,
+        0.1081,
+        0.0653
+      ],
+      "band": [
+        0.0653,
+        0.1344
+      ]
+    },
+    "longClosuresPerMin": {
+      "values": [
+        0,
+        1,
+        2,
+        1
+      ],
+      "band": [
+        0,
+        2
+      ]
+    },
+    "talkShare": {
+      "values": [
+        1,
+        0.8406,
+        0.8406,
+        0.8406
+      ],
+      "band": [
+        0.8406,
+        1
+      ]
+    },
+    "talkSpeedRatio": {
+      "values": [
+        1.207,
+        1.2779,
+        1.2722
+      ],
+      "band": [
+        1.207,
+        1.2779
+      ]
+    },
+    "onsetResponse": {
+      "values": [],
+      "band": null
+    },
+    "coverage": {
+      "values": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "band": [
+        1,
+        1
+      ]
+    }
+  }
+}
