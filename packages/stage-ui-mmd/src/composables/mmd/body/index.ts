@@ -34,6 +34,7 @@ import { MMDBodyPose } from './pose'
 import { buildBodyRigTraits } from './rig-traits'
 
 export type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
+export { writeWalkHand } from './locomotion'
 export type { MMDBodyEvent } from './performer'
 
 /**

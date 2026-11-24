@@ -1,11 +1,15 @@
 import type { BodyChannel, BodySide, HandShape } from '@proj-airi/motion-driver-humanoid/performance'
 
-import { BODY_CHANNELS, channelIndex, HAND_SHAPES, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
+import { GAIT_STYLE_BOUNDS } from '@proj-airi/motion-driver-humanoid/locomotion'
+import { addHandShape, BODY_CHANNELS, BODY_EMOTIONS, channelIndex, HAND_SHAPES, limitChannel, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
+import { writeWalkHand } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 
 const DEG = Math.PI / 180
 const SIDES: readonly BodySide[] = ['left', 'right']
 /** Channels of one side's arm block, from its `ClavElev`: the 26 values `writeHandShape` writes into. */
 const ARM_BLOCK = 26
+/** The first finger channel of an arm block (the thumb's metacarpal). */
+const HAND_FROM = 9
 
 /** Wrist channels of one cell, degrees: pronation, flexion (palmar positive) and deviation, as `BODY_CHANNELS` signs them. */
 export interface WristAngles {
@@ -19,6 +23,13 @@ export interface HandSheetCell {
   /** The hand shape written through `writeHandShape`; null keeps the performer's rest hand and wrist, how she stands. */
   readonly shape: HandShape | null
   readonly wrist: WristAngles
+  /** A hand part of the way from `shape` to `to`, channel by channel, as the finger followers pass it in a blend. */
+  readonly blend?: { readonly to: HandShape, readonly share: number }
+  /**
+   * The rest hand and wrist with the walk's hand curl (`GaitStyle.handCurl`) written by the MMD adapter's
+   * `writeWalkHand`, and an emotion's hand added on top by `addHandShape` at full weight, as the emotion layer adds it.
+   */
+  readonly walk?: { readonly handCurl: number, readonly emotion?: 'angry' }
 }
 
 const NEUTRAL: WristAngles = { pron: 0, wflex: 0, wdev: 0 }
@@ -29,12 +40,19 @@ const NEUTRAL: WristAngles = { pron: 0, wflex: 0, wdev: 0 }
 const WRIST = { flex: 45, deviation: 15, pronation: 60 } as const
 
 /**
- * The sheet's cells: her rest hand, every hand shape with the hand in line with the forearm, then the relaxed hand at
- * each end of each wrist axis.
+ * The sheet's cells: her rest hand, every hand shape with the hand in line with the forearm, the halfway points of the
+ * blends whose paths matter (the thumb crossing into a fist and a point), the walk's open and closed hands at the ends
+ * of the style's range and the angry walk (the closed walking hand under the angry fist), then the relaxed hand at each
+ * end of each wrist axis.
  */
 export const HAND_SHEET_CELLS: readonly HandSheetCell[] = [
   { name: 'rest', shape: null, wrist: NEUTRAL },
   ...(Object.keys(HAND_SHAPES) as HandShape[]).map(shape => ({ name: shape, shape, wrist: NEUTRAL })),
+  { name: 'relaxed-to-fist', shape: 'relaxed', wrist: NEUTRAL, blend: { to: 'fist', share: 0.5 } },
+  { name: 'relaxed-to-point', shape: 'relaxed', wrist: NEUTRAL, blend: { to: 'point', share: 0.5 } },
+  { name: 'walk-open', shape: null, wrist: NEUTRAL, walk: { handCurl: GAIT_STYLE_BOUNDS.handCurl[0] } },
+  { name: 'walk-closed', shape: null, wrist: NEUTRAL, walk: { handCurl: GAIT_STYLE_BOUNDS.handCurl[1] } },
+  { name: 'walk-angry', shape: null, wrist: NEUTRAL, walk: { handCurl: GAIT_STYLE_BOUNDS.handCurl[1], emotion: 'angry' } },
   { name: 'wrist-flexed', shape: 'relaxed', wrist: { ...NEUTRAL, wflex: WRIST.flex } },
   { name: 'wrist-extended', shape: 'relaxed', wrist: { ...NEUTRAL, wflex: -WRIST.flex } },
   // Positive deviation is ulnar (its limit, 30, is the larger, as the ulnar range is), negative radial, toward the thumb.
@@ -46,17 +64,34 @@ export const HAND_SHEET_CELLS: readonly HandSheetCell[] = [
 
 /**
  * The performer channels of one cell: `rest` (the performer's rest channels, so the arm hangs as she stands) with both
- * hands set to the cell's shape and wrist. The shape goes through the gesture layer's own `writeHandShape`.
+ * hands set to the cell's shape and wrist, through the gesture layer's own `writeHandShape`, or to the walk's hand. The
+ * hand channels a cell sets pass the performer's joint limits (`limitChannel`), as every frame's channels do.
  */
 export function handSheetChannels(rest: Float32Array, cell: HandSheetCell): Float32Array {
   const channels = rest.slice()
+  if (cell.walk) {
+    const walk = new Float64Array(BODY_CHANNELS.length)
+    for (const side of SIDES) {
+      writeWalkHand(cell.walk.handCurl, side, walk)
+      const start = channelIndex(`${side}ClavElev`)
+      const hands = cell.walk.emotion && BODY_EMOTIONS[cell.walk.emotion].hands
+      if (hands && 'shape' in hands)
+        addHandShape(hands.shape, hands.amount, rest, walk, start, hands.spread)
+      for (let j = HAND_FROM; j < ARM_BLOCK; j++)
+        channels[start + j] = limitChannel(start + j, rest[start + j] + walk[start + j])
+    }
+    return channels
+  }
   if (!cell.shape)
     return channels
   for (const side of SIDES) {
     const start = channelIndex(`${side}ClavElev`)
     const arm = Float64Array.from(channels.subarray(start, start + ARM_BLOCK))
     writeHandShape(cell.shape, arm)
-    channels.set(arm, start)
+    if (cell.blend)
+      addHandShape(cell.blend.to, cell.blend.share, arm, arm, 0)
+    for (let j = HAND_FROM; j < ARM_BLOCK; j++)
+      channels[start + j] = limitChannel(start + j, arm[j])
     channels[channelIndex(`${side}Pron`)] = cell.wrist.pron * DEG
     channels[channelIndex(`${side}Wflex`)] = cell.wrist.wflex * DEG
     channels[channelIndex(`${side}Wdev`)] = cell.wrist.wdev * DEG
