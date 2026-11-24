@@ -617,7 +617,13 @@ unreachable key returns null. Check its limits and clearance before playback.
 Each arm follower trails its parent through a drag term (architecture 3a).
 The elbow trails the upper arm's swing in the world, its flex rate minus the
 trunk pitch rate, so the plumb line's counter-rotation of the upper arm against
-a pitching trunk (stillness in the world) never swings the forearm.
+a pitching trunk (stillness in the world) never swings the forearm. Each finger
+joint trails the curl-plane velocity of the segment it hangs from (the wrist's
+flexion plus the same digit's joints nearer the palm), with gains that grow
+toward the tip, so a swung hand's fingers lag by a few degrees, more and later
+at the tip. The trail shrinks with tension and with the digit's curl toward a
+fist, where it is zero. The spread drifts on its own 1 degree noise rather than
+with the shared curl noise.
 Terms that several arm joints receive at once (breath, weight, gait swing, a
 layer's key) pass each joint's lag link before its follower, with delay
 `s_j + max(0, tau_upper - tau_j)`: architecture 4a's start offsets (0 ms for
