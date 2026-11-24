@@ -51,6 +51,11 @@ export function easeBackSwing(swung: number, room: number): number {
  */
 export const KEY_HEADROOM = 0.05
 
+/** The persistent correction's decay time, seconds: corrections fade, and a held arm follows its request, at this rate. */
+const CORRECTION_SECONDS = 0.3
+/** A held arm's share of the way to its requested pose per tick (`correct`). */
+const HOLD_FOLLOW = 1 - Math.exp(-BODY_TICK / CORRECTION_SECONDS)
+
 /** Bisection steps of a proxy's fit to the rest hang (`BodyCollision.fit`): the scale is found to 1 / 4096. */
 const FIT_STEPS = 12
 
@@ -96,7 +101,7 @@ export class BodyCollision {
   readonly correction = { left: 0, right: 0 }
   readonly penetration = { left: 0, right: 0 }
   readonly headPenetration = { left: 0, right: 0 }
-  /** Arms held at their last valid pose because no pose cleared the proxies: count, and the latest side, depth and tick. */
+  /** Arm ticks held because no pose cleared the proxies (`correct`): count, and the latest side, depth and tick. */
   readonly collisions: { count: number, last: { side: BodySide, depth: number, tick: number } | null } = { count: 0, last: null }
   /**
    * Arm ticks on which a fallback ran: the 6 degree cap bounded a projection step, or the projection left more than
@@ -432,7 +437,10 @@ export class BodyCollision {
     return nearest
   }
 
-  /** Clears each arm; an arm that no pose clears keeps its last valid pose while every other channel moves on. */
+  /**
+   * Clears each arm. An arm that no pose clears is held: it follows its requested pose from its last held one at the
+   * persistent correction's rate while every other channel moves on, and it is clear again on the first tick a pose is.
+   */
   correct(channels: Float32Array, tick: number, gait: BodyPerformanceInput['gait'] = null): void {
     this.prepare(channels, gait)
     this.original.set(channels)
@@ -440,7 +448,7 @@ export class BodyCollision {
       const start = ARM_START[side]
       for (let j = 2; j <= 5; j++) {
         const index = start + j
-        channels[index] += this.previous[index] * Math.exp(-BODY_TICK / 0.3)
+        channels[index] += this.previous[index] * Math.exp(-BODY_TICK / CORRECTION_SECONDS)
         channels[index] = Math.max(JOINT_LIMITS[index][0], Math.min(JOINT_LIMITS[index][1], channels[index]))
       }
       if (this.gaitSkinWeight > 0 && this.project(side, channels, this.gaitSkinWeight))
@@ -454,8 +462,12 @@ export class BodyCollision {
       if (final.over > 0) {
         this.collisions.count++
         this.collisions.last = { side, depth: final.depth, tick }
-        for (let j = 0; j < 26; j++)
+        // A hold is a last resort that lets go: the held arm follows the pose it is asked for at the persistent
+        // correction's rate, so an arm that no pose clears moves on through the proxy instead of freezing.
+        for (let j = 0; j < 26; j++) {
+          this.valid[start + j] += (this.original[start + j] - this.valid[start + j]) * HOLD_FOLLOW
           channels[start + j] = this.valid[start + j]
+        }
         final = this.measure(side, channels)
       }
       else {
