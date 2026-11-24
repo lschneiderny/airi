@@ -1,11 +1,16 @@
 import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { BodyLocomotionIntent, LocomotionPace, RigTraits, Vec3 } from '../types'
+import type { GaitStyle, MutableGaitStyle } from './style'
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients } from '../dynamics'
 import { planFootSteps } from '../foot-contact'
 import { createDriftNoise, deriveSeed } from '../noise'
 import { createRandomStream } from '../random'
+import { easeGaitStyle, GAIT_STYLE_BOUNDS, NEUTRAL_GAIT_STYLE } from './style'
+
+export type { GaitBaseline, GaitStyle, GaitStyleKey, MutableGaitStyle, WalkFactors } from './style'
+export { boundGaitStyle, GAIT_STYLE_BOUNDS, GAIT_STYLE_KEYS, NEUTRAL_GAIT_STYLE, walkStyleFrom } from './style'
 
 /**
  * The ground contacts a foot rolls over, in model units in the foot's own frame: the heel `heelBack` behind and the ball
@@ -68,6 +73,8 @@ export interface LocomotionInput {
   readonly idleSupport: number
   /** Current planted anchors in world space; the gait seeds from them when it leaves idle. */
   readonly plantedFeet: Record<Foot, FootAnchor>
+  /** The walk's shape; `NEUTRAL_GAIT_STYLE` when omitted. A walk under way eases into a new one (`styleTau`). */
+  readonly style?: GaitStyle
 }
 
 /**
@@ -84,6 +91,8 @@ export interface GaitBodyChannels {
   chestCounterRoll: number
   spinePitch: number
   chestPitch: number
+  /** The style's head carriage (`GaitStyle.head`), radians, positive down. */
+  neckPitch: number
 }
 
 /** Heel-to-toe roll of one foot (architecture 5.1). `target` stays the planning ankle; the roll is applied on top of it. */
@@ -206,6 +215,11 @@ const stepWidthHipShare = 0.55
  */
 const stanceBack = 0.14
 const swayShare = 0.03
+/** Seconds over which a walk under way eases into a new style: about a step, so a change shows within two. */
+const styleTau = 0.5
+/** Extra knee softening at a style's lowest bounce, and extra bob at a bounce of 2, each in leg lengths. */
+const bounceCrouchShare = 0.01
+const bounceDipShare = 0.02
 /** Goals closer than this share of the leg length are not worth a walk. */
 const minWalkShare = 0.05
 /**
@@ -518,11 +532,9 @@ class Locomotion {
   private readonly referenceLength: number
   private readonly referenceSpeed: number
   private readonly maxAcceleration: number
-  private readonly halfStepWidth: number
+  private readonly baseHalfStepWidth: number
   /** Half the bind ankle spacing: the standing width. */
   private readonly halfBindWidth: number
-  /** Largest hip-to-ankle sideways offset during double support. */
-  private readonly lateralError: number
   /** Each hip joint in mesh-local model units. */
   private readonly hips: Record<Foot, Vec3>
   private readonly hipsAboveAnkles: Record<Foot, Vec3>
@@ -567,6 +579,8 @@ class Locomotion {
   /** This tick's pelvis, shared by the leash and the frame so both see the same drop. */
   private posture: ReturnType<Locomotion['pelvis']> | null = null
   private clamps = 0
+  /** The style the walk shows now, easing toward the input's. */
+  private readonly style: MutableGaitStyle = { ...NEUTRAL_GAIT_STYLE }
 
   constructor(private readonly traits: GaitTraits, seed: number, private readonly variability: GaitVariability) {
     this.random = createRandomStream(seed)
@@ -586,13 +600,32 @@ class Locomotion {
     this.ankleLine = (left.z + right.z) / 2
     this.hipLine = (this.hips.left.z + this.hips.right.z) / 2
     const ankleSpacing = Math.hypot(left.x - right.x, left.z - right.z)
-    this.halfStepWidth = traits.bindHips
+    this.baseHalfStepWidth = traits.bindHips
       ? stepWidthHipShare * Math.abs(this.hips.left.x - this.hips.right.x) / 2
       : stepWidthShare * ankleSpacing / 2
     this.halfBindWidth = ankleSpacing / 2
-    this.lateralError = Math.abs((Math.abs(this.hips.left.x) + Math.abs(this.hips.right.x)) / 2 - this.halfStepWidth) + swayShare * traits.legLength * Math.sin(Math.PI * doubleSupport / 2)
     this.feet = this.bindFeet()
     this.bob = this.bobAmplitude(0, 0)
+  }
+
+  /** Half the walking step width under the current style. */
+  private get halfStepWidth() {
+    return this.baseHalfStepWidth * this.style.width
+  }
+
+  /** Largest hip-to-ankle sideways offset during double support. */
+  private get lateralError() {
+    return Math.abs((Math.abs(this.hips.left.x) + Math.abs(this.hips.right.x)) / 2 - this.halfStepWidth) + swayShare * this.traits.legLength * Math.sin(Math.PI * doubleSupport / 2)
+  }
+
+  /**
+   * The walking knee softening, leg lengths: a low bounce keeps the knees softer, and a list wider than the gait's lowers
+   * the pelvis by how far it raises the stance hip, so the stance leg still reaches its foot.
+   */
+  private get softening() {
+    const halfHips = Math.abs(this.hips.left.x - this.hips.right.x) / 2 / this.traits.legLength
+    const list = halfHips * Math.max(0, Math.sin(pelvisList * this.style.pelvisList) - Math.sin(pelvisList))
+    return kneeSoftening + bounceCrouchShare * Math.max(0, 1 - this.style.bounce) / (1 - GAIT_STYLE_BOUNDS.bounce[0]) + list
   }
 
   /** Ticks on which the reach leash shortened root travel. Zero in normal driving. */
@@ -634,6 +667,13 @@ class Locomotion {
     const previousYaw = this.yaw
     if (input.step !== 'sidestep' || input.goalX === null)
       this.stepRequest = null
+    // Between walks the style follows its input at once; while the gait still owns the body (a walk, a turn, the hand-off
+    // between them, or the blend out) it eases into it.
+    const style = input.style ?? NEUTRAL_GAIT_STYLE
+    if (!this.walk && !this.turn && this.blend === 0)
+      Object.assign(this.style, style)
+    else if (dt > 0)
+      easeGaitStyle(this.style, style, 1 - Math.exp(-dt / styleTau))
     let mode: LocomotionFrame['mode'] = 'idle'
     if (!input.enabled) {
       this.halt()
@@ -660,7 +700,7 @@ class Locomotion {
     if (!this.walk && !this.turn && this.blend === 0)
       this.setWalkForm(false)
     const acceleration = dt > 0 ? (this.speed - previousSpeed) / dt : 0
-    const leanTarget = this.walk?.sidestep ? 0 : 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias
+    const leanTarget = this.walk?.sidestep ? 0 : 2 * radians * this.speed / this.referenceSpeed + 3 * radians * acceleration / this.maxAcceleration + this.leanBias + (this.walkForm ? this.style.lean : 0)
     this.leanBias = 0
     if (dt !== this.leanCoefficients.dt)
       this.leanCoefficients = secondOrderCoefficients(leanResponse, dt)
@@ -692,7 +732,7 @@ class Locomotion {
 
   /** The cadence law at the speed without this stride's variation, times this stride's cadence. */
   private stepRate(speed: number) {
-    const length = this.walkForm ? this.referenceLength : sidestepPairShare * this.traits.legLength
+    const length = this.walkForm ? this.referenceLength * this.style.stride : sidestepPairShare * this.traits.legLength
     const referenceSpeed = this.walkForm ? this.referenceSpeed : length * sidestepReferenceRate
     return clamp(Math.sqrt(speed / this.speedFactor * referenceSpeed) / length, minRate, maxRate) * this.cadenceFactor
   }
@@ -817,7 +857,7 @@ class Locomotion {
       return Math.max(0, required / ((1 + Math.cos(Math.PI * doubleSupport)) / 2))
     }
     const reach = planReach * legLength
-    const standing = (this.hips.left.y + this.hips.right.y) / 2 - this.traits.footBaselineY - kneeSoftening * legLength
+    const standing = (this.hips.left.y + this.hips.right.y) / 2 - this.traits.footBaselineY - this.softening * legLength
     const shape = (phase: number) => (1 + Math.cos(2 * Math.PI * (phase - 0.1))) / 2
     const drop = (foreAft: number, up: number) => standing - up - Math.sqrt(Math.max(0, reach ** 2 - foreAft ** 2 - this.lateralError ** 2))
     const length = strideScale * this.referenceLength
@@ -825,7 +865,7 @@ class Locomotion {
     // At the strike the foot stands on its heel, toes up: the ankle is behind and above its planning target, and the
     // pelvis is at the back of its fore-aft swing.
     const foot = this.traits.foot
-    const strike = heelStrikePitch * Math.min(1, strideScale)
+    const strike = heelStrikePitch * this.style.roll * Math.min(1, strideScale)
     const [forward, up] = foot ? pivotOffset((foot.left.heelBack + foot.right.heelBack) / 2, (foot.left.ankleHeight + foot.right.ankleHeight) / 2, strike) : [0, 0]
     const hipAhead = this.hipLine - this.stanceCentre(halfSpan)
     const front = drop(Math.max(0, halfSpan - hipAhead + forward - ripple * Math.sin(-2 * Math.PI * rippleLag)), up) / shape(0)
@@ -837,6 +877,16 @@ class Locomotion {
     const stance = 1 + doubleSupport
     const lift = foot ? 0 : drop(Math.max(0, stance * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag))), 0) / shape(stance)
     return Math.max(0, front, rear, lift)
+  }
+
+  /**
+   * A bouncy style's extra knee give after each heel strike, leg lengths: none at the strike, deepest 0.25 step later
+   * (the loading response) and gone by mid-stance, so the knee still lands straight.
+   */
+  private loadingDip(strideScale: number) {
+    const t = this.phase - Math.floor(this.phase)
+    const amount = bounceDipShare * this.traits.legLength * Math.max(0, this.style.bounce - 1) * Math.min(1, strideScale)
+    return t < 0.5 ? amount * Math.sin(2 * Math.PI * t) ** 2 : 0
   }
 
   /** A planted foot's ankle in the world: its planning anchor moved by its roll's ankle offset. */
@@ -863,7 +913,8 @@ class Locomotion {
     const length = speed / this.stepRate(speed)
     const swayScale = 1 - 0.3 * clamp((speed - this.referenceSpeed) / (0.3 * this.referenceSpeed), 0, 1)
     const lateral = swayShare * this.traits.legLength * swayScale * this.support(this.phase)
-    const bobDrop = (this.walkForm ? kneeSoftening : sidestepKneeSoftening) * this.traits.legLength + this.bob * (1 + Math.cos(2 * Math.PI * (this.phase - 0.1))) / 2
+    const bobDrop = (this.walkForm ? this.softening : sidestepKneeSoftening) * this.traits.legLength + this.bob * (1 + Math.cos(2 * Math.PI * (this.phase - 0.1))) / 2
+      + (this.walkForm && this.walk ? this.loadingDip(length / this.referenceLength) : 0)
     const foreAft = this.walkForm ? speedRipple * length / (2 * Math.PI) * Math.sin(2 * Math.PI * (this.phase - rippleLag)) : 0
     const required = Math.min(bobDrop + (this.walkForm ? floorMarginShare : sidestepFloorMargin) * this.traits.legLength, this.requiredDrop(rootX + (this.walk?.direction ?? 1) * foreAft, lateral, length / this.referenceLength))
     return { length, lateral, foreAft, drop: Math.max(bobDrop, required) }
@@ -1081,7 +1132,7 @@ class Locomotion {
     }
     if (walk.sidestep)
       return this.advanceSidestep(walk, walk.sidestep, input, dt, events)
-    const command = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor
+    const command = paceSpeeds[input.pace] * this.referenceSpeed * this.speedFactor * this.style.speed
     const goal = input.goalX !== null && Number.isFinite(input.goalX) ? input.goalX : null
     const ahead = goal === null ? 0 : (goal - this.x) * walk.direction
     // Without a goal ahead, brake as hard as allowed and stop wherever that lands.
@@ -1311,7 +1362,7 @@ class Locomotion {
     // H_sw = max(0.04 L, 0.08 L sqrt(l_i / l_ref)), with l_i half of this swing's travel.
     const stepLength = Math.hypot(land.position.x - lift.position.x, land.position.z - lift.position.z) / 2
     const legLength = this.traits.legLength
-    const height = Math.max(swingHeightFloorShare * legLength, swingHeightShare * legLength * Math.sqrt(stepLength / this.referenceLength))
+    const height = Math.max(swingHeightFloorShare * legLength, swingHeightShare * this.style.lift * legLength * Math.sqrt(stepLength / this.referenceLength))
     return { land, reach, height }
   }
 
@@ -1402,9 +1453,13 @@ class Locomotion {
     // still rolls off after she slows, and one beside a stopped root stands flat. A walk's first step has neither and
     // rolls at 50 % at least.
     const behind = swing ? 0 : -this.foreAft(this.feet[side].position)
-    const scale = Math.min(1, Math.max(strideScale, (swing ? swing.reach : Math.min(this.spans[side], Math.max(0, behind))) / (stanceShare * this.referenceLength), this.walk.starting ? 0.5 : 0))
-    const strike = heelStrikePitch * scale
-    const toeOff = toeOffPitch * scale
+    // Both measure against the style's own full stride: the cadence law's step grows as the root of the speed.
+    const own = this.style.stride * Math.sqrt(this.style.speed)
+    const scale = Math.min(1, Math.max(strideScale / own, (swing ? swing.reach : Math.min(this.spans[side], Math.max(0, behind))) / (stanceShare * this.referenceLength * own), this.walk.starting ? 0.5 : 0))
+    // The style's roll acts on full strides only: the short steps of a start or a stop keep the gait's own.
+    const styled = 1 + (this.style.roll - 1) * clamp(2 * scale - 1, 0, 1)
+    const strike = heelStrikePitch * styled * scale
+    const toeOff = toeOffPitch * styled * scale
     const heel = (pitch: number) => pivotOffset(foot.heelBack, foot.ankleHeight, pitch)
     const ball = (pitch: number) => pivotOffset(-foot.ballForward, foot.ankleHeight, pitch)
     if (swing) {
@@ -1443,7 +1498,8 @@ class Locomotion {
   private frame(mode: LocomotionFrame['mode'], events: readonly GaitEvent[], pelvis: ReturnType<Locomotion['pelvis']>, dt: number): LocomotionFrame {
     const strideScale = pelvis.length / this.referenceLength
     const support = this.support(this.phase)
-    const lowerBodyYaw = pelvisTwist * strideScale * this.lead(this.phase)
+    const twist = pelvisTwist * (this.walkForm ? this.style.pelvisTwist : 1)
+    const lowerBodyYaw = twist * strideScale * this.lead(this.phase)
     // Architecture 5.2's lags, in steps at the current rate, as links of 3a's lag chain: each torso segment follows the
     // one below it, and the head counters the torso 80 ms late.
     const rate = this.stepRate(this.speed)
@@ -1452,19 +1508,20 @@ class Locomotion {
     const [[lowerShare, lowerLag], [midShare, midLag], [upperShare, upperLag]] = this.walkForm ? torsoTwist : sidestepTorsoTwist
     // The shoulder girdle reaches its counter-rotation before the pelvis reaches its twist, so the chain follows the twist
     // `torsoLead` steps ahead.
-    const lowerYaw = this.followTwist(lowerLink, pelvisTwist * strideScale * this.lead(this.phase + (this.walkForm ? torsoLead : 0)), lowerLag / rate, dt)
+    const lowerYaw = this.followTwist(lowerLink, twist * strideScale * this.lead(this.phase + (this.walkForm ? torsoLead : 0)), lowerLag / rate, dt)
     const midYaw = this.followTwist(midLink, lowerYaw, (midLag - lowerLag) / rate, dt)
     const upperYaw = this.followTwist(upperLink, midYaw, (upperLag - midLag) / rate, dt)
-    const lower = lowerShare * lowerYaw
-    const mid = midShare * midYaw
-    const upper = upperShare * upperYaw
+    const counter = this.walkForm ? this.style.torsoTwist : 1
+    const lower = lowerShare * counter * lowerYaw
+    const mid = midShare * counter * midYaw
+    const upper = upperShare * counter * upperYaw
     const head = this.followTwist(headLink, -(lower + mid + upper), headCounterLag, dt)
     // The trunk swings the arms (Pontzer et al. 2009): the shoulder girdle's twist drives the clavicle at once and each arm
     // at its own drifting lag; the performer's followers are the pendulum. The step-rate ratio keeps the size at
     // speed / v_ref, and architecture 5.3's shape is the target.
     if (mode !== 'idle')
       this.swingRate = rate
-    this.recordGirdle(this.swingRate / (this.walkForm ? referenceRate : sidestepReferenceRate) * upperYaw / pelvisTwist, dt)
+    this.recordGirdle(this.swingRate / (this.walkForm ? referenceRate : sidestepReferenceRate) * upperYaw / twist, dt)
     // A soft |x|, exact at 1: the swing's forward and back sizes differ, and a hard corner between them steps the arm's
     // speed.
     const soft = (value: number) => (Math.sqrt(value * value + 0.15 ** 2) - 0.15) / (Math.sqrt(1 + 0.15 ** 2) - 0.15)
@@ -1488,10 +1545,11 @@ class Locomotion {
       const forward = (soft(swing) - swing) / 2
       // Walking adults swing the upper arm about 19 degrees forward and 17 to 24 back, and bend the elbow 34 degrees
       // more at the front, straight at the back; 15.5 back here, since a wider back swing met the body colliders (Bandai Namco Research Motiondataset 2 walk clips, measured 2026-11-23).
+      const size = share * this.style.armSwing
       return {
-        flexion: 2 * radians + share * radians * (-17.5 * swing + 2 * soft(swing)),
-        elbowFlex: 2 * radians + share * radians * 17 * (soft(late) - late),
-        abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward),
+        flexion: 2 * radians + size * radians * (-17.5 * swing + 2 * soft(swing)),
+        elbowFlex: 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late),
+        abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward) + this.style.armOut,
         clavProt: -3 * radians * share * girdle,
       }
     }
@@ -1507,12 +1565,14 @@ class Locomotion {
         pelvisLateral: pelvis.lateral,
         pelvisDrop: pelvis.drop,
         pelvisForeAft: pelvis.foreAft,
-        lowerBodyRoll: this.walkForm ? -pelvisList * strideScale * this.support(this.phase + listLead) : -3 * radians * strideScale * support,
+        lowerBodyRoll: this.walkForm ? -pelvisList * this.style.pelvisList * strideScale * this.support(this.phase + listLead) : -3 * radians * strideScale * support,
         lowerBodyYaw,
         upperBodyRoll: 1.5 * radians * strideScale * support + (this.walkForm ? this.turnRoll : 0),
         chestCounterRoll: 0,
         spinePitch: 0.6 * (this.lean.y + nod),
         chestPitch: 0.4 * (this.lean.y + nod),
+        // The head keeps half of a forward-leaning style's lean off its line of sight.
+        neckPitch: this.walkForm ? this.style.head - 0.5 * this.style.lean : 0,
         chestCounterYaw: -0.5 * lowerBodyYaw,
         twist: { lower, mid, upper, head },
       },

@@ -1,12 +1,12 @@
 import type { Foot, FootAnchor } from '../foot-contact'
 import type { Vec3 } from '../types'
-import type { GaitTraits, GaitVariability, LocomotionFrame, LocomotionInput } from './index'
+import type { GaitStyle, GaitTraits, GaitVariability, LocomotionFrame, LocomotionInput } from './index'
 
 import { createHash } from 'node:crypto'
 
 import { describe, expect, it } from 'vitest'
 
-import { brakingDistance, createLocomotion, SIDESTEP_MAX_LEGS } from './index'
+import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
 const legLength = 10
@@ -183,7 +183,9 @@ describe('sidestep', () => {
       const forwarded = createRun(definition.start)
       forwarded.advance(definition.seconds, now => ({ ...definition.drive(now), step: undefined }))
       expect(forwarded.frames).toEqual(ordinary.frames)
-      hash.update(JSON.stringify(ordinary.frames, (_, value: unknown) => typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
+      // `neckPitch` came with the walk style and is 0 in the neutral style; the digest covers the fields before it.
+      expect(ordinary.frames.every(frame => frame.body.neckPitch === 0)).toBe(true)
+      hash.update(JSON.stringify(ordinary.frames, (key, value: unknown) => key === 'neckPitch' ? undefined : typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value))
     }
     // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers.
     expect(hash.digest('hex')).toBe('7963327df9819c02300c619ab3d7af636a247c15de9d91eb873fbd1c323906af')
@@ -1047,5 +1049,66 @@ describe('procedural gait', () => {
         expect(frame.feet[side].target).toEqual(beside[side])
       }
     }
+  })
+})
+
+describe('walk style', () => {
+  const cruise = scenarioDefinitions.cruise
+  function styled(style: Partial<GaitStyle>, seconds = cruise.seconds) {
+    const run = createRun(cruise.start)
+    run.advance(seconds, () => ({ ...cruise.drive(), style: { ...NEUTRAL_GAIT_STYLE, ...style } }))
+    return run.frames
+  }
+  // Steady walking after the start, both sides.
+  const steady = (frames: LocomotionFrame[]) => frames.slice(5 * 120)
+  const span = (values: number[]) => Math.max(...values) - Math.min(...values)
+
+  it('sizes the speed, the arm swing, the hip list and the twist by their style values', () => {
+    const neutral = steady(styled({}))
+    const shaped = steady(styled({ speed: 1.2, armSwing: 0.5, pelvisList: 2, pelvisTwist: 1.5 }))
+    const mean = (frames: LocomotionFrame[]) => frames.reduce((sum, frame) => sum + frame.speed, 0) / frames.length
+    expect(mean(shaped) / mean(neutral)).toBeCloseTo(1.2, 1)
+    const flexion = (frames: LocomotionFrame[]) => span(frames.map(frame => frame.armSwing.left.flexion))
+    expect(flexion(steady(styled({ armSwing: 0.5 }))) / flexion(neutral)).toBeCloseTo(0.5, 2)
+    const roll = (frames: LocomotionFrame[]) => span(frames.map(frame => frame.body.lowerBodyRoll))
+    expect(roll(shaped) / roll(neutral)).toBeGreaterThan(1.8)
+    const yaw = (frames: LocomotionFrame[]) => span(frames.map(frame => frame.body.lowerBodyYaw))
+    expect(yaw(shaped) / yaw(neutral)).toBeGreaterThan(1.4)
+  })
+
+  it('carries the elbow, the head and the trunk by their offsets, and a shorter stride steps faster at the same speed', () => {
+    const neutral = steady(styled({}))
+    const shaped = steady(styled({ elbowCarry: 20 * rad, head: 10 * rad, lean: 6 * rad, stride: 0.8 }))
+    const mean = (frames: LocomotionFrame[], read: (frame: LocomotionFrame) => number) => frames.reduce((sum, frame) => sum + read(frame), 0) / frames.length
+    expect(mean(shaped, frame => frame.armSwing.left.elbowFlex) - mean(neutral, frame => frame.armSwing.left.elbowFlex)).toBeCloseTo(20 * rad, 1)
+    expect(mean(shaped, frame => frame.body.neckPitch)).toBeCloseTo(7 * rad, 3)
+    expect(mean(shaped, frame => frame.body.spinePitch + frame.body.chestPitch) - mean(neutral, frame => frame.body.spinePitch + frame.body.chestPitch)).toBeCloseTo(6 * rad, 2)
+    const strikes = (frames: LocomotionFrame[]) => frames.flatMap(frame => frame.events).filter(event => event.kind === 'heelStrike').length
+    expect(strikes(shaped) / strikes(neutral)).toBeGreaterThan(1.1)
+    expect(mean(shaped, frame => frame.speed) / mean(neutral, frame => frame.speed)).toBeCloseTo(1, 1)
+  })
+
+  it('eases into a new style under way without stepping any channel', () => {
+    const run = createRun(cruise.start)
+    run.advance(8, now => ({ ...cruise.drive(), style: now < 5 ? NEUTRAL_GAIT_STYLE : { ...NEUTRAL_GAIT_STYLE, head: 15 * rad, armSwing: 1.6, elbowCarry: 30 * rad } }))
+    const steps = (read: (frame: LocomotionFrame) => number) => run.frames.slice(1).map((frame, index) => Math.abs(read(frame) - read(run.frames[index] as LocomotionFrame)))
+    expect(Math.max(...steps(frame => frame.body.neckPitch))).toBeLessThan(0.3 * rad)
+    expect(run.frames.at(-1)?.body.neckPitch).toBeCloseTo(15 * rad, 2)
+  })
+
+  it('keeps easing through the hand-off from a departure turn to the first step', () => {
+    // Facing away from the goal: the start turns the excess on the spot, then the walk takes the turn over.
+    const start = { x: 0, yaw: -Math.PI / 2 }
+    const run = createRun(start)
+    run.advance(4, now => ({ goalX: 500, arriveFacing: Math.PI / 2, style: now < 0.1 ? NEUTRAL_GAIT_STYLE : { ...NEUTRAL_GAIT_STYLE, head: 15 * rad } }))
+    expect(run.frames.some(frame => frame.mode === 'turning')).toBe(true)
+    const steps = run.frames.slice(1).map((frame, index) => Math.abs(frame.body.neckPitch * frame.weight - (run.frames[index] as LocomotionFrame).body.neckPitch * (run.frames[index] as LocomotionFrame).weight))
+    expect(Math.max(...steps)).toBeLessThan(0.3 * rad)
+  })
+
+  it('leaves the walk unchanged under the neutral style', () => {
+    const plain = createRun(cruise.start)
+    plain.advance(cruise.seconds, cruise.drive)
+    expect(styled({})).toEqual(plain.frames)
   })
 })
