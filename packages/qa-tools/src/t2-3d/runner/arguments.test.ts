@@ -31,6 +31,17 @@ it('takes the acts switch for the idle-acts pair, on by default', () => {
   expect([parse([]), parse(['--acts', 'off'])]).toEqual(['on', 'off'])
 })
 
+it('takes a walk style in degrees for its angles, a held mood and a starting energy, all unset by default', () => {
+  const context = fixture()
+  const parse = (extra: string[]) => parseRunArguments(['--model', 'model.pmx', '--scenario', 'walk', '--out', 'capture', ...extra], context.cwd)
+  expect(parse([])).toMatchObject({ walkStyle: null, mood: null, energy: null })
+  const options = parse(['--walk-style', 'armSwing=0.5,head=10', '--mood=-0.5,0.25,0.75', '--energy', '0.2'])
+  expect(options.walkStyle).toMatchObject({ armSwing: 0.5, speed: 1 })
+  expect(options.walkStyle?.head).toBeCloseTo(10 * Math.PI / 180, 12)
+  expect(options.mood).toEqual({ valence: -0.5, arousal: 0.25, tension: 0.75 })
+  expect(options.energy).toBe(0.2)
+})
+
 it.each(['idle', 'sleepy-no-clip'])('accepts up to 600 s for the idle-class scenario %s (owner decision O1)', (scenario) => {
   const context = fixture()
   expect(parseRunArguments(['--model', 'model.pmx', '--scenario', scenario, '--seconds', '600', '--out', 'capture'], context.cwd).seconds).toBe(600)
@@ -45,6 +56,15 @@ it.each([
   ['duration over the cap of a scenario that is not idle-class', ['--model', 'model.pmx', '--scenario', 'gaze-shift', '--seconds', '121', '--out', 'capture']],
   ['invalid seed', ['--model', 'model.pmx', '--scenario', 'idle', '--seed', 'NaN', '--out', 'capture']],
   ['invalid acts switch', ['--model', 'model.pmx', '--scenario', 'idle', '--acts', 'maybe', '--out', 'capture']],
+  ['unknown walk style key', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style', 'swagger=2', '--out', 'capture']],
+  ['walk style value out of bounds', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style', 'armSwing=5', '--out', 'capture']],
+  ['mood out of range', ['--model', 'model.pmx', '--scenario', 'walk', '--mood', '0,0,2', '--out', 'capture']],
+  ['energy out of range', ['--model', 'model.pmx', '--scenario', 'walk', '--energy', '1.5', '--out', 'capture']],
+  ['walk style key without a value', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style', 'head', '--out', 'capture']],
+  ['mood with an empty value', ['--model', 'model.pmx', '--scenario', 'walk', '--mood=0,,0', '--out', 'capture']],
+  ['empty energy', ['--model', 'model.pmx', '--scenario', 'walk', '--energy=', '--out', 'capture']],
+  ['walk style assignment with two values', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style=head=10=2', '--out', 'capture']],
+  ['empty walk style', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style=', '--out', 'capture']],
 ])('refuses %s with exit 2 before a run starts', async (_, args) => {
   expect(await runMotion3d(args, fixture())).toBe(2)
 })

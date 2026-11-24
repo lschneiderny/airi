@@ -16,7 +16,7 @@ import { diffTraces } from '@proj-airi/qa-tools/t2-3d/diff'
 import { DEG } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 import { MotionTraceRefusal, parseTrace, readTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 import { loadHeadlessMMD } from '@proj-airi/qa-tools/t2-3d/runner/loader'
-import { runMotion3dScenario } from '@proj-airi/qa-tools/t2-3d/runner/run'
+import { recordedOverrides, runMotion3dScenario } from '@proj-airi/qa-tools/t2-3d/runner/run'
 import { motion3dScenarios } from '@proj-airi/qa-tools/t2-3d/scenarios'
 import { Quaternion } from 'three'
 
@@ -171,7 +171,7 @@ export async function framesMotion3d(args: readonly string[], context: Motion3dC
 }
 
 /**
- * Re-runs the stored run's scenario, seed, length, warm-up and acts switch through the product body at this checkout, keeps every
+ * Re-runs the stored run's scenario, seed, length, warm-up, acts switch and walk style, mood and energy overrides through the product body at this checkout, keeps every
  * bone's local transform on the drawn frames, and refuses unless the re-run's trace reproduces the stored one and the
  * trace-posed bones match the re-run's own bones on those frames.
  */
@@ -188,6 +188,7 @@ export async function rerunRun(context: Motion3dCliContext, model: string, summa
     seconds: summary.scenario.seconds,
     warmupSeconds: summary.scenario.warmupSeconds,
     acts: stored.trace.source.detail.acts === 'off' ? 'off' : 'on',
+    ...recordedOverrides(stored.trace.source.detail),
     git: readGitStateFromRepo(context.repoRoot),
     signal: context.signal,
     onFrame: (frame, mesh) => {
