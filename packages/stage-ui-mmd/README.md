@@ -380,8 +380,10 @@ shares. The adapter has four parts:
   `body-arms` writes clavicles, arms, hands and fingers; it carries the
   canonical straight-down arm onto the bind arm, so the posed segments sit
   where the performer's own forward kinematics (and its arm collision
-  corrector) put them. Pronation is written on the hand and twist on the
-  upper arm; twist helper bones are not written. Missing and physics-owned
+  corrector) put them. Upper-arm twist turns `腕捩` and pronation turns
+  `手捩` where that bone sits directly between its joints and has a PMX fixed
+  axis, and every joint below keeps its world pose; otherwise twist is written
+  on the upper arm and pronation on the hand. Missing and physics-owned
   bones are skipped. `eyes` aims both eyes from their rendered parents at the
   far end of the performer's gaze line.
 
@@ -716,7 +718,7 @@ The profile also reports structural facts for body adapters:
 - `twist.left/right.arm/wrist` contains the posable main `腕捩`/`手捩`
   controls as `{ name, fixedAxis }`, or `null`. `fixedAxis` copies the parser's
   optional PMX `axisLimit` vector without normalizing it; absent axes are `null`.
-  This only describes the controls and does not pose them.
+  `body-arms` poses them as described for `MMDBodyPerformer`.
 - `hands.left/right` is the hand calibration (`MMDHandCalibration`), or `null`
   without a posable hand bone and two posable knuckles. It holds unit `axis`
   (wrist to middle knuckle) and `normal` (out of the palm) at bind, the wrist's

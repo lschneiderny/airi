@@ -86,8 +86,8 @@ describe('mmd body performer adapter', () => {
     }
   })
 
-  it('leaves every group at the clean pose when a clip owns it fully', () => {
-    const fixture = bodyFixture()
+  it.each([{ name: 'without twist bones' }, { name: 'with twist bones', twist: {} }])('leaves every group at the clean pose when a clip owns it fully, $name', ({ twist }) => {
+    const fixture = bodyFixture(0, Math.PI, { twist })
     const { performer } = performerOf(fixture)
     const { clean } = fixture.pipeline
     clean.quaternions.forEach((quaternion, index) => quaternion.setFromEuler(new Euler(0.01 * index, -0.02 * index, 0.015 * index)))
@@ -292,6 +292,74 @@ describe('mmd body performer adapter', () => {
         skeleton.update(c)
         const fk = skeleton.arm(side, c).hand
         expect(posed.angleTo(new Vector3(-fk[1], -fk[4], -fk[7]))).toBeLessThan(1e-6)
+      }
+    })
+  })
+
+  describe('twist bones', () => {
+    const pose = channels({ leftFlex: 0.5, leftAbduct: 0.3, leftTwist: 0.4, leftElbow: 0.7, leftPron: 0.9, leftWflex: 0.2, leftWdev: -0.1, leftIndex1: 0.5, rightFlex: -0.2, rightAbduct: 0.4, rightTwist: -0.3, rightElbow: 0.5, rightPron: -0.8, rightThumb1: 0.3 })
+    const sides = [['left', '左'], ['right', '右']] as const
+    /** The joints below each twist bone: the elbow, the hand and the finger bones. */
+    const joints = (prefix: string) => ['ひじ', '手首', '親指０', '親指１', '親指２', '人指０', '人指１', '人指２', '人指３'].map(name => `${prefix}${name}`)
+    // A library-like rig's offsets: `腕捩` 4 % of the upper arm off its line, its fixed axis 5 degrees off the segment.
+    const offLine = { offset: 0.04, tilt: 5 * Math.PI / 180 }
+
+    /** Writes the arms, then runs the fixed-axis and grant solve the frame pipeline runs before physics. */
+    function posed(fixture: ReturnType<typeof bodyFixture>) {
+      const { performer } = performerOf(fixture)
+      performer.applyArms(fixture.pipeline.clean, free, pose)
+      fixture.mmd.beforePhysics({ grant: true, ik: false, physics: false })
+      fixture.mesh.updateMatrixWorld(true)
+      return fixture
+    }
+    const world = (fixture: ReturnType<typeof bodyFixture>, name: string) => ({
+      position: fixture.bone(name).getWorldPosition(new Vector3()),
+      rotation: fixture.bone(name).getWorldQuaternion(new Quaternion()),
+    })
+    const angle = (q: Quaternion) => 2 * Math.atan2(Math.hypot(q.x, q.y, q.z), Math.abs(q.w))
+
+    it('turns the twist bones by upper-arm twist and pronation and leaves every joint below where it was', () => {
+      const plain = posed(bodyFixture())
+      const twisted = posed(bodyFixture(0, Math.PI, { twist: offLine }))
+      for (const [side, prefix] of sides) {
+        for (const name of joints(prefix)) {
+          const [expected, actual] = [world(plain, name), world(twisted, name)]
+          // Turning a bone that sits off the segment line about an axis off it changes the shoulder-to-elbow distance
+          // to second order: 1e-4 of a 3-unit arm here, 0.002 degrees seen from the shoulder.
+          expect(actual.position.distanceTo(expected.position)).toBeLessThan(2e-4)
+          expect(actual.rotation.angleTo(expected.rotation)).toBeLessThan(1e-5)
+        }
+        const twist = Math.abs(pose[channelIndex(`${side}Twist`)])
+        const pron = Math.abs(pose[channelIndex(`${side}Pron`)])
+        // The fixed axis is 5 degrees off the upper arm, so the twist bone takes the twist's part about that axis.
+        expect(angle(twisted.bone(`${prefix}腕捩`).quaternion)).toBeCloseTo(twist, 2)
+        expect(angle(twisted.bone(`${prefix}手捩`).quaternion)).toBeCloseTo(pron, 5)
+        // The grant children follow in the same solve.
+        expect(angle(twisted.bone(`${prefix}腕捩2`).quaternion)).toBeCloseTo(angle(twisted.bone(`${prefix}腕捩`).quaternion) / 2, 5)
+        expect(angle(twisted.bone(`${prefix}手捩2`).quaternion)).toBeCloseTo(pron / 2, 5)
+        // The upper arm keeps only its swing: it differs from the rig without twist bones by about the twist.
+        const upper = world(plain, `${prefix}腕`).rotation.invert().multiply(world(twisted, `${prefix}腕`).rotation)
+        expect(angle(upper)).toBeCloseTo(twist, 1)
+      }
+    })
+
+    it.each([
+      { name: 'without a fixed axis', twist: { fixedAxis: false }, physics: false },
+      { name: 'owned by physics', twist: offLine, physics: true },
+    ])('keeps twist on the upper arm and pronation on the hand for twist bones $name', ({ twist, physics }) => {
+      const plain = posed(bodyFixture())
+      const fixture = bodyFixture(0, Math.PI, { twist })
+      if (physics)
+        fixture.rig.physicsOwned.push('左腕捩', '左手捩', '右腕捩', '右手捩')
+      posed(fixture)
+      for (const [, prefix] of sides) {
+        for (const name of [`${prefix}腕`, ...joints(prefix)]) {
+          const [expected, actual] = [world(plain, name), world(fixture, name)]
+          expect(actual.position.distanceTo(expected.position)).toBeLessThan(1e-5)
+          expect(actual.rotation.angleTo(expected.rotation)).toBeLessThan(1e-5)
+        }
+        for (const name of ['腕捩', '手捩'])
+          expect(angle(fixture.bone(`${prefix}${name}`).quaternion)).toBe(0)
       }
     })
   })
