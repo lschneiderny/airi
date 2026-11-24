@@ -54,11 +54,13 @@ describe('hand sheet', () => {
     }
   })
 
-  it('closes the walking hand further under the angry fist, inside the joint limits', () => {
-    const [closed, angry] = ['walk-closed', 'walk-angry'].map(name => handSheetChannels(REST, cell(name)))
-    expect(changed(REST, closed).every(name => /Thumb|Index|Middle|Ring|Little|Opposition/.test(name))).toBe(true)
-    const i = channelIndex('rightMiddle1')
-    expect(angry[i]).toBeGreaterThan(closed[i])
-    expect(angry[i]).toBeLessThanOrEqual(limitChannel(i, Infinity))
+  it('moves the angry walking hand toward the fist and never past it, inside the joint limits', () => {
+    const [closed, angry, fist] = ['walk-closed', 'walk-angry', 'fist'].map(name => handSheetChannels(REST, cell(name)))
+    expect(changed(REST, closed).every(name => /Thumb|Index|Middle|Ring|Little|Spread|Opposition/.test(name))).toBe(true)
+    for (const name of ['rightThumb2', 'rightMiddle1', 'rightLittle0', 'rightOpposition'] as const) {
+      const i = channelIndex(name)
+      expect(Math.abs(angry[i] - fist[i])).toBeLessThanOrEqual(Math.abs(closed[i] - fist[i]) + 1e-6)
+      expect(angry[i]).toBeLessThanOrEqual(limitChannel(i, Infinity))
+    }
   })
 })

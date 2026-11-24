@@ -6,8 +6,9 @@ import type { MergedPerformancePlan, PerformanceLayer } from './stack'
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
+import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
 import { createEmotionLayer } from './emotions'
+import { HAND_SHAPES, writeHandShape } from './hand-shapes'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
@@ -67,6 +68,23 @@ describe('emotion posture layer', () => {
     const base = channelTrace(createBodyPerformer({ traits, seed: 1 }), 20, idleInput)
     const layered = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer()] }), 20, idleInput)
     expect(layered).toEqual(base)
+  })
+
+  it('closes an angry hand from the walking hand she holds, so a closing walk still ends at the fist', () => {
+    // The walk's hand halfway to the fist: the angry fist (amount 0.8) takes the rest of the way from there.
+    const fist = new Float64Array(26)
+    const relaxed = new Float64Array(26)
+    writeHandShape('fist', fist)
+    writeHandShape('relaxed', relaxed)
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    for (let j = 9; j < 26; j++)
+      channels[ARM_START.right + j] = 0.5 * (fist[j] - relaxed[j])
+    const walking: Script = t => ({ ...quietInput(t), gait: { mode: 'walking', walkForm: true, weight: 1, support: 0, channels, ankles: null } })
+    const trace = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer()] }), 4, held('angry', () => 1, 1, walking))
+    const knuckle = HAND_SHAPES.fist.fingers[0][0]
+    const half = (HAND_SHAPES.relaxed.fingers[0][0] + knuckle) / 2
+    // Added to the walking hand instead, the fist's offset from the rest hand would pass the knuckle's limit.
+    expect(trace[c('rightIndex0')].at(-1)! / DEG).toBeCloseTo(half + 0.8 * (knuckle - half), -1)
   })
 
   it('moves the body for every held emotion except neutral, which writes nothing', () => {

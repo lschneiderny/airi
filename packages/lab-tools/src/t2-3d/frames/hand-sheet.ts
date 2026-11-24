@@ -27,7 +27,8 @@ export interface HandSheetCell {
   readonly blend?: { readonly to: HandShape, readonly share: number }
   /**
    * The rest hand and wrist with the walk's hand curl (`GaitStyle.handCurl`) written by the MMD adapter's
-   * `writeWalkHand`, and an emotion's hand added on top by `addHandShape` at full weight, as the emotion layer adds it.
+   * `writeWalkHand`, and an emotion's hand blended in from that walking hand by `addHandShape` at full weight, as the
+   * emotion layer blends it.
    */
   readonly walk?: { readonly handCurl: number, readonly emotion?: 'angry' }
 }
@@ -75,8 +76,9 @@ export function handSheetChannels(rest: Float32Array, cell: HandSheetCell): Floa
       writeWalkHand(cell.walk.handCurl, side, walk)
       const start = channelIndex(`${side}ClavElev`)
       const hands = cell.walk.emotion && BODY_EMOTIONS[cell.walk.emotion].hands
+      // The emotion layer blends its shape in from the hand she holds: the rest hand with the walk's.
       if (hands && 'shape' in hands)
-        addHandShape(hands.shape, hands.amount, rest, walk, start, hands.spread)
+        addHandShape(hands.shape, hands.amount, Float64Array.from(rest, (value, c) => value + walk[c]), walk, start, hands.spread)
       for (let j = HAND_FROM; j < ARM_BLOCK; j++)
         channels[start + j] = limitChannel(start + j, rest[start + j] + walk[start + j])
     }

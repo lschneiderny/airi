@@ -46,7 +46,7 @@ export interface GaitStyle {
   readonly head: number
   /** Wrist extension added to the rest wrist's 10 degrees, radians; negative lets the hand drop toward the forearm's line. */
   readonly wristCarry: number
-  /** Finger curl as a share of the rest curl: below 1 an open hand, above 1 toward a fist. */
+  /** The hand's closure: 1 the rest hand, blending toward the open hand below 1 and toward a fist above it (a fist at the bound's top). */
   readonly handCurl: number
 }
 

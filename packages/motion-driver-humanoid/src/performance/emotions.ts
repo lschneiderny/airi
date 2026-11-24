@@ -10,7 +10,7 @@ import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@pro
 
 import { advanceSecondOrder, secondOrderCoefficients, softLimit } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
-import { HAND_SHAPES } from './hand-shapes'
+import { addHandShape } from './hand-shapes'
 
 /**
  * Architecture 4c posture columns at weight 1: degrees, pelvis in leg lengths. Pitch is forward-positive. `lowerRoll`
@@ -273,6 +273,20 @@ export function createEmotionLayer(): EmotionLayer {
     }
   }
 
+  /**
+   * The hand the emotion's shape starts from, per channel: the rest hand plus the walk's hand (the gait's finger,
+   * spread and opposition offsets at its weight), which reach the arms before the stack.
+   */
+  const handBase = new Float64Array(BODY_CHANNELS.length)
+
+  function holdHandBase(input: BodyPerformanceInput, rest: Float32Array): void {
+    const { gait } = input
+    for (const side of SIDES) {
+      for (let c = ARM_START[side] + 9; c < ARM_START[side] + 26; c++)
+        handBase[c] = rest[c] + (gait ? gait.weight * gait.channels[c] : 0)
+    }
+  }
+
   function addPosture(track: Track, rest: Float32Array) {
     const w = track.state.y
     const { posture: p, scale, hands } = track.spec
@@ -294,17 +308,15 @@ export function createEmotionLayer(): EmotionLayer {
       channels[start + 5] += k * (p.elbow ?? 0)
       if (!hands)
         continue
-      // Index to little finger, three joints each; the thumb keeps its rest curl.
-      for (let index = start + 12; index < start + 24; index++) {
-        if ('curl' in hands) {
+      if ('curl' in hands) {
+        // Index to little finger, three joints each; the thumb keeps its rest curl.
+        for (let index = start + 12; index < start + 24; index++)
           channels[index] += hand * (hands.curl - 1) * rest[index]
-          continue
-        }
-        const j = index - start - 12
-        channels[index] += hand * hands.amount * (HAND_SHAPES[hands.shape].fingers[j / 3 | 0][j % 3] * DEG - rest[index])
+        continue
       }
-      if ('shape' in hands)
-        channels[start + 24] += hand * hands.amount * (HAND_SHAPES[hands.shape].spread * (hands.spread ?? 1) * DEG - rest[start + 24])
+      // The whole hand, thumb, spread and opposition included, goes from the hand she holds toward the shape, so an
+      // angry fist on a walk that already closes the hand still ends at the fist.
+      addHandShape(hands.shape, hand * hands.amount, handBase, channels, start, hands.spread)
     }
   }
 
@@ -342,6 +354,7 @@ export function createEmotionLayer(): EmotionLayer {
       let moving = false
       modulation.tempo = modulation.amplitude = modulation.breath = 1
       modulation.tension = BODY_EMOTIONS.neutral.tension
+      holdHandBase(context.input, context.rest)
       for (const track of tracks) {
         if (!track.coefficients)
           continue

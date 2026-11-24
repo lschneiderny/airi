@@ -2,8 +2,8 @@ import type { Foot, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-c
 import type { FootGeometry, LocomotionFrame, LocomotionInput } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
-import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { BODY_TICK, channelIndex, DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
+import { createLocomotion, GAIT_STYLE_BOUNDS } from '@proj-airi/motion-driver-humanoid/locomotion'
+import { BODY_TICK, channelIndex, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 /** The director's goal, including the optional corrective sidestep. */
@@ -18,16 +18,16 @@ export interface MMDBodyRoot {
 }
 
 const swingChannels = {
-  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt'), twist: channelIndex('leftTwist'), pron: channelIndex('leftPron'), wflex: channelIndex('leftWflex'), thumb: channelIndex('leftThumb0'), opposition: channelIndex('leftOpposition') },
-  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt'), twist: channelIndex('rightTwist'), pron: channelIndex('rightPron'), wflex: channelIndex('rightWflex'), thumb: channelIndex('rightThumb0'), opposition: channelIndex('rightOpposition') },
+  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt'), twist: channelIndex('leftTwist'), pron: channelIndex('leftPron'), wflex: channelIndex('leftWflex'), clavElev: channelIndex('leftClavElev') },
+  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt'), twist: channelIndex('rightTwist'), pron: channelIndex('rightPron'), wflex: channelIndex('rightWflex'), clavElev: channelIndex('rightClavElev') },
 } as const
 
 /**
  * Writes one gait frame into the performer's `BODY_CHANNELS` table: pelvis in leg lengths, angles in radians, zero for
  * every channel the gait does not drive. The gait models a positive `pelvisLateral` as a shift toward the character's
  * right (-X, `anchorDrop` in the locomotion module), while the channel's +X is the character's left, so the sign flips.
- * The legacy weight-shift stage applied it toward +X, against the gait's own reach model. The walk's hand curl, a share of
- * the rest curl, becomes each finger joint's offset from the performer's nominal rest curl.
+ * The legacy weight-shift stage applied it toward +X, against the gait's own reach model. The walk's hand curl becomes the
+ * hand's offset from the performer's nominal rest hand (`writeWalkHand`).
  */
 export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out: Float64Array): void {
   out.fill(0)
@@ -61,18 +61,24 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
   }
 }
 
+const walkHands = { rest: new Float64Array(26), open: new Float64Array(26), fist: new Float64Array(26) }
+writeHandShape('relaxed', walkHands.rest)
+writeHandShape('open', walkHands.open)
+writeHandShape('fist', walkHands.fist)
+
 /**
- * Writes the walk's hand curl (`LocomotionFrame.handCurl`, a share of the rest curl) into `out` as one side's finger,
- * thumb and opposition offsets from the performer's nominal rest hand (`DEFAULT_ARM_REST_POSE`).
+ * Writes the walk's hand (`LocomotionFrame.handCurl`) into `out` as one side's finger, thumb, spread and opposition
+ * offsets from the performer's nominal rest hand, the `relaxed` shape (`DEFAULT_ARM_REST_POSE`). A hand curl of 1 is
+ * the rest hand; toward the ends of `GAIT_STYLE_BOUNDS.handCurl` the hand blends channel by channel into the `open`
+ * shape and into the `fist`, so the most closed walking hand is a fist with its thumb across the fingers, not the rest
+ * hand's curl scaled past it.
  */
 export function writeWalkHand(handCurl: number, side: 'left' | 'right', out: { [index: number]: number }): void {
-  const curl = handCurl - 1
-  const { fingerCurl, opposition } = DEFAULT_ARM_REST_POSE
-  for (let finger = 0; finger < 5; finger++) {
-    for (let joint = 0; joint < 3; joint++)
-      out[swingChannels[side].thumb + finger * 3 + joint] = curl * fingerCurl[finger][joint]
-  }
-  out[swingChannels[side].opposition] = curl * opposition
+  const [least, most] = GAIT_STYLE_BOUNDS.handCurl
+  const toward = handCurl < 1 ? walkHands.open : walkHands.fist
+  const share = Math.min(1, handCurl < 1 ? (1 - handCurl) / (1 - least) : (handCurl - 1) / (most - 1))
+  for (let j = 9; j < 26; j++)
+    out[swingChannels[side].clavElev + j] = share * (toward[j] - walkHands.rest[j])
 }
 
 /** Runs one character's gait one fixed tick at a time; `MMDBodyClock` decides how many ticks a display frame holds. */
