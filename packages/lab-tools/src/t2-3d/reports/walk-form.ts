@@ -13,7 +13,7 @@ import { peaks, runs } from '../metrics/segments'
 import { caseReport, formatCaseReport, judged, notExercised } from './case-report'
 import { fixed, ReportUsageError, requireSummary } from './report'
 
-const WALK_FORM_VERSION = 5
+const WALK_FORM_VERSION = 6
 
 const C = {
   walkingSpeed: 0.2,
