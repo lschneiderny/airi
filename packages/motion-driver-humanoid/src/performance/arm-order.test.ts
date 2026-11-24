@@ -1,8 +1,10 @@
+import type { HandShape } from './hand-shapes'
 import type { PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
 
 import { ARM_START, BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
+import { writeHandShape } from './hand-shapes'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, lagOf, quietInput } from './performance.test-fixtures'
 
@@ -37,6 +39,33 @@ function keyStep(): PerformanceLayer {
   }
 }
 
+/**
+ * An additive layer that holds the left hand in `shape` from the start and, when `swing`, flexes the wrist 30 degrees at
+ * one second: a hand swung while its fingers stay passive (an additive layer leaves the trail its activation).
+ */
+function swungHand(shape: HandShape, swing: boolean): PerformanceLayer {
+  const mask = new Float64Array(BODY_CHANNELS.length)
+  mask.fill(1, ARM_START.left, ARM_START.left + 26)
+  const out = new Float64Array(BODY_CHANNELS.length)
+  const pose = new Float64Array(26)
+  writeHandShape(shape, pose)
+  return {
+    id: 'swung-hand',
+    order: 'emotion',
+    mode: 'additive',
+    enterSeconds: 0,
+    mask,
+    step: (context) => {
+      const start = ARM_START.left
+      for (let j = 9; j < 26; j++)
+        out[start + j] = pose[j] - context.rest[start + j]
+      out[start + 7] = swing && context.time >= 1 ? 30 * DEG : 0
+      return { channels: out, weight: 1, sequence: 1 }
+    },
+    reset: () => {},
+  }
+}
+
 describe('arm chain order', () => {
   it.each(fixtureRigs)('makes the forearm follow the upper arm in breath-only motion on $name', ({ traits }) => {
     const traces = channelTrace(createBodyPerformer({ traits, seed: 1 }), 24, breathOnly)
@@ -68,5 +97,51 @@ describe('arm chain order', () => {
     // Without the cascade all three peak on the same tick: the shared target reaches every follower at once.
     expect(peak('leftElbow')).toBeGreaterThan(peak('leftFlex'))
     expect(peak('leftPron')).toBeGreaterThan(peak('leftElbow'))
+  })
+})
+
+describe('finger follow-through', () => {
+  const { traits } = fixtureRigs[0]
+  const index = ['leftIndex0', 'leftIndex1', 'leftIndex2'] as const
+  /** Each index joint's largest trail behind the swung wrist (degrees, signed) and the tick it peaks on. */
+  function trail(shape: HandShape, tension: number) {
+    const input = (time: number) => ({ ...quietInput(time), mood: { valence: 0, arousal: 0, tension } })
+    const swung = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [swungHand(shape, true)] }), 3, input)
+    const held = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [swungHand(shape, false)] }), 3, input)
+    return index.map((name) => {
+      const c = channelIndex(name)
+      let peak = 0
+      let at = 0
+      for (let i = 0; i < swung[c].length; i++) {
+        const d = (swung[c][i] - held[c][i]) / DEG
+        if (Math.abs(d) > Math.abs(peak)) {
+          peak = d
+          at = i
+        }
+      }
+      return { peak, at }
+    })
+  }
+
+  it('trails a palmar wrist swing with a few degrees of extension that grows and arrives later toward the tip', () => {
+    const [knuckle, middle, tip] = trail('relaxed', 0.4)
+    expect(knuckle.peak).toBeLessThan(0)
+    expect(Math.abs(tip.peak)).toBeLessThan(5)
+    expect(Math.abs(middle.peak)).toBeGreaterThan(Math.abs(knuckle.peak))
+    expect(Math.abs(tip.peak)).toBeGreaterThan(Math.abs(middle.peak))
+    expect(middle.at).toBeGreaterThan(knuckle.at)
+    expect(tip.at).toBeGreaterThan(middle.at)
+  })
+
+  it('trails less on a tense hand', () => {
+    const loose = trail('relaxed', 0.4)
+    const tense = trail('relaxed', 0.9)
+    for (let k = 0; k < 3; k++)
+      expect(Math.abs(tense[k].peak)).toBeLessThan(0.7 * Math.abs(loose[k].peak))
+  })
+
+  it('leaves a fist closed', () => {
+    for (const { peak } of trail('fist', 0.4))
+      expect(Math.abs(peak)).toBeLessThan(0.05)
   })
 })

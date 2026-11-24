@@ -58,6 +58,14 @@ const damping = [0.7, 0.7, 0.45, 0.45, 0.7, 0.6, 0.7, 0.5, 0.5] as const
 /** Per-joint idle noise amplitude of the nine arm angles, degrees, in `BODY_CHANNELS` arm order. */
 export const ARM_NOISE_DEGREES = [0.6, 0.3, 0.8, 0.5, 1.5, 1.2, 1.5, 2, 1.5] as const
 const offsetDegrees = [0, 0, 2.5, 2, 0, 4, 8, 4, 0] as const
+/** The spread's own idle drift, degrees. */
+const SPREAD_NOISE = 1
+/**
+ * Finger follow-through: drag gains (seconds) of a digit's three joints, knuckle to tip; the tension at which it stops
+ * (`looseness`, 1 at the neutral 0.4); the summed curl of a digit (radians) at which the digit no longer trails, about a
+ * fist's; and the clamp, degrees.
+ */
+const FINGER_DRAG = { gains: [0.025, 0.035, 0.045], looseness: 1.4, closed: 220 * DEG, clamp: 12 } as const
 const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.min(degrees * DEG, x))
 // The forearm hangs from the upper arm, so the weight reaches the elbow one upper-arm response later: the relaxed
 // upper-arm follower's ramp lag, zeta / (pi f) (architecture 3a), after the shoulder link of the weight chain.
@@ -184,7 +192,9 @@ export class BodyArms {
         let noise = 0
         if (j < 25) {
           const value = this.noises[side][j].step(BODY_TICK) * gate
-          noise = j < 9 ? value * ARM_NOISE_DEGREES[j] * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
+          // The spread drifts on its own small stream: the shared curl noise turned the fan with every curl, which
+          // swung the index and little knuckles sideways (by one and two spreads) while the middle finger stood still.
+          noise = j < 9 ? value * ARM_NOISE_DEGREES[j] * DEG : j === 24 ? value * SPREAD_NOISE * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
         }
         this.noise[start + j] = noise
         out[start + j] += this.rest[start + j] + noise
@@ -291,6 +301,24 @@ export class BodyArms {
     return this.states[index].y
   }
 
+  /**
+   * The passive follow-through of finger joint `j` (3a drag, plan H6): each segment trails the angular velocity of the
+   * segment it hangs from in the curl plane, the hand's (the wrist flexion follower) plus the joints of the same digit
+   * nearer the palm, so the trail grows and arrives later from knuckle to tip. Loose fingers trail most: the gain falls
+   * with the followers' tension (`FINGER_DRAG.looseness`), and with how far the digit's target already curls toward a
+   * fist, which leaves a closed hand no room to flop.
+   */
+  private fingerDrag(start: number, j: number, targets: Float64Array): number {
+    const first = 9 + Math.floor((j - 9) / 3) * 3
+    let parent = this.states[start + 7].v
+    for (let k = first; k < j; k++)
+      parent += this.states[start + k].v
+    const curl = targets[start + first] + targets[start + first + 1] + targets[start + first + 2]
+    const open = Math.max(0, 1 - curl / FINGER_DRAG.closed)
+    const loose = Math.max(0, FINGER_DRAG.looseness - this.tension)
+    return clampDrag(-FINGER_DRAG.gains[j - first] * loose * open * parent, FINGER_DRAG.clamp)
+  }
+
   private followSide(side: BodySide, targets: Float64Array, activation: Float64Array, fed: Float64Array): void {
     const start = ARM_START[side]
     for (let j = 2; j < 26; j++) {
@@ -303,7 +331,7 @@ export class BodyArms {
       else if (j === 7 || j === 8)
         drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
       else if (j >= 9 && j < 24)
-        drag = clampDrag(-0.05 * this.states[start + 7].v, 12)
+        drag = this.fingerDrag(start, j, targets)
       // An actively driven joint does not flop: like the upper arm's plumb line and pendulum, the passive trail yields
       // to a layer's activation, and returns as the activation falls (4a: on retraction the wrist drags).
       if (activation[index] > 0)
