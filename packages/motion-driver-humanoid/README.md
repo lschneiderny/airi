@@ -818,15 +818,23 @@ on the performer's output, so a marker's time is the motion's. The layers also
 hold `plan.armForm` (hand to chest, thinking hand) at contact anchors found as
 architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
 the body's surface, and the key backs off from it while the elbow swings out,
-until the pose and its path from rest clear the proxies (the pose with the ready
-key's headroom) with every joint 2 degrees inside its limit; an arm
-keeps whichever performance holds it, and speech uses the other hand.
+until the pose and its path from rest clear the proxies' margin with every
+joint 2 degrees inside its limit; a contact form touches the body, so it takes
+no settling headroom. An arm keeps whichever performance holds it, and speech
+uses the other hand.
 The two-hand contact `clasp` (6.3's front-low anchor, the hips' midline pushed
 forward; 4e act 6 and 4f's rest) is requested for `both` hands: it starts
-only when both arms are free and both keys solve, each wrist half a hand
-length to its own side of the anchor, and both arms travel for the longer
-preparation so the hands meet together. A request for one side of a held
-clasp lets the other hand go first. The anchor's height is "hands clasped
+only when both arms are free and both keys solve, and both arms travel for the
+longer preparation so the hands meet together. A request for one side of a held
+clasp lets the other hand go first. Both keys are solved together, one hand
+over the other: each wrist stands half a hand length to its own side of the
+midline (further out in 0.1 steps, to 0.9, where no key clears), each hand
+points across the body past the midline with the palm toward the body, turned
+at the wrist and tilted down from level by the least of 0, 15, 30, 45 and 60
+degrees that both wrists reach, and the right hand lies a hand's thickness
+(0.12 of the forearm, the hand capsule's radius less the margin) in front of
+the left one, on a plane at the body's surface that both back off from
+together. The anchor's height is "hands clasped
 just below waist" on ANSUR II's women (Gordon et al. 2014, TR-15/007, female
 means): the top of the hands at the waist (omphalion, 98.01 cm), the wrists one
 hand breadth (7.82 cm) below it, over the trochanterion (84.54 cm), which
@@ -835,9 +843,7 @@ malleolus (6.27 cm) stands for the ankle, so the hip-to-ankle span 78.27 cm
 is the rig's `legLength`. The wrists sit (98.01 - 84.54 - 7.82) / 78.27 =
 0.072 L above the hip joints (`FRONT_LOW_HEIGHT`); a rig without leg joints
 does not clasp. A rig that cannot reach the anchor does not clasp, as 6.3
-states: Vivian's and Ellen's arms reach it; on Chisa no key at that height
-clears her body proxies inside the limits, so her hands hang. The
-proportional proxies of the fixture rigs reach it. A refused form is not
+states; all ten test rigs and the fixture rigs reach it. A refused form is not
 searched again.
 The hair tuck's two keys (4e act 8) put the fingertips, not the wrist, on the
 side of the head: the hand's end, a hand length from the wrist along the hand
