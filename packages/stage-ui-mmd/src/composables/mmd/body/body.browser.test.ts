@@ -1,4 +1,5 @@
 import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { expect, it } from 'vitest'
 
@@ -63,7 +64,7 @@ it('walks eight units on planted feet while the hair physics feels the travel', 
       pipeline.step(1 / 60)
     const rest = tip()
     if (walk)
-      body.setLocomotionGoal({ goalX: 8, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+      body.setLocomotionGoal({ goalX: 8, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
     let swing = 0
     let maxError = 0
     for (let frame = 0; frame < 600; frame++) {
@@ -98,7 +99,7 @@ it('keeps the gait enabled and the skate under 0.05 while an upper clip plays ov
   setInput({ rootMotion: true })
   for (let frame = 0; frame < 30; frame++)
     manager.update(1 / 60)
-  body.setLocomotionGoal({ goalX: 8, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+  body.setLocomotionGoal({ goalX: 8, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'debug' })
   manager.playLayer('wave', { seq: 1, layer: 'upper', loop: true })
   let skate = 0
   let performed = 0
@@ -142,7 +143,7 @@ it('pre-empts the gait for a full clip and issues the walk goal again after it f
       slots: {},
       idleMotionName: '',
       isRegistered: () => true,
-      world: { ...NO_WORLD_BODY_INPUT, ground: { minX: -20, maxX: 20 }, legLength: 1, rootX: mesh.position.x, homeX: 0, locomotionMode: body.locomotionFrame?.mode ?? 'idle', debugGoal: debugGoal ? { seq: 1, x: 8, pace: 'walk' } : null },
+      world: { ...NO_WORLD_BODY_INPUT, ground: { minX: -20, maxX: 20 }, legLength: 1, rootX: mesh.position.x, homeX: 0, locomotionMode: body.locomotionFrame?.mode ?? 'idle', debugGoal: debugGoal ? { seq: 1, x: 8, urgency: WALK_URGENCY } : null },
       interaction: { away: false, attend: { untilMs: null, touchSeq: 0, chatSeq: 0, chatOpenSeq: 0 }, actionRequest: wantRequest ? request : null, actionFeedback: feedback, refractory: NO_BODY_REFRACTORY, dragging: false },
     })
     const action = director.intent?.action
@@ -151,7 +152,7 @@ it('pre-empts the gait for a full clip and issues the walk goal again after it f
       manager.playLayer(action.clipId, { seq: action.seq, layer: action.layer, loop: action.loop, kind: 'action' })
     }
     const locomotion = director.intent?.locomotion
-    body.setLocomotionGoal(locomotion && locomotion.goalX !== null ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason } : null)
+    body.setLocomotionGoal(locomotion && locomotion.goalX !== null ? { goalX: locomotion.goalX, urgency: locomotion.urgency, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason } : null)
     setInput({ layerClip: manager.snapshot().layer?.name ?? null, fullLayerPlaying: action?.phase === 'playing' && action.layer === 'full' })
     manager.update(1 / 60)
   }

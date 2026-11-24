@@ -67,8 +67,12 @@ export interface RigTraits {
   presentBones: HumanoidBoneName[]
 }
 
-/** Locomotion pace; 0.6 and 1.0 times the reference speed. */
-export type LocomotionPace = 'stroll' | 'walk'
+/**
+ * How urgently she walks to a goal, in [0, 1]; the locomotion turns it into a share of the reference speed. The former
+ * stroll and walk paces are 0.3 and 0.6.
+ */
+export const STROLL_URGENCY = 0.3
+export const WALK_URGENCY = 0.6
 
 /** Why the director issued the current locomotion goal. */
 export type BodyLocomotionReason = 'stay' | 'return-home' | 'wander' | 'visit' | 'approach-chat' | 'approach-cursor' | 'tool' | 'debug' | 'enter-stage'
@@ -77,7 +81,8 @@ export type BodyLocomotionReason = 'stay' | 'return-home' | 'wander' | 'visit' |
 export interface BodyLocomotionIntent {
   homeX: number
   goalX: number | null
-  pace: LocomotionPace
+  /** In [0, 1]: `STROLL_URGENCY` strolls, `WALK_URGENCY` walks, above it she hurries. */
+  urgency: number
   /** Request a short lateral step that keeps the current yaw; longer goals still walk. */
   step?: 'sidestep'
   /** Facing yaw in radians to settle into on arrival; 0 faces the camera. */

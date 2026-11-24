@@ -5,6 +5,8 @@ import type { BodyActionRequest, BodyDirectorReport, BodyRefractory } from './in
 
 import { describe, expect, it } from 'vitest'
 
+import { urgencySpeedShare } from '../locomotion'
+import { STROLL_URGENCY, WALK_URGENCY } from '../types'
 import {
   decideBody,
   GOAL_MIN_DWELL_MS,
@@ -213,7 +215,7 @@ describe('body director home, goals, roam and tools', () => {
     const started = decide(input({ nowMs: 0, rootX: 9 }))
     const sitting = decide(input({ nowMs: 120_000, rootX: 9, idle: SETTLED }), started.memory)
 
-    expect(stay.intent.locomotion).toEqual({ homeX: 2, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' })
+    expect(stay.intent.locomotion).toEqual({ homeX: 2, goalX: null, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'stay' })
     expect(sitting.intent.stance).toBe('sit')
   })
 
@@ -243,7 +245,7 @@ describe('body director home, goals, roam and tools', () => {
     const talking = decide(legacy(126_000, 'talking'), sleeping.memory)
 
     expect([started, sitting, sleeping, talking].map(result => result.intent.stance)).toEqual(['stand', 'sit', 'sleep', 'stand'])
-    expect(talking.intent.locomotion).toEqual({ homeX: 0, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' })
+    expect(talking.intent.locomotion).toEqual({ homeX: 0, goalX: null, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'stay' })
     expect(talking.intent.look).toBeNull()
   })
 
@@ -275,31 +277,31 @@ describe('body director home, goals, roam and tools', () => {
 
   it('keeps only the latest blocked request as the pending goal', () => {
     const chat = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6, speaking: true }))
-    const debug = decide(world({ nowMs: 1_000, speaking: true, debugGoal: { seq: 1, x: -4, pace: 'stroll' } }), chat.memory)
+    const debug = decide(world({ nowMs: 1_000, speaking: true, debugGoal: { seq: 1, x: -4, urgency: STROLL_URGENCY } }), chat.memory)
     const issued = decide(world({ nowMs: 2_000 }), debug.memory)
 
-    expect(issued.intent.locomotion).toMatchObject({ goalX: -4, reason: 'debug', pace: 'stroll' })
+    expect(issued.intent.locomotion).toMatchObject({ goalX: -4, reason: 'debug', urgency: STROLL_URGENCY })
   })
 
   it('never replaces a goal in progress before the minimum dwell', () => {
-    const first = decide(world({ debugGoal: { seq: 1, x: 4, pace: 'walk' } }))
-    const early = decide(world({ nowMs: GOAL_MIN_DWELL_MS - 1, debugGoal: { seq: 2, x: -4, pace: 'walk' } }), first.memory)
-    const later = decide(world({ nowMs: GOAL_MIN_DWELL_MS, debugGoal: { seq: 2, x: -4, pace: 'walk' } }), early.memory)
+    const first = decide(world({ debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }))
+    const early = decide(world({ nowMs: GOAL_MIN_DWELL_MS - 1, debugGoal: { seq: 2, x: -4, urgency: WALK_URGENCY } }), first.memory)
+    const later = decide(world({ nowMs: GOAL_MIN_DWELL_MS, debugGoal: { seq: 2, x: -4, urgency: WALK_URGENCY } }), early.memory)
 
     expect(early.intent.locomotion.goalX).toBe(4)
     expect(later.intent.locomotion.goalX).toBe(-4)
   })
 
   it('clamps a debug goal to the ground and tags it debug', () => {
-    const result = decide(world({ debugGoal: { seq: 1, x: 50, pace: 'stroll' } }))
+    const result = decide(world({ debugGoal: { seq: 1, x: 50, urgency: STROLL_URGENCY } }))
 
-    expect(result.intent.locomotion).toMatchObject({ goalX: 20, reason: 'debug', pace: 'stroll' })
+    expect(result.intent.locomotion).toMatchObject({ goalX: 20, reason: 'debug', urgency: STROLL_URGENCY })
     expect(result.memory.lastDebugSeq).toBe(1)
   })
 
   it('applies the talking gate to a debug goal and issues it afterwards', () => {
-    const talking = decide(world({ performance: performance('talking'), debugGoal: { seq: 1, x: 4, pace: 'walk' } }))
-    const idle = decide(world({ nowMs: 1_000, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), talking.memory)
+    const talking = decide(world({ performance: performance('talking'), debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }))
+    const idle = decide(world({ nowMs: 1_000, debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }), talking.memory)
 
     expect(talking.intent.locomotion.goalX).toBeNull()
     expect(talking.memory.pendingGoal).toMatchObject({ reason: 'debug' })
@@ -311,7 +313,7 @@ describe('body director home, goals, roam and tools', () => {
     const left = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: -6 }))
     const clamped = decide(world({ attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 30 }))
 
-    expect(right.intent.locomotion).toEqual({ homeX: 0, goalX: 5, pace: 'walk', arriveFacing: Math.PI / 4, reason: 'approach-chat' })
+    expect(right.intent.locomotion).toEqual({ homeX: 0, goalX: 5, urgency: WALK_URGENCY, arriveFacing: Math.PI / 4, reason: 'approach-chat' })
     expect(left.intent.locomotion).toMatchObject({ goalX: -5, arriveFacing: -Math.PI / 4 })
     expect(clamped.intent.locomotion.goalX).toBe(19)
     expect(right.intent.facingYaw).toBe(0)
@@ -337,7 +339,7 @@ describe('body director home, goals, roam and tools', () => {
   it('chases the cursor to one leg length short of it inside the attend window', () => {
     const result = decide(world({ nowMs: 1_000, attend: { untilMs: 60_000, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 }, cursorOnStage: true, cursorX: 8 }))
 
-    expect(result.intent.locomotion).toMatchObject({ goalX: 7, pace: 'walk', reason: 'approach-cursor', arriveFacing: 0 })
+    expect(result.intent.locomotion).toMatchObject({ goalX: 7, urgency: WALK_URGENCY, reason: 'approach-cursor', arriveFacing: 0 })
     expect(result.intent.locomotion.step).toBeUndefined()
   })
 
@@ -410,7 +412,7 @@ describe('body director home, goals, roam and tools', () => {
 
       expect(stopping.intent.locomotion.goalX).toBeNull()
       expect(stopping.memory.cursorStepPending).toBe(true)
-      expect(step.intent.locomotion).toMatchObject({ goalX: 3, pace: 'stroll', reason: 'approach-cursor' })
+      expect(step.intent.locomotion).toMatchObject({ goalX: 3, urgency: STROLL_URGENCY, reason: 'approach-cursor' })
       expect(step.intent.locomotion.step).toBe('sidestep')
       expect(step.memory.cursorStepPending).toBe(false)
       expect(walking.intent.locomotion.goalX).toBe(3)
@@ -450,7 +452,7 @@ describe('body director home, goals, roam and tools', () => {
     })
 
     it('lets a new goal consume the correction instead', () => {
-      const result = decide(world({ ...base, nowMs: 2_100, debugGoal: { seq: 1, x: 8, pace: 'walk' } }), armed)
+      const result = decide(world({ ...base, nowMs: 2_100, debugGoal: { seq: 1, x: 8, urgency: WALK_URGENCY } }), armed)
 
       expect(result.intent.locomotion).toMatchObject({ goalX: 8, reason: 'debug' })
       expect(result.memory.cursorStepPending).toBe(false)
@@ -471,7 +473,7 @@ describe('body director home, goals, roam and tools', () => {
 
       expect(blocked.intent.locomotion.goalX).toBeNull()
       expect(blocked.memory.cursorStepPending).toBe(true)
-      expect(open.intent.locomotion).toMatchObject({ goalX: 3, pace: 'stroll' })
+      expect(open.intent.locomotion).toMatchObject({ goalX: 3, urgency: STROLL_URGENCY })
     })
   })
 
@@ -482,7 +484,7 @@ describe('body director home, goals, roam and tools', () => {
     const home = run([world({ rootX: 0.05 }), world({ nowMs: RETURN_HOME_DELAY_MS, rootX: 0.05 })])
 
     expect(early.intent.locomotion.goalX).toBeNull()
-    expect(due.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home', arriveFacing: 0 })
+    expect(due.intent.locomotion).toMatchObject({ goalX: 0, urgency: STROLL_URGENCY, reason: 'return-home', arriveFacing: 0 })
     expect(home.intent.locomotion.goalX).toBeNull()
   })
 
@@ -498,7 +500,7 @@ describe('body director home, goals, roam and tools', () => {
     const goalX = a.due.intent.locomotion.goalX as number
 
     expect(a.before.intent.locomotion.goalX).toBeNull()
-    expect(a.due.intent.locomotion).toMatchObject({ pace: 'stroll', reason: 'wander', arriveFacing: 0 })
+    expect(a.due.intent.locomotion).toMatchObject({ urgency: STROLL_URGENCY, reason: 'wander', arriveFacing: 0 })
     expect(Math.abs(goalX)).toBeGreaterThanOrEqual(3)
     expect(Math.abs(goalX)).toBeLessThanOrEqual(20)
     expect(a.due.memory).toMatchObject({ pendingWander: null, wanderAnswer: { seq: 1, accepted: true } })
@@ -515,7 +517,7 @@ describe('body director home, goals, roam and tools', () => {
     const due = decide({ ...frame(1_000), wander: { seq: 1, pick: 0.9, lingerSeconds: 60 } }, started.memory)
     const goalX = due.intent.locomotion.goalX as number
 
-    expect(due.intent.locomotion).toMatchObject({ pace: 'stroll', reason: 'wander' })
+    expect(due.intent.locomotion).toMatchObject({ urgency: STROLL_URGENCY, reason: 'wander' })
     expect(goalX).toBeGreaterThanOrEqual(ground.minX)
     expect(goalX).toBeLessThanOrEqual(ground.maxX)
     expect(Math.abs(goalX - homeX)).toBeGreaterThanOrEqual(legLength)
@@ -549,11 +551,11 @@ describe('body director home, goals, roam and tools', () => {
     const come = decide(world({ chatX: 6, toolRequest: { seq: 1, kind: 'come-here' } }))
     const home = decide(world({ rootX: 8, homeX: 1, toolRequest: { seq: 1, kind: 'go-home' } }))
 
-    expect(come.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool', pace: 'walk', arriveFacing: 0 })
+    expect(come.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool', urgency: WALK_URGENCY, arriveFacing: 0 })
     expect(come.memory).toMatchObject({ lastToolSeq: 1, toolRefused: false })
     expect(come.reports).toEqual([{ kind: 'tool-accepted', tool: 'come-here' }])
     expect(home.reports).toEqual([{ kind: 'tool-accepted', tool: 'go-home' }])
-    expect(home.intent.locomotion).toMatchObject({ goalX: 1, reason: 'tool', pace: 'walk' })
+    expect(home.intent.locomotion).toMatchObject({ goalX: 1, reason: 'tool', urgency: WALK_URGENCY })
   })
 
   it('refuses a second movement tool inside the shared refractory the input carries and accepts it after', () => {
@@ -616,8 +618,8 @@ describe('body director home, goals, roam and tools', () => {
   it('stands a sitting character up to take a pending goal', () => {
     const started = decide(world({ nowMs: 0 }))
     const sitting = decide(world({ nowMs: 120_000, idle: SETTLED }), started.memory)
-    const requested = decide(world({ nowMs: 123_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), sitting.memory)
-    const standing = decide(world({ nowMs: 124_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), requested.memory)
+    const requested = decide(world({ nowMs: 123_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }), sitting.memory)
+    const standing = decide(world({ nowMs: 124_000, idle: SETTLED, debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }), requested.memory)
 
     expect(requested.intent.stance).toBe('sit')
     expect(requested.intent.locomotion.goalX).toBeNull()
@@ -626,9 +628,9 @@ describe('body director home, goals, roam and tools', () => {
   })
 
   it('clears the goal on arrival once the character is idle', () => {
-    const issued = decide(world({ debugGoal: { seq: 1, x: 4, pace: 'walk' } }))
-    const walking = decide(world({ nowMs: 1_000, rootX: 4, locomotionMode: 'stopping', debugGoal: { seq: 1, x: 4, pace: 'walk' } }), issued.memory)
-    const arrived = decide(world({ nowMs: 2_000, rootX: 4, debugGoal: { seq: 1, x: 4, pace: 'walk' } }), walking.memory)
+    const issued = decide(world({ debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }))
+    const walking = decide(world({ nowMs: 1_000, rootX: 4, locomotionMode: 'stopping', debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }), issued.memory)
+    const arrived = decide(world({ nowMs: 2_000, rootX: 4, debugGoal: { seq: 1, x: 4, urgency: WALK_URGENCY } }), walking.memory)
 
     expect(walking.intent.locomotion.goalX).toBe(4)
     expect(arrived.intent.locomotion).toMatchObject({ goalX: null, reason: 'stay' })
@@ -637,7 +639,7 @@ describe('body director home, goals, roam and tools', () => {
 
 describe('body director twenty minute scenario', () => {
   it('approaches the chat then the cursor, holds still while speaking, goes home, then wanders', () => {
-    const timeline: Array<{ atMs: number, reason: string, x: number, pace: string }> = []
+    const timeline: Array<{ atMs: number, reason: string, x: number, urgency: number }> = []
     let memory = initialBodyDirectorMemory
     let rootX = 0
     let mode: DirectorInput['locomotionMode'] = 'idle'
@@ -663,13 +665,13 @@ describe('body director twenty minute scenario', () => {
       }), memory)
       memory = out.memory
 
-      const { goalX, pace, reason } = out.intent.locomotion
+      const { goalX, urgency, reason } = out.intent.locomotion
       if (goalX !== null && memory.goalSinceMs !== lastSinceMs) {
         lastSinceMs = memory.goalSinceMs
-        timeline.push({ atMs: nowMs, reason, x: goalX, pace })
+        timeline.push({ atMs: nowMs, reason, x: goalX, urgency })
       }
       if (goalX !== null && Math.abs(goalX - rootX) > 0.1) {
-        const stepSize = (pace === 'walk' ? 1 : 0.6) * 0.5
+        const stepSize = urgencySpeedShare(urgency) * 0.5
         rootX += Math.sign(goalX - rootX) * Math.min(stepSize, Math.abs(goalX - rootX))
         mode = 'walking'
       }
@@ -678,7 +680,7 @@ describe('body director twenty minute scenario', () => {
       }
     }
 
-    console.info(timeline.map(entry => `goal t=${(entry.atMs / 1000).toFixed(1)}s ${entry.reason} x=${entry.x.toFixed(2)} ${entry.pace}`).join('\n'))
+    console.info(timeline.map(entry => `goal t=${(entry.atMs / 1000).toFixed(1)}s ${entry.reason} x=${entry.x.toFixed(2)} urgency ${entry.urgency}`).join('\n'))
 
     // The chat is open from t=10 s, so the character also goes home once, 20 s after arriving, before the cursor chase.
     const reasons = timeline.map(entry => entry.reason)
@@ -710,7 +712,7 @@ function dance(seq: number, overrides: Partial<BodyActionRequest> = {}): BodyAct
 
 describe('body director actions', () => {
   it('(a) moves the goal to pending for a full action mid-walk, plays once idle and issues the goal again after it', () => {
-    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const goal = { seq: 1, x: 10, urgency: WALK_URGENCY }
     const walking = decide(world({ debugGoal: goal }))
     const accepted = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }) }), walking.memory)
     const stillWalking = decide(world({ nowMs: 5_500, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }) }), accepted.memory)
@@ -940,7 +942,7 @@ describe('body director actions', () => {
   })
 
   describe('cancel and resume', () => {
-    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const goal = { seq: 1, x: 10, urgency: WALK_URGENCY }
     const enders: Array<[string, Partial<DirectorInput>]> = [
       ['an interaction', { attend: { untilMs: null, touchSeq: 1, chatSeq: 0, chatOpenSeq: 0 } }],
       ['a drag', { dragging: true }],
@@ -987,7 +989,7 @@ describe('body director actions', () => {
   })
 
   describe('a sent chat message', () => {
-    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const goal = { seq: 1, x: 10, urgency: WALK_URGENCY }
     const start = (request: BodyActionRequest) => {
       const walking = decide(world({ debugGoal: goal }))
       const accepted = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: request }), walking.memory)
@@ -1071,9 +1073,9 @@ describe('body director three minute performance scenario', () => {
       if (memory.pendingGoal?.reason === 'tool' && previous.pendingGoal?.reason !== 'tool')
         log(nowMs, 'pending tool')
 
-      const { goalX, pace } = out.intent.locomotion
+      const { goalX, urgency } = out.intent.locomotion
       if (goalX !== null && Math.abs(goalX - rootX) > 0.1) {
-        rootX += Math.sign(goalX - rootX) * Math.min((pace === 'walk' ? 1 : 0.6) * 0.5, Math.abs(goalX - rootX))
+        rootX += Math.sign(goalX - rootX) * Math.min(urgencySpeedShare(urgency) * 0.5, Math.abs(goalX - rootX))
         mode = 'walking'
       }
       else {
@@ -1108,7 +1110,7 @@ describe('body director reach zones', () => {
       world({ ...extra, ...chase, nowMs: 1_000, cursorX: 40 }),
       world({ ...extra, ...chase, nowMs: 5_000, cursorX: -40, rootX: 12, locomotionMode: 'walking' }),
       world({ ...extra, nowMs: 70_000, rootX: 19, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 30 }),
-      world({ ...extra, nowMs: 75_000, rootX: 19, toolRequest: { seq: 1, kind: 'go-home' }, debugGoal: { seq: 1, x: 99, pace: 'stroll' } }),
+      world({ ...extra, nowMs: 75_000, rootX: 19, toolRequest: { seq: 1, kind: 'go-home' }, debugGoal: { seq: 1, x: 99, urgency: STROLL_URGENCY } }),
       world({ ...extra, nowMs: 200_000, rootX: 25 }),
     ]
 
@@ -1124,8 +1126,8 @@ describe('body director reach zones', () => {
   })
 
   it('stops a goal that falls in a wing at the edge of the nearest zone', () => {
-    const nearRight = decide(world({ reach, debugGoal: { seq: 1, x: 28, pace: 'walk' } }))
-    const nearLeft = decide(world({ reach, debugGoal: { seq: 1, x: 22, pace: 'walk' } }))
+    const nearRight = decide(world({ reach, debugGoal: { seq: 1, x: 28, urgency: WALK_URGENCY } }))
+    const nearLeft = decide(world({ reach, debugGoal: { seq: 1, x: 22, urgency: WALK_URGENCY } }))
 
     expect(nearRight.intent.locomotion).toMatchObject({ goalX: 30, reason: 'debug' })
     expect(nearLeft.intent.locomotion).toMatchObject({ goalX: 20, reason: 'debug' })
@@ -1138,7 +1140,7 @@ describe('body director reach zones', () => {
     const tool = decide(input({ ...onRight, toolRequest: { seq: 1, kind: 'go-home' } }))
     const chat = decide(input({ ...onRight, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 }, chatX: 6 }))
 
-    expect(home.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home' })
+    expect(home.intent.locomotion).toMatchObject({ goalX: 0, urgency: STROLL_URGENCY, reason: 'return-home' })
     expect(tool.intent.locomotion).toMatchObject({ goalX: 0, reason: 'tool' })
     // One leg short of the chat on the side of home, as on a single zone.
     expect(chat.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
@@ -1175,7 +1177,7 @@ describe('body director reach zones', () => {
     const nearLeft = decide(world({ reach, rootX: 23 }))
     const beyond = decide(input({ ground: right, reach, rootX: 80, homeX: 80 }))
 
-    expect(rest.intent.locomotion).toMatchObject({ goalX: 30, pace: 'walk', reason: 'enter-stage' })
+    expect(rest.intent.locomotion).toMatchObject({ goalX: 30, urgency: WALK_URGENCY, reason: 'enter-stage' })
     expect(nearLeft.intent.locomotion.goalX).toBe(20)
     expect(beyond.intent.locomotion.goalX).toBe(70)
   })
@@ -1198,7 +1200,7 @@ describe('body director visits and lingering', () => {
     const started = decide(roaming())
     const due = decide(roaming({ nowMs: 1_000, performance: performance('watching'), wander: { seq: 1, pick: 0.9, lingerSeconds: 60 } }), started.memory)
 
-    expect(due.intent.locomotion).toMatchObject({ goalX: 14 - VISIT_STOP_LEGS, pace: 'stroll', reason: 'visit' })
+    expect(due.intent.locomotion).toMatchObject({ goalX: 14 - VISIT_STOP_LEGS, urgency: STROLL_URGENCY, reason: 'visit' })
     expect(due.intent.locomotion.step).toBeUndefined()
     expect(due.memory.wanderAnswer).toEqual({ seq: 1, accepted: true })
   })
@@ -1302,7 +1304,7 @@ describe('body director visits and lingering', () => {
     const staying = decide(roaming({ nowMs: dueMs + 10_000 + 60_000 - 1_000, rootX: goalX }), arrived.memory)
     expect(staying.intent.locomotion.goalX).toBeNull()
     const leaving = decide(roaming({ nowMs: arrived.memory.lingerUntilMs, rootX: goalX }), staying.memory)
-    expect(leaving.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home' })
+    expect(leaving.intent.locomotion).toMatchObject({ goalX: 0, urgency: STROLL_URGENCY, reason: 'return-home' })
   })
 
   it('keeps the wander errand from its acceptance through the stay, and ends it at the walk home', () => {
@@ -1371,7 +1373,7 @@ describe('body director unasked clips', () => {
   it('refuses an unasked clip while she talks, thinks, walks, or already performs', () => {
     const talking = decide(world({ speaking: true, actionRequest: idle(1) }))
     const thinking = decide(world({ performance: performance('thinking'), actionRequest: idle(1) }))
-    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const goal = { seq: 1, x: 10, urgency: WALK_URGENCY }
     const walking = decide(world({ nowMs: 1_000, rootX: 2, locomotionMode: 'walking', debugGoal: goal, actionRequest: idle(1) }), decide(world({ debugGoal: goal })).memory)
     const performing = decide(world({ actionRequest: gesture(1) }))
     const second = decide(world({ nowMs: 500, actionRequest: idle(2, { clipId: 'nod' }) }), performing.memory)

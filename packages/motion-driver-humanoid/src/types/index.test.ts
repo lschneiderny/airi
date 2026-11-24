@@ -2,7 +2,7 @@ import type { ArmBoneName, BodyIntent, BodyLocomotionReason, HumanoidBoneName, H
 
 import { describe, expect, it } from 'vitest'
 
-import { matrixToRotation, mirrorRotation, rotationToMatrix } from './index'
+import { matrixToRotation, mirrorRotation, rotationToMatrix, STROLL_URGENCY } from './index'
 
 describe('humanoid bone names', () => {
   it('uses unique names for the canonical bone list', () => {
@@ -79,14 +79,14 @@ describe('rest-relative rotation order', () => {
 })
 
 describe('body locomotion intent', () => {
-  it('carries a locomotion intent with a closed set of reasons and paces', () => {
+  it('carries a locomotion intent with a closed set of reasons', () => {
     const reasons: BodyLocomotionReason[] = ['stay', 'return-home', 'wander', 'approach-chat', 'approach-cursor', 'tool', 'debug', 'enter-stage']
     const intent: BodyIntent = {
       stance: 'stand',
       rest: 'none',
       look: null,
       facingYaw: 0,
-      locomotion: { homeX: 0, goalX: null, pace: 'stroll', arriveFacing: 0, reason: reasons[0] },
+      locomotion: { homeX: 0, goalX: null, urgency: STROLL_URGENCY, arriveFacing: 0, reason: reasons[0] },
       action: null,
     }
 

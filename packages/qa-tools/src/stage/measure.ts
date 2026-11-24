@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { platform } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { CdpClient, findDebugTarget, sleep, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { killTree, listLiveProcesses, runGroupMembers } from '../env/processes'
@@ -415,6 +416,7 @@ function scenarioExpression(scenario: StageScenario, clip: string, seconds: numb
   return `(async () => {
   const scenario = ${JSON.stringify(scenario)}
   const clip = ${JSON.stringify(clip)}
+  const WALK_URGENCY = ${JSON.stringify(WALK_URGENCY)}
   const spanMs = ${seconds * 1000}
   const channel = new BroadcastChannel(${JSON.stringify(diagnosticsChannel)})
   const send = (name, value) => channel.postMessage(value === undefined ? { type: 'command', name } : { type: 'command', name, value })
@@ -459,7 +461,7 @@ function scenarioExpression(scenario: StageScenario, clip: string, seconds: numb
     const startSeq = latest.action.lastActionSeq
     send('startMeasurement')
     recording = true
-    send('requestGoal', { x, pace: 'walk' })
+    send('requestGoal', { x, urgency: WALK_URGENCY })
     await until(s => s.locomotion.mode === 'walking', 10000, 'the walk to start')
     await wait(1000)
     const playAt = performance.now()
@@ -492,7 +494,7 @@ function scenarioExpression(scenario: StageScenario, clip: string, seconds: numb
         if (s.director.goalX !== null)
           awaitingGoal = false
         if (!awaitingGoal && s.locomotion.mode === 'idle' && s.director.goalX === null && s.director.pendingGoal === null) {
-          send('requestGoal', { x: next, pace: 'walk' })
+          send('requestGoal', { x: next, urgency: WALK_URGENCY })
           next = next === x ? fromX : x
           awaitingGoal = true
         }
@@ -506,7 +508,7 @@ function scenarioExpression(scenario: StageScenario, clip: string, seconds: numb
       let secondGoal = false
       await until((s) => {
         if (s.action.performing?.name === clip && !secondGoal) {
-          send('requestGoal', { x, pace: 'walk' })
+          send('requestGoal', { x, urgency: WALK_URGENCY })
           secondGoal = true
         }
         return refused(s) || (s.action.performing?.name === clip && s.action.performing.phase === 'playing')

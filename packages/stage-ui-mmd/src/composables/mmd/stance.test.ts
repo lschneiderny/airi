@@ -6,6 +6,7 @@ import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './sta
 
 import { ACTION_REFRACTORY_MS, CharacterMind } from '@proj-airi/character-mind'
 import { NO_BODY_REFRACTORY, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { STROLL_URGENCY, WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -225,7 +226,7 @@ describe('mmd stance director in the stage world', () => {
     frame(director, 0, world())
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
     frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
-    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', pace: 'walk' })
+    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', urgency: WALK_URGENCY })
     expect(director.intent?.locomotion).toMatchObject({ goalX: 4, reason: 'approach-chat' })
   })
 
@@ -272,7 +273,7 @@ describe('mmd stance director in the stage world', () => {
 
   it('ignores requests that predate its first frame', () => {
     const director = new MMDStanceDirector()
-    frame(director, 0, world({ chatX: 5, debugGoal: { seq: 2, x: 6, pace: 'walk' } }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 3, chatOpenSeq: 3 } })
+    frame(director, 0, world({ chatX: 5, debugGoal: { seq: 2, x: 6, urgency: WALK_URGENCY } }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 3, chatOpenSeq: 3 } })
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
   })
 
@@ -308,12 +309,12 @@ describe('mmd stance director in the stage world', () => {
     frame(director, 8_000, world({ speaking: true, rootX: 4, locomotionMode: 'idle' }))
     expect(director.diagnostics.goalX).toBeNull()
 
-    frame(director, 9_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    frame(director, 9_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, urgency: WALK_URGENCY } }))
     expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: -6, reason: 'debug' } })
     expect(director.debugGoal).toBe('held')
-    frame(director, 20_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    frame(director, 20_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, urgency: WALK_URGENCY } }))
     expect(director.diagnostics.pendingGoal).not.toBeNull()
-    frame(director, 21_000, world({ speaking: false, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    frame(director, 21_000, world({ speaking: false, rootX: 4, debugGoal: { seq: 1, x: -6, urgency: WALK_URGENCY } }))
     expect(director.diagnostics).toMatchObject({ goalX: -6, reason: 'debug', pendingGoal: null })
     expect(director.debugGoal).toBe('issued')
   })
@@ -321,9 +322,9 @@ describe('mmd stance director in the stage world', () => {
   it('drops a held goal after the time to live, and treats the talking performance as speaking', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world(), talking)
-    frame(director, 1_000, world({ debugGoal: { seq: 1, x: -6, pace: 'walk' } }), talking)
+    frame(director, 1_000, world({ debugGoal: { seq: 1, x: -6, urgency: WALK_URGENCY } }), talking)
     expect(director.diagnostics.pendingGoal).not.toBeNull()
-    frame(director, 36_000, world({ debugGoal: { seq: 1, x: -6, pace: 'walk' } }), talking)
+    frame(director, 36_000, world({ debugGoal: { seq: 1, x: -6, urgency: WALK_URGENCY } }), talking)
     expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: null })
     frame(director, 37_000, world(), idle)
     expect(director.diagnostics.goalX).toBeNull()
@@ -335,7 +336,7 @@ describe('mmd stance director in the stage world', () => {
     frame(director, 19_000, world({ rootX: 3, homeX: 0 }))
     expect(director.diagnostics.goalX).toBeNull()
     frame(director, 20_000, world({ rootX: 3, homeX: 0 }))
-    expect(director.diagnostics).toMatchObject({ goalX: 0, reason: 'return-home', pace: 'stroll' })
+    expect(director.diagnostics).toMatchObject({ goalX: 0, reason: 'return-home', urgency: STROLL_URGENCY })
   })
 
   it('wanders when Natural asks only in roam mode, and reports its answer', () => {
@@ -387,7 +388,7 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     frame(director, 0, world())
     frame(director, 100, world({ chatX: 5 }), idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
-    frame(director, 200, world({ speaking: true, debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    frame(director, 200, world({ speaking: true, debugGoal: { seq: 1, x: 6, urgency: WALK_URGENCY } }))
     director.clearGoal()
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
     frame(director, 15_000, world({ rootX: 8, homeX: 0 }))
@@ -400,7 +401,7 @@ describe('mmd stance director in the stage world', () => {
     const director = new MMDStanceDirector()
     const classic = { ...NO_WORLD_BODY_INPUT }
     frame(director, 0, classic)
-    frame(director, 100, { ...classic, chatX: 5, debugGoal: { seq: 1, x: 6, pace: 'walk' } }, idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
+    frame(director, 100, { ...classic, chatX: 5, debugGoal: { seq: 1, x: 6, urgency: WALK_URGENCY } }, idle, 0, { ...quiet, attend: { untilMs: null, touchSeq: 0, chatSeq: 1, chatOpenSeq: 1 } })
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
     expect(director.intent?.locomotion.goalX).toBeNull()
   })
@@ -478,7 +479,7 @@ describe('mmd stance director with clip performances', () => {
   it('keeps a walk goal across a full action and issues it again after the clip finishes', () => {
     const director = new MMDStanceDirector()
     run(director, 0, {}, world())
-    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, urgency: WALK_URGENCY } }))
     expect(director.diagnostics).toMatchObject({ goalX: 6, reason: 'debug' })
 
     run(director, 200, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'walking' }))
@@ -501,7 +502,7 @@ describe('mmd stance director with clip performances', () => {
   it('keeps a full one-shot playing across a sent chat message with the goal pending, but a poke still ends it', () => {
     const director = new MMDStanceDirector()
     run(director, 0, {}, world())
-    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, urgency: WALK_URGENCY } }))
     run(director, 200, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'walking' }))
     let at = 200
     while (director.intent?.action?.phase !== 'playing' && at < 20_000) {

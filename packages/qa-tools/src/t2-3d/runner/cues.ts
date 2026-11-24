@@ -123,9 +123,9 @@ export class Motion3dCueDriver {
         this.event({ t, kind: 'touch', touch: cue.touch, region: cue.region })
         return
       case 'goal':
-        this.debugGoal = cue.x === null ? null : { seq: ++this.sequence, x: cue.x * this.legLength, pace: cue.pace }
+        this.debugGoal = cue.x === null ? null : { seq: ++this.sequence, x: cue.x * this.legLength, urgency: cue.urgency }
         this.goalCancelled = cue.x === null
-        this.event({ t, kind: 'goal', x: this.debugGoal?.x ?? null, pace: this.debugGoal?.pace ?? null })
+        this.event({ t, kind: 'goal', x: this.debugGoal?.x ?? null, urgency: this.debugGoal?.urgency ?? null })
         return
       case 'activity':
         this.activity.mode = cue.mode

@@ -1,6 +1,7 @@
 import type { BodyIntent, BodyLookTarget } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceAttention } from '@proj-airi/stage-shared/performance-state'
 
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -20,7 +21,7 @@ function intent(look: BodyIntent['look'] = null): BodyIntent {
     rest: 'none',
     look,
     facingYaw: 0,
-    locomotion: { homeX: 0, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' },
+    locomotion: { homeX: 0, goalX: null, urgency: WALK_URGENCY, arriveFacing: 0, reason: 'stay' },
     action: null,
   }
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { Button, FieldCheckbox, FieldInput } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -33,7 +34,7 @@ const walkGoalX = computed(() => {
 
 function walkHere() {
   if (walkGoalX.value !== null)
-    diagnostics.command({ type: 'command', name: 'requestGoal', value: { x: walkGoalX.value, pace: 'walk' } })
+    diagnostics.command({ type: 'command', name: 'requestGoal', value: { x: walkGoalX.value, urgency: WALK_URGENCY } })
 }
 
 function setHome() {
@@ -64,7 +65,7 @@ const rows = computed(() => {
     { id: 'yaw', value: `${(locomotion.yaw * 180 / Math.PI).toFixed(1)} deg` },
     { id: 'goal', value: goalX === null ? '-' : goalX.toFixed(3) },
     { id: 'reason', value: director?.reason ?? locomotion.reason ?? '-' },
-    { id: 'pace', value: director?.pace ?? locomotion.pace ?? '-' },
+    { id: 'urgency', value: (director?.urgency ?? locomotion.urgency)?.toFixed(2) ?? '-' },
     { id: 'speed', value: locomotion.speed.toFixed(3) },
     { id: 'phase', value: locomotion.phase.toFixed(2) },
     { id: 'weight', value: locomotion.weight.toFixed(2) },

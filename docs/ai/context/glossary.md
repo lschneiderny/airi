@@ -341,7 +341,7 @@ The mouth writer during speech. On Live2D a final-stage plugin writes `ParamMout
 
 ### Locomotion
 
-An MMD character walking across the desktop stage. The body director picks a ground goal and a pace with a reason (`approach-chat`, `tool`, `debug`, `approach-cursor`, `return-home`, `enter-stage`, `wander`, or `visit`) in its `BodyIntent`, and the scene runs a deterministic procedural gait toward the goal that moves the root, pelvis, and feet. It needs the desktop stage host; under the window host the root never moves.
+An MMD character walking across the desktop stage. The body director picks a ground goal and an urgency with a reason (`approach-chat`, `tool`, `debug`, `approach-cursor`, `return-home`, `enter-stage`, `wander`, or `visit`) in its `BodyIntent`, and the scene runs a deterministic procedural gait toward the goal that moves the root, pelvis, and feet. It needs the desktop stage host; under the window host the root never moves.
 
 **Code:** `packages/motion-driver-humanoid/src/director/index.ts` `decideBody`, `BodyDirectorInput` (`attend.untilMs`), `RETURN_HOME_DELAY_MS`; `packages/character-mind/src/attention.ts` `ATTEND_WINDOW_MS`; `packages/motion-driver-humanoid/src/types/index.ts` `BodyIntent` (`locomotion`); `packages/motion-driver-humanoid/src/locomotion/index.ts` `createLocomotion`; `packages/stage-ui-mmd/src/composables/mmd/body/locomotion.ts` `MMDLocomotion`.
 **Not to be confused with:** the `wander` idle errand, which only asks the director for a wander goal; and roam mode, the MMD setting that allows wanders and visits.

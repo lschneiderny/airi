@@ -2,6 +2,7 @@ import type { MMDMotionSnapshot } from '@proj-airi/stage-ui-mmd/stores'
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { mmdOverlaysOff } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import { useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { until } from '@vueuse/core'
@@ -76,7 +77,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
     stanceReason: 'idle-timeout',
     reason: 'approach-chat',
     goalX: 22.5,
-    pace: 'walk',
+    urgency: WALK_URGENCY,
     pendingGoal: null,
     moveRefractoryUntilMs: 0,
     lookRefractoryUntilMs: 0,
@@ -101,7 +102,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
   world: { unitsPerDip: 0.05, floorRowDip: 892, ground: { minX: -60.25, maxX: 60.25 }, homeX: 35.713, characterHeightDip: 300, originX: 0, reach: null },
   characterPlacement: { x: 507.25, y: 592.5, width: 84.5, height: 300.4 },
   stageModel: { height: 15.02, footBaselineY: 0.731 },
-  locomotion: { mode: 'walking', position: { x: 12.5, z: 0 }, yaw: Math.PI / 2, goalX: 22.5, reason: 'approach-chat', pace: 'walk', speed: 1.234, phase: 0.42, weight: 1, skate: 0.0123, leashClamps: 2, enabled: true, skateContact: 0.0123, skateContactPeak: 0.0123 },
+  locomotion: { mode: 'walking', position: { x: 12.5, z: 0 }, yaw: Math.PI / 2, goalX: 22.5, reason: 'approach-chat', urgency: WALK_URGENCY, speed: 1.234, phase: 0.42, weight: 1, skate: 0.0123, leashClamps: 2, enabled: true, skateContact: 0.0123, skateContactPeak: 0.0123 },
   arms: { weight: 0.75, owned: { leftArm: 0.25, rightArm: 0, leftFingers: 0.25, rightFingers: 0 }, penetration: { left: 0, right: 0.0456 }, clothContact: { left: 0.1, right: 0 }, hangDeg: 72, handBelowHip: true, headPenetration: { left: 0, right: 0 }, correctionDeg: { left: 0, right: 0 } },
 }
 
@@ -228,7 +229,7 @@ describe('mmd motion lab', () => {
     await expect.element(locomotion.getByTestId('readout-yaw')).toHaveTextContent('90.0 deg')
     await expect.element(locomotion.getByTestId('readout-goal')).toHaveTextContent('22.500')
     await expect.element(locomotion.getByTestId('readout-reason')).toHaveTextContent('approach-chat')
-    await expect.element(locomotion.getByTestId('readout-pace')).toHaveTextContent('walk')
+    await expect.element(locomotion.getByTestId('readout-urgency')).toHaveTextContent('0.60')
     await expect.element(locomotion.getByTestId('readout-speed')).toHaveTextContent('1.234')
     await expect.element(locomotion.getByTestId('readout-phase')).toHaveTextContent('0.42')
     await expect.element(locomotion.getByTestId('readout-skate')).toHaveTextContent('0.0123')
@@ -259,7 +260,7 @@ describe('mmd motion lab', () => {
     await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeEnabled()
     await screen.getByTestId('mmd-locomotion-walk').click()
     await walked
-    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + 400 * 0.05, pace: 'walk' })
+    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + 400 * 0.05, urgency: WALK_URGENCY })
 
     const homed = until(() => stage.homeX).toBe(12.5, { timeout: 5000, throwOnTimeout: true })
     await screen.getByTestId('mmd-locomotion-set-home').click()
@@ -291,7 +292,7 @@ describe('mmd motion lab', () => {
     await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeEnabled()
     await screen.getByTestId('mmd-locomotion-walk').click()
     await walked
-    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + -300 * 0.05, pace: 'walk' })
+    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + -300 * 0.05, urgency: WALK_URGENCY })
     disposePinia(stagePinia)
   })
 

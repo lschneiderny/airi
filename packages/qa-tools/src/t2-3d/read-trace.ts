@@ -29,14 +29,14 @@ const sha256 = v.nullable(v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/i)))
 const bone = v.picklist(MOTION_TRACE_BONES)
 const origin = v.picklist(['scenario', 'derived'])
 const band = v.picklist(['slight', 'clear', 'strong'])
-const pace = v.picklist(['stroll', 'walk'])
+const urgency = v.pipe(finite, v.minValue(0), v.maxValue(1))
 const eventSchema = v.variant('kind', [
   v.object({ t: finite, kind: v.literal('gaze-jump'), yaw: finite, pitch: finite, source: origin }),
   v.object({ t: finite, kind: v.literal('emphasis'), strength: finite, source: origin }),
   v.object({ t: finite, kind: v.literal('emotion'), emotion: v.string(), band, phase: v.picklist(['pulse', 'hold-start', 'hold-end', 'placebo']), trialId: v.optional(v.string()) }),
   v.object({ t: finite, kind: v.literal('gesture'), gesture: v.string() }),
   v.object({ t: finite, kind: v.literal('gait'), gait: v.picklist(['liftOff', 'heelStrike']), foot: v.picklist(['left', 'right']) }),
-  v.object({ t: finite, kind: v.literal('goal'), x: v.nullable(finite), pace: v.nullable(pace) }),
+  v.object({ t: finite, kind: v.literal('goal'), x: v.nullable(finite), urgency: v.nullable(urgency) }),
   v.object({ t: finite, kind: v.literal('touch'), touch: v.picklist(['poke', 'pet-start', 'pet-end']), region: v.optional(v.picklist(['head', 'body'])) }),
   v.object({ t: finite, kind: v.literal('mode'), mode: v.string() }),
   v.object({ t: finite, kind: v.literal('marker'), label: v.string() }),

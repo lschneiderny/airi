@@ -858,7 +858,7 @@ devtools:
           yaw: Yaw
           goal: Goal X
           reason: Reason
-          pace: Pace
+          urgency: Urgency
           speed: Speed
           phase: Phase
           weight: Weight

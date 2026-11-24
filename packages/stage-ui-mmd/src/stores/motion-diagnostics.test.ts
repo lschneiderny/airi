@@ -1,6 +1,7 @@
 import type { MMDMotionCommand, WalkPreviewStage } from './motion-diagnostics'
 
 import { MotionTraceRecorder } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { STROLL_URGENCY, WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
@@ -304,8 +305,8 @@ describe('mmd motion diagnostics channel', () => {
           reject(signal.reason)
         }, { once: true })
       })
-      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: 4, pace: 'sprint' } })
-      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: Number.NaN, pace: 'walk' } })
+      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: 4, urgency: 1.5 } })
+      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: Number.NaN, urgency: WALK_URGENCY } })
       peer.postMessage({ type: 'command', name: 'setHome', value: { x: '3' } })
       peer.postMessage({ type: 'command', name: 'setHome', value: { x: -3 } })
       await applied
@@ -313,10 +314,10 @@ describe('mmd motion diagnostics channel', () => {
       expect(store.homeX).toBe(-3)
       expect(warning).toHaveBeenCalledTimes(1)
 
-      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, pace: 'walk' } })
-      expect(store.goalRequest).toEqual({ seq: 1, x: 12, pace: 'walk' })
-      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, pace: 'stroll' } })
-      expect(store.goalRequest).toEqual({ seq: 2, x: 12, pace: 'stroll' })
+      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, urgency: WALK_URGENCY } })
+      expect(store.goalRequest).toEqual({ seq: 1, x: 12, urgency: WALK_URGENCY })
+      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, urgency: STROLL_URGENCY } })
+      expect(store.goalRequest).toEqual({ seq: 2, x: 12, urgency: STROLL_URGENCY })
     }
     finally {
       warning.mockRestore()
@@ -368,7 +369,7 @@ describe('mmd motion diagnostics channel', () => {
       store.snapshot = { ...store.snapshot, ...stage } as typeof store.snapshot
       expect(store.previewWalk({ bounce: 0.8 })).toBe(true)
       expect(store.walkPreview).toEqual({ seq: 1, baseline: { bounce: 0.8 } })
-      expect(store.goalRequest).toEqual({ seq: 1, x: 10, pace: 'walk' })
+      expect(store.goalRequest).toEqual({ seq: 1, x: 10, urgency: WALK_URGENCY })
     }
     finally {
       disposePinia(pinia)

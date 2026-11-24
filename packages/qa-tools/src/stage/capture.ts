@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { findDebugTarget, CdpClient as RemoteClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import { MMD_POSE_STAGE_IDS, MMD_SURFACE_STAGE_IDS } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 
@@ -76,8 +77,8 @@ async function driveCue(client: CdpClient, cue: Motion3dCue, snapshot: MMDMotion
       if (!snapshot.world || !snapshot.locomotion || !snapshot.rig?.legLength || cue.x === null)
         throw new CaptureRefusal('scenario-not-drivable')
       const x = Math.max(snapshot.world.ground.minX, Math.min(snapshot.world.ground.maxX, snapshot.locomotion.position.x + cue.x * snapshot.rig.legLength))
-      await postCaptureCommand(client, { type: 'command', name: 'requestGoal', value: { x, pace: cue.pace } })
-      event = { t: cue.at, kind: 'goal', x, pace: cue.pace }
+      await postCaptureCommand(client, { type: 'command', name: 'requestGoal', value: { x, urgency: cue.urgency } })
+      event = { t: cue.at, kind: 'goal', x, urgency: cue.urgency }
       break
     }
     default:
@@ -156,7 +157,7 @@ export async function captureStage(options: CaptureOptions) {
     const initial = snapshot
     const prepareReplay = async () => {
       if (options.scenario === 'walk' && initial.locomotion)
-        await postCaptureCommand(client, { type: 'command', name: 'requestGoal', value: { x: initial.locomotion.position.x, pace: 'walk' } })
+        await postCaptureCommand(client, { type: 'command', name: 'requestGoal', value: { x: initial.locomotion.position.x, urgency: WALK_URGENCY } })
       snapshot = mounted((await captureSnapshot(client, { wait: 'warm' })).snapshot)
     }
     mkdirSync(join(options.out, 'shots'), { recursive: true })
