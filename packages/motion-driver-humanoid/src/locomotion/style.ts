@@ -154,7 +154,9 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   const base = factors.baseline ?? {}
   const b = (key: keyof GaitBaseline) => unit(base[key])
   out.speed = Math.exp(0.2 * a + 0.06 * v - 0.2 * f)
-  out.stride = Math.exp(0.07 * a + 0.05 * v - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
+  // Acted happy and angry walks step faster with steps of about normal length, so rising arousal takes back the step
+  // length its speed would add; falling arousal shortens the step as well as slowing it.
+  out.stride = Math.exp(0.07 * Math.min(0, a) - 0.1 * up + 0.05 * v - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
   out.bounce = Math.exp(0.75 * a + 0.2 * v - 0.5 * t + 0.6 * b('bounce'))
   out.lift = Math.exp(0.15 * a - 0.3 * t - 0.2 * f)
   out.roll = Math.exp(0.1 * a - 0.35 * t - 0.2 * f)
