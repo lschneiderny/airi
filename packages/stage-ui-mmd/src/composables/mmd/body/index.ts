@@ -1,6 +1,6 @@
 import type { MMD } from '@moeru/three-mmd'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
-import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { GaitBaseline, GaitStyle, LocomotionFrame, MutableGaitStyle } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyCapabilities, BodyGazeGoal, BodyPerformanceInput, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
 import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { NaturalBodyIntent, NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
@@ -14,6 +14,7 @@ import type { MMDBodyPoints } from './attention'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
+import { NEUTRAL_GAIT_STYLE, walkStyleFrom } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
 import { Quaternion, Vector3 } from 'three'
 
@@ -81,6 +82,10 @@ export interface MMDBodyInput {
    * clip's weight is still 0 on the frame the manager creates the layer.
    */
   readonly fullLayerPlaying?: boolean
+  /** A walk style that replaces the one her mood, energy and baseline give (QA and lab runs). */
+  readonly walkStyle?: GaitStyle
+  /** The character's walking baseline, which her mood and energy move; the neutral walk's when absent. */
+  readonly walkBaseline?: GaitBaseline
 }
 
 export interface MMDRegisterClipOptions {
@@ -136,6 +141,8 @@ export class MMDBody {
   private gait: LocomotionFrame | null = null
   private readonly gaitEvents: LocomotionFrame['events'][number][] = []
   private readonly gaitChannels = new Float64Array(BODY_CHANNELS.length)
+  /** The walk style her mood, energy and baseline give this frame. */
+  private readonly walkStyle: MutableGaitStyle = { ...NEUTRAL_GAIT_STYLE }
   /** The leg IK's ankle targets of the latest gait tick, mesh-local: the performer's corrector poses the leg bodies from them. */
   private readonly gaitAnkles = { left: { x: 0, y: 0, z: 0 }, right: { x: 0, y: 0, z: 0 } }
   private readonly gaitInput: { weight: number, support: number, mode: LocomotionFrame['mode'], walkForm: boolean, channels: Float64Array, ankles: Record<'left' | 'right', Vec3> | null } = { weight: 0, support: 0, mode: 'idle', walkForm: false, channels: this.gaitChannels, ankles: null }
@@ -427,6 +434,7 @@ export class MMDBody {
     const first = this.clock.ticks - due
     const lift = this.arms.lift({ swingWeight: this.gait?.weight ?? 0, owned: this.owned, hangDeg: input.armRestHangDeg ?? null })
     this.resolveGaze(input)
+    walkStyleFrom({ mood: input.intent.mood, energy: input.energy ?? 0.5, baseline: input.walkBaseline }, this.walkStyle)
     this.intent.capture({
       intent: input.intent,
       frame: input.frame,
@@ -456,6 +464,7 @@ export class MMDBody {
           enabled: this.gaitEnabled,
           idleSupport: this.support,
           plantedFeet,
+          style: input.walkStyle ?? this.walkStyle,
         })
         this.gaitEvents.push(...frame.events)
         this.measureRootVelocity(frame)
