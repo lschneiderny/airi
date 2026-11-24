@@ -255,9 +255,9 @@ export interface BodyCapabilities {
    */
   readonly clasp: boolean
   /**
-   * The rig performs the hair tuck (4e act 8): `headClearance` on both sides, the act's precondition, and both arms
-   * reach its two keys (`hair-touch`, then `hair-sweep` from it), clear of the proxies inside the limits. Without it a
-   * host tells its idle scheduler not to draw the tuck.
+   * The rig performs the hair tuck (4e act 8): both arms reach its two keys (`hair-touch`, then `hair-sweep` from it),
+   * clear of the proxies inside the limits, which is the head clearance the act requires. Without it a host tells its
+   * idle scheduler not to draw the tuck.
    */
   readonly hairTouch: boolean
 }

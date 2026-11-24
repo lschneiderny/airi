@@ -925,7 +925,7 @@ describe('co-speech gestures', () => {
     }
   })
 
-  it('refuses the hair tuck on a rig whose arms cannot reach its anchor, and reports the capability only where both arms reach it with head clearance', () => {
+  it('refuses the hair tuck on a rig whose arms cannot reach its anchor, and reports the capability wherever both arms reach it', () => {
     // The fixture Ellen's proportional head proxy is small, so its tragion sits low beside the neck, out of reach.
     const rig = fixtureRigs[0].traits
     const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
@@ -936,10 +936,12 @@ describe('co-speech gestures', () => {
       expect(keys.armForm(side, 'hair-sweep', pose), side).toBe(false)
     }
     const capability = (traits: BodyRigTraits) => createBodyPerformer({ traits, seed: 1 }).step(quietInput(0)).capabilities
+    expect(capability(rig).hairTouch).toBe(false)
     expect(capability(chisaTraits).hairTouch).toBe(true)
-    // Ellen's arms reach the tuck, but her probe reports no head clearance, which 4e act 8 requires.
+    // Ellen's conservative head probe reports no head clearance, but her arms reach both keys clear of her head, which
+    // is the clearance 4e act 8 asks for.
     expect(capability(ellenTraits).headClearance).toEqual({ left: false, right: false })
-    expect(capability(ellenTraits).hairTouch).toBe(false)
+    expect(capability(ellenTraits).hairTouch).toBe(true)
   })
 
   it('sweeps a held hair touch on to the sweep without going home, and never starts the sweep on its own', () => {

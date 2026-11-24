@@ -246,7 +246,7 @@ const { seq, behaviour } = motion.idleState
   those weigh 0. `heel-rock` takes 4e's weight: 0 unless valence is
   above 0.3, then 0.8; the MMD body rises onto the balls of its feet.
   `hair-touch` takes 4e's weight 0.5 (refractory 300 s): the MMD body tucks
-  its hair on a rig with head clearance whose arms reach the tuck (the MMD scene
+  its hair on a rig whose arms reach the tuck clear of the head (the MMD scene
   lists it in `unreachable` elsewhere). While
   she is settled in, nothing that needs her arms, her shoulders or a standing
   posture is drawn (`stretch`, `peer`, `shoulder-roll`, `arm-swing` and the

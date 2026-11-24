@@ -90,6 +90,13 @@ const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number, sid
   }),
 )
 
+/**
+ * The arm-form capabilities of each rig, which depend only on its traits, as its rest pose does: the clasp's and the
+ * hair tuck's key searches take up to a tenth of a second on a rig that refuses them, so a performer created again for
+ * the same rig, on a reset of the stage or for another seed, does not search again.
+ */
+const reachedForms = new WeakMap<BodyRigTraits, { readonly clasp: boolean, readonly hairTouch: boolean }>()
+
 /** Pure state owner. Each step advances exactly one tick; the host owns accumulation/interpolation. */
 class BodyPerformer {
   private state
@@ -122,12 +129,15 @@ class BodyPerformer {
       rest[c] = limitChannel(c, rest[c])
     this.degrade(rest)
     const collision = new BodyCollision(traits, rest)
-    const keys = new GestureKeys(traits, rest)
-    const reaches = (form: BodyArmForm) => SIDES.every(side => keys.armForm(side, form, Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
-    const clasp = reaches('clasp')
-    // 4e act 8 requires head clearance; a rig without it on both sides does not tuck, so its keys are not searched.
-    const hairTouch = SIDES.every(side => collision.capabilities.headClearance[side]) && reaches('hair-sweep')
-    const capabilities = { ...collision.capabilities, clasp, hairTouch }
+    let reached = reachedForms.get(traits)
+    if (!reached) {
+      const keys = new GestureKeys(traits, rest)
+      const reaches = (form: BodyArmForm) => SIDES.every(side => keys.armForm(side, form, Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
+      // 4e act 8 requires head clearance: the tuck's own keys, clear of the proxies at the side of the head, are it.
+      reached = { clasp: reaches('clasp'), hairTouch: reaches('hair-sweep') }
+      reachedForms.set(traits, reached)
+    }
+    const capabilities = { ...collision.capabilities, ...reached }
     const stack = new PerformanceStack(this.options.layers ?? [])
     const frame: MutableFrame = {
       tick: 0,
