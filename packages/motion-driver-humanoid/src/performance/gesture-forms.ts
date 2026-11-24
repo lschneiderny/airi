@@ -147,6 +147,8 @@ const CLASP = { out: 0.9, outStep: 0.1, layer: 0.12, tilt: 60 * DEG, tiltStep: 1
 const UNTWISTED_PRONATION = 55 * DEG
 /** The step in which a contact hand rolls about its direction away from its preferred palm (`orientHand`). */
 const HAND_ROLL_STEP = 10 * DEG
+/** How far the thinking hand's palm may roll from facing the head: across, palm down to palm up. */
+const FINGERTIP_ROLL = 90 * DEG
 
 /** Writes a 4a hand shape's finger curls, spread and thumb opposition into a side's pose. */
 export function writeHandShape(shape: HandShape, pose: ArmPose): void {
@@ -193,7 +195,7 @@ export class GestureKeys {
   private headSize: { readonly top: number, readonly breadth: number } | null | undefined
   /** The hair tuck's solved keys (arm joints flex to wrist deviation), which depend only on the rig and its rest trunk. */
   private readonly tucked = new Map<`${BodySide}:${BodyArmForm}`, Float64Array>()
-  /** The clasp's solved keys (arm joints flex to wrist deviation), searched once for both sides. */
+  /** The clasp's and the thinking hand's solved keys (arm joints flex to wrist deviation), searched once per side. */
   private readonly solved = new Map<`${BodySide}:${BodyArmForm}`, Float64Array>()
 
   constructor(private readonly traits: BodyRigTraits, private readonly rest: Float32Array) {
@@ -245,7 +247,8 @@ export class GestureKeys {
    *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies' margin (a
    *   contact form touches the body, so it takes no settling headroom); the first step with one wins, with the swivel
    *   that leaves the most limit margin.
-   * - The clasp solves both hands together (`clasp`), and the hair tuck its two keys (`tuck`).
+   * - The thinking hand first puts the index fingertip on the face (`fingertip`), and takes the wrist anchor above only
+   *   where no such key exists; the clasp solves both hands together (`clasp`), and the hair tuck its two keys (`tuck`).
    *
    * False when no step within 0.2 A of the anchor has such a key. Solved and refused forms are kept per side.
    */
@@ -256,6 +259,10 @@ export class GestureKeys {
     const known = this.solved.get(`${side}:${form}`)
     if (known) {
       pose.set(known, 2)
+      return true
+    }
+    if (form === 'thinking-hand' && this.fingertip(side, form, pose)) {
+      this.solved.set(`${side}:${form}`, pose.slice(2, 9))
       return true
     }
     const special = spec.seed === 'tragion' ? this.tuck(side, form, pose) : form === 'clasp' ? this.clasp(side, pose) : null
@@ -384,6 +391,80 @@ export class GestureKeys {
     if (best)
       pose.set(best, 2)
     return best !== null
+  }
+
+  /**
+   * The thinking hand's key with its fingertip on the face: the fingertip point marches in from 1 A in front of the
+   * chin seed (moved by the form's `anchor`, and toward the midline in 0.01 A steps where the face is narrower) until
+   * it is `ANCHOR.clearance` from the head proxies, so the extended index rests on the surface. The wrist then stands a
+   * hand length from it, in each of `WRIST_DIRECTIONS` directions, and the hand turns at the wrist to point there, palm
+   * toward the head bone or rolled from it by up to `FINGERTIP_ROLL`. A candidate's palm (to half the hand length)
+   * clears the proxies by the hand capsule's radius, and its pose and path from rest clear the margin inside the
+   * limits; the most upright hand wins. Each back-off step moves the fingertip 0.01 A off the surface, as far as 0.2 A.
+   * False without such a key.
+   */
+  private fingertip(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
+    const spec = ARM_FORMS[form]
+    const { traits } = this
+    const length = this.lengths[side].upper + this.lengths[side].forearm
+    const shoulder = this.skeleton.arm(side, this.rest).shoulder
+    const sigma = side === 'left' ? 1 : -1
+    const neckToHead = Math.hypot(traits.head.x - traits.neck.x, traits.head.y - traits.neck.y, traits.head.z - traits.neck.z)
+    const seed = { x: 0, y: traits.head.y - 0.6 * neckToHead + spec.anchor.up * length, z: traits.head.z + 0.6 * neckToHead }
+    const touch = ANCHOR.clearance * length
+    let surface: number | null = null
+    // A face narrower than the anchor's side offset at the chin is touched nearer the midline.
+    for (let aside = spec.anchor.side; aside >= -1e-9 && surface === null; aside -= ANCHOR.backOffStep) {
+      seed.x = traits.head.x + sigma * Math.max(0, aside) * length
+      for (let z = seed.z + ANCHOR.start * length; z > seed.z - ANCHOR.start * length; z -= ANCHOR.step * length) {
+        if (this.collision.distance(seed.x, seed.y, z) <= touch) {
+          surface = z
+          break
+        }
+      }
+    }
+    if (surface === null)
+      return false
+    const hand = traits.arms[side].handLength
+    const radius = HAND_RADIUS * this.lengths[side].forearm
+    for (let back = 0; back <= ANCHOR.backOff + 1e-9; back += ANCHOR.backOffStep) {
+      const tip = { x: seed.x, y: seed.y, z: surface + back * length }
+      const palm = { x: traits.head.x - tip.x, y: traits.head.y - tip.y, z: traits.head.z - tip.z }
+      let best: Float64Array | null = null
+      let upright = -Infinity
+      for (let i = 0; i < WRIST_DIRECTIONS; i++) {
+        // A Fibonacci sphere from its top down: the most upright hand comes first.
+        const up = 1 - 2 * (i + 0.5) / WRIST_DIRECTIONS
+        const around = Math.sqrt(1 - up * up)
+        const turn = i * Math.PI * (3 - Math.sqrt(5))
+        const direction = { x: around * Math.cos(turn), y: up, z: around * Math.sin(turn) }
+        if (direction.y <= upright)
+          continue
+        const wrist = { x: tip.x - hand * direction.x, y: tip.y - hand * direction.y, z: tip.z - hand * direction.z }
+        // The palm, to the knuckles half a hand from the wrist, clears the proxies by the hand capsule's radius; the
+        // extended index beyond it is thin and ends at the fingertip.
+        let clear = true
+        for (let k = 0; k <= 2 && clear; k++)
+          clear = this.collision.distance(wrist.x + hand * direction.x * k / 4, wrist.y + hand * direction.y * k / 4, wrist.z + hand * direction.z * k / 4) >= radius
+        if (!clear)
+          continue
+        const key: ArmKey = { hand: [sigma * (wrist.x - shoulder.x) / length, (wrist.y - shoulder.y) / length, (wrist.z - shoulder.z) / length], swivel: spec.swivel, pron: 0, wflex: 0, wdev: 0 }
+        for (let swivel = spec.swivel; swivel <= ANCHOR.swivel + 1e-9; swivel += ANCHOR.swivelStep) {
+          if (!this.solveOnce(side, { ...key, swivel }, pose) || !this.orientHand(side, pose, direction, palm, FINGERTIP_ROLL))
+            continue
+          if (this.limitMargin(side, pose) >= LIMIT_MARGIN && this.deepest(side, pose, this.restArms[side]) === null) {
+            upright = direction.y
+            best = pose.slice(2, 9)
+            break
+          }
+        }
+      }
+      if (best) {
+        pose.set(best, 2)
+        return true
+      }
+    }
+    return false
   }
 
   /**

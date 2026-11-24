@@ -834,6 +834,35 @@ describe('co-speech gestures', () => {
     expect(Math.abs(right.wrist.z - left.wrist.z - 0.12 * forearm) / length).toBeLessThan(0.005)
   })
 
+  it.each([['ellen', ellenTraits], ['vivian', fixtureRigs[1].traits], ['chisa', chisaTraits]] as const)('rests the thinking hand\'s index fingertip on the face on %s', (_, rig) => {
+    const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+    const keys = new GestureKeys(rig, rest)
+    const collision = new BodyCollision(rig, rest.slice())
+    const skeleton = new BodySkeleton(rig)
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const from = new Float64Array(rest.subarray(start, start + 26))
+      const pose = from.slice()
+      writeHandShape(ARM_FORMS['thinking-hand'].shape, pose)
+      expect(keys.armForm(side, 'thinking-hand', pose), side).toBe(true)
+      expect(keys.pathDepth(side, from, pose), side).toBe(0)
+      const channels = rest.slice()
+      channels.set(pose, start)
+      skeleton.update(channels)
+      const h = skeleton.arm(side, channels).hand
+      const { handLength, upperArm, forearm } = rig.arms[side]
+      const length = Math.hypot(upperArm.x, upperArm.y, upperArm.z) + Math.hypot(forearm.x, forearm.y, forearm.z)
+      const tip = { x: h[9] - handLength * h[1], y: h[10] - handLength * h[4], z: h[11] - handLength * h[7] }
+      // The fingertip leads: it ends clear of the head proxies, nearer them than the wrist, within the first back-off
+      // steps from the anchor march's 0.01 A clearance (the elbow's 142 degree limit keeps the hand that far out).
+      const gap = collision.distance(tip.x, tip.y, tip.z) / length
+      const wrist = skeleton.arm(side, channels).wrist
+      expect(gap, side).toBeGreaterThan(0.004)
+      expect(gap, side).toBeLessThan(0.07)
+      expect(collision.distance(wrist.x, wrist.y, wrist.z) / length, side).toBeGreaterThan(gap)
+    }
+  })
+
   it('reports the clasp capability on a rig whose arms reach the front-low anchor, and not on one whose arms cannot', () => {
     expect(createBodyPerformer({ traits: fixtureRigs[0].traits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(true)
     // Chisa's body proxies leave no clear key at the clasp's height (E/fc/u1/clasp-height/probe-clasp-height.txt).
