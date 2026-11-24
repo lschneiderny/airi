@@ -3,7 +3,7 @@ import type { FootGeometry, LocomotionFrame, LocomotionInput } from '@proj-airi/
 import type { BodyLocomotionIntent, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
 import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { BODY_TICK, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_TICK, channelIndex, DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 
 /** The director's goal, including the optional corrective sidestep. */
@@ -18,15 +18,16 @@ export interface MMDBodyRoot {
 }
 
 const swingChannels = {
-  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt') },
-  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt') },
+  left: { flex: channelIndex('leftFlex'), elbow: channelIndex('leftElbow'), abduct: channelIndex('leftAbduct'), clavProt: channelIndex('leftClavProt'), wflex: channelIndex('leftWflex'), thumb: channelIndex('leftThumb0'), opposition: channelIndex('leftOpposition') },
+  right: { flex: channelIndex('rightFlex'), elbow: channelIndex('rightElbow'), abduct: channelIndex('rightAbduct'), clavProt: channelIndex('rightClavProt'), wflex: channelIndex('rightWflex'), thumb: channelIndex('rightThumb0'), opposition: channelIndex('rightOpposition') },
 } as const
 
 /**
  * Writes one gait frame into the performer's `BODY_CHANNELS` table: pelvis in leg lengths, angles in radians, zero for
  * every channel the gait does not drive. The gait models a positive `pelvisLateral` as a shift toward the character's
  * right (-X, `anchorDrop` in the locomotion module), while the channel's +X is the character's left, so the sign flips.
- * The legacy weight-shift stage applied it toward +X, against the gait's own reach model.
+ * The legacy weight-shift stage applied it toward +X, against the gait's own reach model. The walk's hand curl, a share of
+ * the rest curl, becomes each finger joint's offset from the performer's nominal rest curl.
  */
 export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out: Float64Array): void {
   out.fill(0)
@@ -53,6 +54,14 @@ export function writeGaitChannels(frame: LocomotionFrame, legLength: number, out
     out[swingChannels[side].elbow] = armSwing[side].elbowFlex
     out[swingChannels[side].abduct] = armSwing[side].abduct
     out[swingChannels[side].clavProt] = armSwing[side].clavProt
+    out[swingChannels[side].wflex] = armSwing[side].wristFlex
+    const curl = frame.handCurl - 1
+    const { fingerCurl, opposition } = DEFAULT_ARM_REST_POSE
+    for (let finger = 0; finger < 5; finger++) {
+      for (let joint = 0; joint < 3; joint++)
+        out[swingChannels[side].thumb + finger * 3 + joint] = curl * fingerCurl[finger][joint]
+    }
+    out[swingChannels[side].opposition] = curl * opposition
   }
 }
 

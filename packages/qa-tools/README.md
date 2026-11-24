@@ -872,7 +872,7 @@ compares against; it is recorded as `acts: 'off'` in the trace source detail, an
 `on` records nothing. On a scenario without a drive the switch changes nothing but
 that record.
 `--walk-style key=value,...` walks with that `GaitStyle` instead of the one her mood gives (keys as in
-`GaitStyle`, angles in degrees, unnamed keys neutral, a value outside `GAIT_STYLE_BOUNDS` refused). `--mood=valence,arousal,tension`
+`GaitStyle`, the angles `elbowCarry`, `armOut`, `lean`, `head` and `wristCarry` in degrees, unnamed keys neutral, a value outside `GAIT_STYLE_BOUNDS` refused). `--mood=valence,arousal,tension`
 holds the mood the body reads until the scenario's first `mood` cue (use the `=` form, since a negative value would read as a flag), and
 `--energy <0-1>` sets the user energy until the scenario's first `energy` cue. Each is recorded in the trace source
 detail when set, and each leaves the trace byte-identical when absent. They exist to review walk styles.

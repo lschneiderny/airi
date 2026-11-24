@@ -157,15 +157,21 @@ export interface LocomotionFrame {
   /** Same sign as WeightShiftOutput.s. */
   readonly support: number
   readonly body: GaitBodyChannels & { readonly chestCounterYaw: number, readonly twist: GaitTwist }
-  /** Architecture 5.3, radians: shoulder flexion and abduction, elbow flexion and clavicle protraction per arm. */
   /** True while the ordinary walk owns the gait, including its fade-out. */
   readonly walkForm: boolean
+  /**
+   * Architecture 5.3, radians, per arm: shoulder flexion and abduction, elbow flexion, clavicle protraction and the
+   * wrist's offset from its rest (`wristFlex`, palmar positive, so the style's carriage is negative).
+   */
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
     readonly abduct: number
     readonly clavProt: number
+    readonly wristFlex: number
   }>
+  /** The finger curl the walk asks for as a share of the rest curl (`GaitStyle.handCurl`); 1 outside the walk. */
+  readonly handCurl: number
   /**
    * Where she is about to face, a world yaw: during a turn, a minimum-jerk sweep from the facing the turn starts at to its
    * final facing, reached as the last step starts; otherwise the walk heading or the root yaw. `lookAhead - root.yaw` is
@@ -1660,6 +1666,7 @@ class Locomotion {
           elbowFlex: 12 * radians + share * (16 * radians * Math.max(0, -late) - 6 * radians * Math.max(0, late)),
           abduct: -3 * radians * share * forward,
           clavProt: -3 * radians * share * girdle,
+          wristFlex: 0,
         }
       }
       // 1 at the front of the swing and 0 at the back.
@@ -1672,6 +1679,7 @@ class Locomotion {
         elbowFlex: 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late),
         abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward) + this.style.armOut,
         clavProt: -3 * radians * share * girdle,
+        wristFlex: -this.style.wristCarry,
       }
     }
     return {
@@ -1699,6 +1707,7 @@ class Locomotion {
       },
       walkForm: this.walkForm,
       armSwing: { left: arm('left'), right: arm('right') },
+      handCurl: this.walkForm ? this.style.handCurl : 1,
       lookAhead: this.turn ? this.turnLookAhead(this.turn) : this.yawPlan ? this.planLookAhead(this.yawPlan) : this.walk && this.walk.arrivalFacing === null ? this.yaw + wrap(this.walk.heading - this.yaw) : this.yaw,
       weight: smoothstep(this.blend),
       events,

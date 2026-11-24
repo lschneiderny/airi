@@ -21,7 +21,10 @@ export interface ArmRestPose {
   readonly pron: number
   readonly wflex: number
   readonly wdev: number
+  /** Thumb to little finger, three joints each. */
   readonly fingerCurl: readonly (readonly [number, number, number])[]
+  /** The thumb's first joint folded toward the palm. */
+  readonly opposition: number
 }
 
 /**
@@ -40,6 +43,7 @@ export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
   wflex: -10 * DEG,
   wdev: 0,
   fingerCurl: [[10 * DEG, 0, 0], [15 * DEG, 20 * DEG, 10 * DEG], [17.25 * DEG, 23 * DEG, 11.5 * DEG], [19.5 * DEG, 26 * DEG, 13 * DEG], [21.75 * DEG, 29 * DEG, 14.5 * DEG]],
+  opposition: 10 * DEG,
 }
 const relaxed = [2.2, 2.2, 1.15, 1.15, 2, 1.8, 2, 2.2, 2.2] as const
 const active = [4, 4, 4.5, 4.5, 4, 4.5, 4, 4.5, 4.5] as const
@@ -153,7 +157,7 @@ export class BodyArms {
           this.desired[start + 9 + finger * 3 + joint] = p.fingerCurl[finger][joint] * scale
       }
       this.desired[start + 24] = 0
-      this.desired[start + 25] = 10 * DEG
+      this.desired[start + 25] = p.opposition
     }
     this.redraw = Math.max(40, Math.min(120, Math.exp(Math.log(70) + 0.3 * gaussian(this.random))))
   }
