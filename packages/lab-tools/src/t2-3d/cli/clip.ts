@@ -1,6 +1,7 @@
 import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
 import type { Motion3dCliContext } from '../../../bin/motion3d'
+import type { CloseUp } from '../frames/close-up'
 import type { FramesSummary } from '../frames/frames'
 import type { LocalPose } from '../frames/pose'
 import type { FrameView } from '../frames/render'
@@ -22,13 +23,14 @@ import { recordedOverrides } from '@proj-airi/qa-tools/t2-3d/runner/run'
 import * as v from 'valibot'
 
 import { activeEvents, CLIP_LIMITS, clipCodec, clipTimes, composeClipFrame, findOnPath, heldLines, wrapHeader } from '../frames/clip'
+import { CLOSE_UP_SIZE, closeUpBone, closeUpCamera, closeUpFraming, FACING_WINDOW_SECONDS, facingSeries, focusPoint, parseCloseUp } from '../frames/close-up'
 import { eventLabel, frameAt, framesSummarySchema, selectWindows } from '../frames/frames'
 import { frameRigFromMMD } from '../frames/model'
 import { FramePoseRefusal, neededBones, poseFrame, skin, unposedBones } from '../frames/pose'
-import { framingFor, rasterize } from '../frames/render'
+import { dot, framingFor, rasterize, VIEW_CAMERAS } from '../frames/render'
 import { DEFAULT_AFTER_SECONDS, DEFAULT_BEFORE_SECONDS, rerunRun } from './frames'
 
-const usage = 'Usage: lab:motion3d clip <run directory> --model <pmx> [--window <from>:<to> | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--match <n>]] [--compare <run directory>] [--views front,side] [--hz <n>] [--pose rerun|trace] --out <file.mp4|.webm|.webp|.gif>'
+const usage = 'Usage: lab:motion3d clip <run directory> --model <pmx> [--window <from>:<to> | --around <marker label prefix or event kind> [--before <s>] [--after <s>] [--match <n>]] [--compare <run directory>] [--views front,side] [--focus <traced bone> [--span <model units>]] [--hz <n>] [--pose rerun|trace] --out <file.mp4|.webm|.webp|.gif>'
 const PANEL = { width: 270, height: 400 }
 const CHANNELS: readonly string[] = MOTION_TRACE_CHANNELS
 
@@ -45,6 +47,7 @@ export interface ClipArguments {
   readonly views: readonly FrameView[]
   readonly hz: number
   readonly pose: 'rerun' | 'trace'
+  readonly closeUp: CloseUp | null
 }
 
 export function parseClipArguments(args: readonly string[], cwd: string): ClipArguments {
@@ -63,7 +66,7 @@ export function parseClipArguments(args: readonly string[], cwd: string): ClipAr
       throw new ClipRefusal(`unexpected argument ${args[i]}`)
     }
   }
-  const unknown = [...values.keys()].filter(key => !['model', 'window', 'around', 'before', 'after', 'match', 'compare', 'views', 'hz', 'pose', 'out'].includes(key))
+  const unknown = [...values.keys()].filter(key => !['model', 'window', 'around', 'before', 'after', 'match', 'compare', 'views', 'focus', 'span', 'hz', 'pose', 'out'].includes(key))
   if (!run || !values.get('model') || !values.get('out') || unknown.length)
     throw new ClipRefusal(unknown.length ? `unknown option --${unknown[0]}` : 'a run directory, --model and --out are required')
   const number = (key: string, fallback: number) => {
@@ -102,7 +105,10 @@ export function parseClipArguments(args: readonly string[], cwd: string): ClipAr
   const out = resolve(cwd, values.get('out') ?? '')
   if (!clipCodec(out))
     throw new ClipRefusal('--out must end in .mp4, .webm, .webp or .gif')
-  return { run, compare: values.has('compare') ? resolve(cwd, values.get('compare') ?? '') : null, model: resolve(cwd, values.get('model') ?? ''), out, selection, views, hz, pose }
+  const closeUp = parseCloseUp(values.get('focus'), values.get('span'))
+  if (typeof closeUp === 'string')
+    throw new ClipRefusal(closeUp)
+  return { run, compare: values.has('compare') ? resolve(cwd, values.get('compare') ?? '') : null, model: resolve(cwd, values.get('model') ?? ''), out, selection, views, hz, pose, closeUp }
 }
 
 function isExecutableFile(path: string): boolean {
@@ -200,9 +206,20 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
           sources.push({ pose: () => undefined, unposed: [], rerun: null })
         }
       }
-      const framing = framingFor(skin(rig, { rotations: rig.bones.map(bone => bone.bindRotation), positions: rig.bones.map(bone => bone.bindPosition) }), PANEL.width, PANEL.height)
+      const closeUp = options.closeUp
+      const focusIndex = closeUp ? runs.map(run => closeUpBone(closeUp, rig, run.input)) : []
+      const missing = focusIndex.find(index => typeof index === 'string')
+      if (missing !== undefined)
+        throw new ClipRefusal(missing)
+      const facing = closeUp ? runs.map(run => facingSeries(run.input)) : []
+      const panel = closeUp ? { width: CLOSE_UP_SIZE, height: CLOSE_UP_SIZE } : PANEL
+      const framing = framingFor(skin(rig, { rotations: rig.bones.map(bone => bone.bindRotation), positions: rig.bones.map(bone => bone.bindPosition) }), panel.width, panel.height)
       const label = runs.length > 1 ? ['BEFORE', 'AFTER'] : ['RUN']
-      const footer = [`${options.pose === 'trace' ? 'posed from the trace only (untraced twist, physics and accessory bones at bind)' : 'posed from the trace and a reproducing re-run'}; ${options.hz} fps = real time`, CLIP_LIMITS]
+      const footer = [
+        `${options.pose === 'trace' ? 'posed from the trace only (untraced twist, physics and accessory bones at bind)' : 'posed from the trace and a reproducing re-run'}; ${options.hz} fps = real time`,
+        ...closeUp ? [`close-up on ${closeUp.bone}, ${closeUp.span} model units across; views turn with her facing (root yaw over ${FACING_WINDOW_SECONDS} s); side seen from ${closeUp.bone.startsWith('right') ? 'her right' : 'her left'}`] : [],
+        CLIP_LIMITS,
+      ]
       const headerAt = (r: number, t: number) => {
         const run = runs[r]
         const frame = frameAt(run.input, t)
@@ -217,15 +234,26 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
         ]
       }
       // The first frame sizes the video, so the header takes the most lines any frame wraps to.
-      const headerLines = Math.max(...times.flatMap(t => runs.map((_, r) => wrapHeader(headerAt(r, t), PANEL.width, options.views.length).length)))
+      const headerLines = Math.max(...times.flatMap(t => runs.map((_, r) => wrapHeader(headerAt(r, t), panel.width, options.views.length).length)))
       const drawFrame = (t: number) => composeClipFrame(runs.map((run, r) => {
         const frame = frameAt(run.input, t)
-        const vertices = skin(rig, poseFrame(rig, run.input, frame, sources[r].pose(frame)))
+        const posed = poseFrame(rig, run.input, frame, sources[r].pose(frame))
+        const vertices = skin(rig, posed)
+        const index = focusIndex[r]
+        const focus = closeUp && typeof index === 'number' ? focusPoint(rig, posed, index) : null
         return {
           header: headerAt(r, t),
-          panels: options.views.map(view => ({ rgb: rasterize(vertices, rig.triangles, view, framing, view === 'front' ? run.input.root[frame * 4] : run.input.root[frame * 4 + 2]) })),
+          panels: options.views.map((view) => {
+            if (closeUp && focus) {
+              const camera = closeUpCamera(view, closeUp.bone, facing[r][frame])
+              const placed = closeUpFraming(camera, focus, closeUp.span, panel.width)
+              return { rgb: rasterize(vertices, rig.triangles, camera, placed.framing, placed.centre) }
+            }
+            const camera = VIEW_CAMERAS[view]
+            return { rgb: rasterize(vertices, rig.triangles, camera, framing, dot(camera.across, [run.input.root[frame * 4], run.input.root[frame * 4 + 1], run.input.root[frame * 4 + 2]])) }
+          }),
         }
-      }), PANEL.width, PANEL.height, footer, headerLines)
+      }), panel.width, panel.height, footer, headerLines)
       const firstFrame = drawFrame(times[0])
       const encoder = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${firstFrame.width}x${firstFrame.height}`, '-r', String(options.hz), '-i', '-', ...codec.args, options.out], { stdio: ['pipe', 'inherit', 'inherit'] })
       const exited = once(encoder, 'close') as Promise<[number | null]>
@@ -258,6 +286,8 @@ export async function clipMotion3d(args: readonly string[], context: Motion3dCli
         views: options.views,
         size: { width: firstFrame.width, height: firstFrame.height },
         pose: options.pose,
+        // Absent without --focus, so a whole-body clip's record stays what it was.
+        closeUp: closeUp ? { bone: closeUp.bone, span: closeUp.span, size: CLOSE_UP_SIZE, facingWindowSeconds: FACING_WINDOW_SECONDS } : undefined,
         runs: runs.map((run, r) => ({ label: label[r], run: run.dir, commit: run.input.trace.source.gitSha, dirty: run.input.trace.source.dirty, scenario: run.input.trace.source.scenario, unposedBones: sources[r].unposed, rerun: sources[r].rerun })),
         limits: CLIP_LIMITS,
       }, null, 2)}\n`)

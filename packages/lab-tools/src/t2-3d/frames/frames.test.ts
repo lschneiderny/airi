@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { drawText, GLYPH_HEIGHT, GLYPH_WIDTH } from './font'
 import { selectWindows } from './frames'
 import { FramePoseRefusal, poseFrame, skin, unposedBones } from './pose'
-import { framingFor, rasterize } from './render'
+import { framingFor, rasterize, VIEW_CAMERAS } from './render'
 
 const rotZ = (a: number): Quat => [0, 0, Math.sin(a / 2), Math.cos(a / 2)]
 
@@ -41,7 +41,7 @@ function drawnX(spineTurn: number): number {
   const r = rig()
   const bind = skin(r, { rotations: r.bones.map(b => b.bindRotation), positions: r.bones.map(b => b.bindPosition) })
   const framing = framingFor(bind, 100, 150)
-  const rgb = rasterize(skin(r, poseFrame(r, input, 0)), r.triangles, 'front', framing, 0)
+  const rgb = rasterize(skin(r, poseFrame(r, input, 0)), r.triangles, VIEW_CAMERAS.front, framing, 0)
   let sum = 0
   let count = 0
   const hipsRow = Math.floor((framing.top - 0.3) * framing.scale)

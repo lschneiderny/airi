@@ -1,6 +1,7 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { DecodedMotionTrace } from '@proj-airi/qa-tools/t2-3d/read-trace'
 
+import type { CloseUp } from './close-up'
 import type { LocalPose } from './pose'
 import type { FrameView } from './render'
 
@@ -11,8 +12,9 @@ import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-
 
 import * as v from 'valibot'
 
+import { CLOSE_UP_SIZE, closeUpCamera, closeUpFraming, facingSeries, focusPoint } from './close-up'
 import { poseFrame, skin } from './pose'
-import { contactSheet, encodePng, framingFor, rasterize } from './render'
+import { contactSheet, dot, encodePng, framingFor, rasterize, VIEW_CAMERAS } from './render'
 
 /** What frames drawn this way cannot show; printed by the command and stored in index.json. */
 export const FRAMES_LIMITS = 'The frames show the posed skinned mesh only: no face, morphs, textures or materials; bones the rig profile marks physics-owned (most hair and cloth) keep their bind pose relative to their parent bone, and other untraced bones follow the re-run, its physics included, so hair and cloth are not judged here; no lip-sync; motion time, not real-app timing or frame pacing.'
@@ -133,13 +135,17 @@ export interface DrawFramesOptions {
   readonly out: string
   readonly rerun?: (frame: number) => ((bone: number) => LocalPose | null) | undefined
   readonly size?: { readonly width: number, readonly height: number }
+  /** Centre each frame on this bone (its rig index) instead of the whole body; see `close-up.ts`. */
+  readonly closeUp?: CloseUp & { readonly index: number }
 }
 
 export async function drawFrames(options: DrawFramesOptions): Promise<FramesIndexFrame[]> {
   const { input, summary, rig, windows, views, channels, out } = options
-  const { width, height } = options.size ?? { width: 300, height: 450 }
+  const { closeUp } = options
+  const { width, height } = options.size ?? (closeUp ? { width: CLOSE_UP_SIZE, height: CLOSE_UP_SIZE } : { width: 300, height: 450 })
   const bindTrace = skin(rig, { rotations: rig.bones.map(bone => bone.bindRotation), positions: rig.bones.map(bone => bone.bindPosition) })
   const framing = framingFor(bindTrace, width, height)
+  const facing = closeUp ? facingSeries(input) : null
   const index: FramesIndexFrame[] = []
   for (const window of windows) {
     await mkdir(join(out, window.name), { recursive: true })
@@ -147,7 +153,9 @@ export async function drawFrames(options: DrawFramesOptions): Promise<FramesInde
     for (const t of window.times) {
       const frame = frameAt(input, t)
       const frameTime = input.channels[frame * CHANNELS.length]
-      const vertices = skin(rig, poseFrame(rig, input, frame, options.rerun?.(frame)))
+      const posed = poseFrame(rig, input, frame, options.rerun?.(frame))
+      const vertices = skin(rig, posed)
+      const focus = closeUp ? focusPoint(rig, posed, closeUp.index) : null
       const values = Object.fromEntries(channels.map(name => [name, channelValue(input, summary, name, frame)]))
       const events = input.trace.events.filter(e => Math.abs(e.t - frameTime) <= window.step / 2 + 1e-9).map(e => `${e.t.toFixed(3)} ${eventLabel(e)}`)
       const caption = [
@@ -157,8 +165,16 @@ export async function drawFrames(options: DrawFramesOptions): Promise<FramesInde
       ]
       const files: Record<string, string> = {}
       for (const view of views) {
-        const centre = view === 'front' ? input.root[frame * 4] : input.root[frame * 4 + 2]
-        const rgb = rasterize(vertices, rig.triangles, view, framing, centre)
+        let rgb: Uint8Array
+        if (closeUp && focus && facing) {
+          const camera = closeUpCamera(view, closeUp.bone, facing[frame])
+          const placed = closeUpFraming(camera, focus, closeUp.span, width)
+          rgb = rasterize(vertices, rig.triangles, camera, placed.framing, placed.centre)
+        }
+        else {
+          const camera = VIEW_CAMERAS[view]
+          rgb = rasterize(vertices, rig.triangles, camera, framing, dot(camera.across, [input.root[frame * 4], input.root[frame * 4 + 1], input.root[frame * 4 + 2]]))
+        }
         const file = join(window.name, `${frameTime.toFixed(3)}-${view}.png`)
         await writeFile(join(out, file), await encodePng(rgb, width, height))
         files[view] = file

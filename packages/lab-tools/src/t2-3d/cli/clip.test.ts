@@ -11,4 +11,10 @@ describe('lab:motion3d clip arguments', () => {
     expect(() => parseClipArguments(['run', '--model', 'm.pmx', '--out', 'c.avi'], '/w')).toThrow(/\.mp4/)
     expect(() => parseClipArguments(['run', '--model', 'm.pmx', '--before', '1', '--out', 'c.mp4'], '/w')).toThrow(/--around/)
   })
+
+  it('takes a close-up on a traced bone, and refuses a span without one', () => {
+    expect(parseClipArguments(['run', '--model', 'm.pmx', '--focus', 'rightHand', '--span', '2.5', '--out', 'c.webm'], '/w').closeUp).toEqual({ bone: 'rightHand', span: 2.5 })
+    expect(parseClipArguments(['run', '--model', 'm.pmx', '--out', 'c.webm'], '/w').closeUp).toBeNull()
+    expect(() => parseClipArguments(['run', '--model', 'm.pmx', '--span', '2', '--out', 'c.webm'], '/w')).toThrow(/--focus/)
+  })
 })

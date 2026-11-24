@@ -1,8 +1,36 @@
+import type { Vec3 } from '../metrics'
+
 import { Transformer } from '@napi-rs/image'
 
 import { drawText, GLYPH_HEIGHT, GLYPH_WIDTH } from './font'
 
 export type FrameView = 'front' | 'side'
+
+/**
+ * An orthographic view in the trace's axes (y up, z her forward, x her left). `toward` points from the drawing at the
+ * viewer; `across` is the image's rightward axis, up x toward. Neither is mirrored.
+ */
+export interface ViewCamera {
+  readonly across: Vec3
+  readonly toward: Vec3
+}
+
+/** The camera that looks back along `toward`, with y up. */
+export function cameraToward(toward: Vec3): ViewCamera {
+  return { across: [toward[2], 0, -toward[0]], toward }
+}
+
+/**
+ * The world-fixed views. Front: seen from in front of her, her left (+x) on the image right. Side: seen from her left
+ * (+x), her front (+z) on the image left. Their axes are exact, so a drawing through them is the same to the bit as the
+ * fixed front and side projections it replaced.
+ */
+export const VIEW_CAMERAS: Readonly<Record<FrameView, ViewCamera>> = {
+  front: { across: [1, 0, 0], toward: [0, 0, 1] },
+  side: { across: [0, 0, -1], toward: [1, 0, 0] },
+}
+
+export const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 /** One fixed scale for every frame of a command: pixels per model unit, and the trace height drawn at the image top. */
 export interface Framing {
@@ -32,18 +60,17 @@ export function framingFor(bind: Float32Array, width: number, height: number): F
 }
 
 /**
- * Flat-shaded z-buffered orthographic drawing of triangles in the trace's axes (y up, z her forward, x = up x forward,
- * which is her left). Neither view is mirrored. Front: seen from in front of her, her left (+x) on the image right.
- * Side: seen from her left (+x), her front (+z) on the image left. `centre` is the trace x (front) or z (side) drawn at
- * the image's horizontal centre. Returns RGB bytes.
+ * Flat-shaded z-buffered orthographic drawing of triangles in the trace's axes through `camera`. `centre` is the
+ * position along `camera.across` drawn at the image's horizontal centre. Returns RGB bytes.
  */
-export function rasterize(vertices: Float32Array, triangles: ArrayLike<number>, view: FrameView, framing: Framing, centre: number): Uint8Array {
+export function rasterize(vertices: Float32Array, triangles: ArrayLike<number>, camera: ViewCamera, framing: Framing, centre: number): Uint8Array {
   const { width, height, scale, top } = framing
   const rgb = new Uint8Array(width * height * 3).fill(BACKGROUND)
   const depth = new Float32Array(width * height).fill(Number.NEGATIVE_INFINITY)
-  const sx = (i: number) => view === 'front' ? width / 2 + scale * (vertices[i] - centre) : width / 2 - scale * (vertices[i + 2] - centre)
+  const { across, toward } = camera
+  const sx = (i: number) => width / 2 + scale * (across[0] * vertices[i] + across[1] * vertices[i + 1] + across[2] * vertices[i + 2] - centre)
   const sy = (i: number) => (top - vertices[i + 1]) * scale
-  const sz = (i: number) => view === 'front' ? vertices[i + 2] : vertices[i]
+  const sz = (i: number) => toward[0] * vertices[i] + toward[1] * vertices[i + 1] + toward[2] * vertices[i + 2]
   for (let f = 0; f + 2 < triangles.length; f += 3) {
     const a = triangles[f] * 3
     const b = triangles[f + 1] * 3
