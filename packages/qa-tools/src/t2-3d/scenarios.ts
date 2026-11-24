@@ -65,6 +65,11 @@ export type Motion3dCue
     /** User energy handed to Natural and the body, 0-1; the runner starts at 0.5. */
     | { at: number, kind: 'energy', level: number }
     /**
+     * The mood the body reads from here on instead of Natural's, as `--mood` holds one for a whole run: valence and
+     * arousal in [-1, 1], tension in [0, 1]. Recorded as a `mood:<valence>,<arousal>,<tension>` marker.
+     */
+    | { at: number, kind: 'mood', mood: Motion3dMood }
+    /**
      * The chat panel at a point in head widths, as the gaze cursor; `unfold` reports a reply unfolding, the app's case
      * while she answers, so Natural glances at it. Null hides the chat.
      */
@@ -102,6 +107,12 @@ function chatTarget(random: RandomStream): { x: number, y: number } {
 }
 
 const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
+
+export interface Motion3dMood {
+  readonly valence: number
+  readonly arousal: number
+  readonly tension: number
+}
 
 /** A scripted song's beats as a loose detector reports them. */
 export interface Motion3dBeats {
@@ -150,6 +161,25 @@ const idleTimeline: Motion3dScenario['timeline'] = (seed, seconds) => seconds > 
  * comes 5 s after the second, behind her while she walks left (the turn-around); the last fires only in runs over 60 s.
  */
 const WALK_GOALS = [[0.5, 19.5], [28, 8], [33, 19], [45, 16], [54.5, 19], [64, 16]] as const
+
+/**
+ * Walk mood arc version 1: the `walk` route's long first leg, 19.5 leg lengths, walked out and back five times at walk
+ * pace, one leg every 30 s so even a sad or tired leg arrives before the next. The mood changes halfway through each
+ * leg, so every change eases in while she walks, and each mood holds for half a leg either side of a turn: calm,
+ * happy, sad, angry, then tired (calm with energy 0.05), and calm at energy 0.5 again for the last half leg. A calm
+ * mood holds the resting tension 0.15, at which the walk style is the neutral walk.
+ */
+const MOOD_ARC_GOALS = [[0.5, 19.5], [30, 0], [60, 19.5], [90, 0], [120, 19.5]] as const
+const CALM: Motion3dMood = { valence: 0, arousal: 0, tension: 0.15 }
+const MOOD_ARC: readonly Motion3dCue[] = [
+  { at: 0, kind: 'mood', mood: CALM },
+  { at: 15, kind: 'mood', mood: { valence: 0.8, arousal: 0.7, tension: 0.15 } },
+  { at: 45, kind: 'mood', mood: { valence: -0.8, arousal: -0.6, tension: 0.15 } },
+  { at: 75, kind: 'mood', mood: { valence: -0.7, arousal: 0.8, tension: 0.9 } },
+  { at: 105, kind: 'mood', mood: CALM },
+  { at: 105, kind: 'energy', level: 0.05 },
+  { at: 135, kind: 'energy', level: 0.5 },
+]
 
 function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
   const result = [...values]
@@ -373,6 +403,19 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
       ...WALK_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
     ].filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime),
+  },
+  {
+    version: 1,
+    id: 'walk-mood-arc',
+    class: 'walk',
+    warmupSeconds: 10,
+    seconds: 150,
+    maxSeconds: 150,
+    timeline: (seed, seconds) => [
+      { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-walk' } satisfies Motion3dCue,
+      ...MOOD_ARC_GOALS.map(([at, x]): Motion3dCue => ({ at, kind: 'goal', x, pace: 'walk' })),
+      ...MOOD_ARC,
+    ].filter(cue => cue.at < Math.min(seconds, 150)).sort(byTime),
   },
   {
     /**
