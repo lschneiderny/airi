@@ -41,6 +41,14 @@ side and 10 degrees down shows half a second earlier and unfolds a reply, so
 Natural reads it for the quarter second before she answers, until talking
 ends the read. No emotion pulse is sent.
 
+`speak-phrases` (talk, 60 s, version 1) is for visual review of speech
+gestures; no report judges it. Its utterances have two to four phrases, each
+with two to four labelled peaks 0.55 to 1.0 s apart at strengths of 0.35 to
+0.95, the phrases 0.5 to 1.1 s of silence apart (speaking goes on, the voice
+level drops to 0), and 2.5 to 5 s of silence between utterances. It sets no
+energy or mood, so `--energy` and `--mood` hold for the whole run, and a calm
+and an excited run of one seed say the same words.
+
 `gesture-under-clip` (talk, 30 s, version 3) exercises clip ownership with a
 programmatic clip, never an asset. Every time follows from the timeline by one
 rule for every seed: utterance A at 0.5 s (energy 0.85, five peaks); a clip
@@ -836,7 +844,7 @@ needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
-`idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `gesture-under-clip`, `emotions`, `walk`,
+`idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `speak-phrases`, `gesture-under-clip`, `emotions`, `walk`,
 `walk-mood-arc`, `touch` and `sleepy-no-clip`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
 Scored duration is capped at 120 s, except for `walk-mood-arc` (150 s) and the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
