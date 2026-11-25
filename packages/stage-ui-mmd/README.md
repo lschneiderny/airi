@@ -345,7 +345,7 @@ local yaw in radians.
 Under the Natural driver the whole body is posed by the pure performer of
 `@proj-airi/motion-driver-humanoid/performance`, seeded with FNV-1a over the
 model key; no stage maps Natural's head and body channels onto bones in fixed
-shares. The adapter has four parts:
+shares. The adapter has five parts:
 
 - `MMDBodyClock` (`body/clock.ts`): one 120 Hz clock. For each tick the
   `locomotion` stage steps the gait, then the performer with that tick's gait
@@ -353,6 +353,18 @@ shares. The adapter has four parts:
   are blended linearly across the ticks of a frame, and the stages show the two
   latest ticks blended by the leftover fraction, so a seed moves the same at
   any frame rate.
+- `readMMDBodyModel` (`body/body-model.ts`): the body model of the loaded
+  rig, built once from the mesh geometry with its triangles, the rig profile
+  and the PMX joints
+  (`buildBodyModel` of `@proj-airi/motion-driver-humanoid/body-model`). The
+  joints' limits and positions and the centre of each simulated rigid body
+  give each simulated bone's mobility, and the rigid bodies' collision
+  groups and masks say which simulated bones the simulator collides with a
+  body that follows an arm; no rigid body's shape, size or rotation is read.
+  The model opens the
+  resting arm clear of a garment that collides with it, up to 30 degrees. A
+  deform bone that copies a leg bone's whole rotation through an append
+  transform moves with that leg bone.
 - `buildBodyRigTraits` (`body/rig-traits.ts`): the rig's bind positions, spine
   chain, arm segments, feet and the kinematic arm-test and head bodies, each
   re-expressed in its nearest canonical ancestor's frame. A rig without hips,
