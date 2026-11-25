@@ -1,6 +1,6 @@
 import { DEG } from './channels'
 
-export type HandShape = 'relaxed' | 'open' | 'flat' | 'point' | 'cup' | 'fist'
+export type HandShape = 'relaxed' | 'open' | 'flat' | 'point' | 'cup' | 'fist' | 'thinking' | 'comb' | 'wrap'
 
 /** Curl of one digit's three joints, degrees, knuckle to tip (the thumb: metacarpal, proximal, distal). */
 export type DigitCurl = readonly [number, number, number]
@@ -26,21 +26,31 @@ export interface HandShapeSpec {
  * - `relaxed`, the rest hand: curl grows from the index to the little finger and is largest at the middle joint, so the
  *   tips fall apart in a cascade; a 4 degree fan keeps the little finger off the ring finger. The thumb lies soft along
  *   the side of the index.
- * - `open`, the presenting hand of palm-up, press, frame and the hair touch: nearly straight with the same cascade, an
- *   8 degree fan and the thumb relaxed out to the side, not a blade.
+ * - `open`, the presenting hand of palm-up, press and frame: nearly straight with the same cascade, an 8 degree fan
+ *   and the thumb relaxed out to the side, not a blade.
  * - `flat`, the chop's blade: straight fingers, no fan, the thumb drawn in along the index.
- * - `cup`, a hold: curl at the knuckles more than at the tips, the thumb opposed under the fingers.
+ * - `cup`, a hold: the fingers bend mostly at the knuckles and stay long beyond them, so seen from the thumb side the
+ *   hand is a bowl, not a hook; the thumb opposed under the fingers.
  * - `fist`, closed to the knee of each finger joint's limit (`limitChannel`), so the tips reach the palm; the thumb
  *   opposes across the palm and curls over the outside of the index and middle fingers' middle phalanges.
  * - `point`, the index straight and every other digit as in the fist.
+ * - `thinking`, the thinking hand: the index nearly straight to rest its tip on the face, the other fingers curled
+ *   loosely under it, half of the fist's curl, and the thumb tucked along the middle finger.
+ * - `comb`, the hair tuck's hand: the fingers bend at the knuckles only, straight beyond them and fanned, as fingers go
+ *   into or along the hair; with the tips curled they read as a claw.
+ * - `wrap`, the clasp's upper hand: every joint curled so the fingers lie round the lower hand's back, the thumb at
+ *   rest beside them.
  */
 export const HAND_SHAPES: Readonly<Record<HandShape, HandShapeSpec>> = {
   relaxed: { fingers: [[14, 20, 9], [17, 24, 11], [21, 28, 13], [25, 32, 15]], spread: 4, thumb: [8, 8, 10], opposition: 10 },
   open: { fingers: [[5, 8, 4], [7, 10, 5], [10, 13, 6], [13, 17, 8]], spread: 8, thumb: [5, 8, 10], opposition: 4 },
   flat: { fingers: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], spread: 0, thumb: [15, 0, 0], opposition: 0 },
   point: { fingers: [[0, 4, 2], [89, 100, 68], [90, 100, 68], [90, 100, 68]], spread: 0, thumb: [0, 40, 60], opposition: 38 },
-  cup: { fingers: [[34, 28, 12], [36, 30, 13], [38, 32, 14], [40, 34, 15]], spread: 3, thumb: [15, 15, 10], opposition: 25 },
+  cup: { fingers: [[38, 18, 8], [40, 20, 9], [42, 22, 10], [45, 24, 11]], spread: 2, thumb: [10, 8, 6], opposition: 35 },
   fist: { fingers: [[88, 100, 68], [89, 100, 68], [90, 100, 68], [90, 100, 68]], spread: 0, thumb: [0, 40, 60], opposition: 38 },
+  thinking: { fingers: [[6, 10, 5], [55, 70, 35], [62, 75, 38], [68, 80, 40]], spread: 2, thumb: [0, 20, 30], opposition: 22 },
+  comb: { fingers: [[25, 6, 3], [28, 7, 3], [31, 8, 4], [34, 9, 4]], spread: 8, thumb: [5, 5, 8], opposition: 8 },
+  wrap: { fingers: [[28, 32, 15], [31, 35, 16], [34, 38, 17], [38, 40, 18]], spread: 1, thumb: [5, 5, 8], opposition: 5 },
 }
 
 /**

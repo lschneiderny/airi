@@ -523,7 +523,7 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'hair-touch': {
-        // 4e act 8: the hand rises to the side of the head with the fingers at `cup`, sweeps back and returns (`TUCK`),
+        // 4e act 8: the hand rises to the side of the head with the fingers at `comb`, sweeps back and returns (`TUCK`),
         // the head tilted 4 deg toward it. A rig whose arm cannot reach the anchor keeps its hand hanging (6.3).
         if (age >= TUCK.reach && age < TUCK.sweep)
           reach('hair-touch', sideOf(s))
