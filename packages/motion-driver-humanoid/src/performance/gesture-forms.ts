@@ -38,7 +38,7 @@ export interface GestureFormSpec {
 
 export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>> = {
   'beat': { shape: 'cup', shapeShare: 0.45, stroke: [0, -0.06, 0.03], scale: 2, pron: 20 * DEG, wflex: 10 * DEG, wdev: 0, strokeSeconds: 0.11, hold: [0.1, 0.25], hands: 'one' },
-  'palm-up': { shape: 'open', shapeShare: 1, stroke: [0.1, -0.02, 0.08], scale: 2, pron: -70 * DEG, wflex: -12 * DEG, wdev: 0, strokeSeconds: 0.16, hold: [0.3, 0.8], hands: 'either' },
+  'palm-up': { shape: 'open', shapeShare: 1, stroke: [0.07, -0.01, 0.1], scale: 2, pron: -70 * DEG, wflex: -12 * DEG, wdev: 0, strokeSeconds: 0.16, hold: [0.3, 0.8], hands: 'either' },
   'press': { shape: 'open', shapeShare: 1, stroke: [0, -0.1, 0.02], scale: 2, pron: 80 * DEG, wflex: -8 * DEG, wdev: 0, strokeSeconds: 0.15, hold: [0.25, 0.6], hands: 'either' },
   'point': { shape: 'point', shapeShare: 1, stroke: [-0.02, 0.04, 0.16], scale: 1.46, pron: 60 * DEG, wflex: 0, wdev: 0, strokeSeconds: 0.14, hold: [0.3, 0.7], hands: 'one' },
   'chop': { shape: 'flat', shapeShare: 1, stroke: [0, -0.14, 0.01], scale: 1.55, pron: 0, wflex: 0, wdev: 10 * DEG, strokeSeconds: 0.13, hold: [0.1, 0.2], hands: 'one' },

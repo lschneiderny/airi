@@ -774,6 +774,28 @@ describe('co-speech gestures', () => {
     }
   })
 
+  it('offers the palm-up hand toward the listener more than out to the side', () => {
+    // The wrist's travel over the 0.15 s before the hit, in the chest frame: the offer went 0.7 to 0.9 times as far
+    // forward as out, ending lower and closer than the offer it replaced.
+    const speak = [0.8, 1.8, 3.03, 3.98, 5.17, 6.1, 7.2].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
+    const keys = new GestureKeys(chisaTraits, createBodyPerformer({ traits: chisaTraits, seed: 1 }).restChannels())
+    let offers = 0
+    for (let seed = 1; seed <= 20; seed++) {
+      const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 8.5, { seed, traits: chisaTraits })
+      const frameAt = (time: number) => run.frames.findIndex(frame => frame.time >= time)
+      for (const offer of strokes(run).filter(stroke => stroke.form === 'palm-up')) {
+        for (const side of offer.hand === 'both' ? SIDES : [offer.hand === 'left' ? 'left' as const : 'right' as const]) {
+          const wrist = (time: number) => keys.wrist(side, Float64Array.from(run.frames[frameAt(time)].channels.subarray(ARM_START[side], ARM_START[side] + 26)))
+          const [from, to] = [wrist(offer.hit - 0.15), wrist(offer.hit)]
+          const out = (side === 'left' ? 1 : -1) * (to[0] - from[0])
+          expect(to[2] - from[2], `seed ${seed}, ${side} at ${offer.hit.toFixed(2)}`).toBeGreaterThan(1.3 * out)
+          offers++
+        }
+      }
+    }
+    expect(offers).toBeGreaterThanOrEqual(15)
+  }, 120_000)
+
   it('sends consecutive beats of a hand along different paths', () => {
     // The speak scenario's peaks; a beat's direction is the wrist's travel over the 0.1 s before its hit. One beat in ten
     // used to repeat the last one's direction within 1.5 degrees.
