@@ -195,6 +195,9 @@ const MOOD_ARC: readonly Motion3dCue[] = [
   { at: 135, kind: 'energy', level: 0.5 },
 ]
 
+/** Seconds between `emotion-bands` pulses: a clear pulse has released to under 2 % of its hold 8 s after its cue. */
+const EMOTION_BAND_SPACING = 9
+
 function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
   const result = [...values]
   for (let i = result.length - 1; i > 0; i--) {
@@ -512,6 +515,81 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
         x: random() * 2 - 1,
         y: random() * 2 - 1,
       }))
+    },
+  },
+  {
+    /**
+     * Version 1, for visual review of the emotion postures at two strengths: every emotion but neutral as a clear pulse
+     * and, 9 s later, as a strong one, in a seeded order of emotions, one pulse every 9 s from 1 s, so each pulse holds
+     * and has released before the next. The clear and strong peaks of one emotion sit side by side on a sheet.
+     */
+    version: 1,
+    id: 'emotion-bands',
+    class: 'emotion',
+    warmupSeconds: 10,
+    seconds: 200,
+    maxSeconds: 200,
+    timeline(seed, seconds) {
+      const order = shuffled(PERFORMANCE_EMOTIONS.filter(emotion => emotion !== 'neutral'), createRandomStream(seed))
+      return order.flatMap((emotion, i): Motion3dCue[] => (['clear', 'strong'] as const).map((band, j) => ({
+        at: 1 + (2 * i + j) * EMOTION_BAND_SPACING,
+        kind: 'emotion',
+        emotion,
+        band,
+        trialId: `s${seed}-${emotion}-${band}`,
+      }))).filter(cue => cue.at < Math.min(seconds, 200))
+    },
+  },
+  {
+    /**
+     * Version 1, for visual review of where a touch lands: a head poke on her left and one on her right, a body poke on
+     * her left, one on her right and one low in the middle, 6 s apart from 1 s, then a held head pet on her left (4 s)
+     * and one on her right (4 s), 8 s apart. Touch x runs from the viewer's left (-1) to the viewer's right (1), as the
+     * stage reports it, so +x is her left while she faces the viewer. Only a seeded jitter of each place depends on the
+     * seed.
+     */
+    version: 1,
+    id: 'touch-sides',
+    class: 'react',
+    warmupSeconds: 10,
+    seconds: 50,
+    maxSeconds: 50,
+    timeline(seed, seconds) {
+      const random = createRandomStream(seed)
+      const jitter = () => 0.1 * (random() * 2 - 1)
+      const pokes = ([['head', 0.7, -0.2], ['head', -0.7, -0.2], ['body', 0.7, 0], ['body', -0.7, 0], ['body', 0, 0.6]] as const)
+        .map(([region, x, y], i): Motion3dCue => ({ at: 1 + 6 * i, kind: 'touch', touch: 'poke', region, x: x + jitter(), y: y + jitter() }))
+      const pets = [0.45, -0.45].flatMap((x, i): Motion3dCue[] => [
+        { at: 31 + 8 * i, kind: 'touch', touch: 'pet-start', region: 'head', x: x + jitter(), y: 0.2 },
+        { at: 35 + 8 * i, kind: 'touch', touch: 'pet-end', region: 'head', x: 0, y: 0 },
+      ])
+      return [...pokes, ...pets].filter(cue => cue.at < Math.min(seconds, 50))
+    },
+  },
+  {
+    /**
+     * Version 1, for visual review of an emotion over other performances: two 7 s utterances at energy 0.65 with five
+     * seeded peaks each, love pulsed 2 s into the first and angry 2 s into the second; then a walk to +8 leg lengths at
+     * 20 s with happy pulsed 3 s into it, and back to 0 at 34 s with surprised pulsed 3 s into that leg. Every pulse
+     * is clear. Only the speech peaks depend on the seed.
+     */
+    version: 1,
+    id: 'emotion-compose',
+    class: 'emotion',
+    warmupSeconds: 10,
+    seconds: 50,
+    maxSeconds: 50,
+    timeline(seed, seconds) {
+      const random = createRandomStream(seed)
+      const utterances = [1, 10].flatMap((at): Motion3dCue[] => [
+        { at, kind: 'energy', level: 0.65 },
+        voiceCue(at, 7, peaksFor(5, random)),
+        { at: at + 7, kind: 'energy', level: 0.5 },
+      ])
+      const pulses = ([[3, 'love'], [12, 'angry'], [23, 'happy'], [37, 'surprised']] as const)
+        .map(([at, emotion]): Motion3dCue => ({ at, kind: 'emotion', emotion, band: 'clear' }))
+      const goals: Motion3dCue[] = [{ at: 20, kind: 'goal', x: 8, urgency: WALK_URGENCY }, { at: 34, kind: 'goal', x: 0, urgency: WALK_URGENCY }]
+      return [...utterances, ...pulses, ...goals].filter(cue => cue.at < Math.min(seconds, 50)).sort(byTime)
     },
   },
 ]

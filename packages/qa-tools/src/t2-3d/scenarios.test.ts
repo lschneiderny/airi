@@ -9,7 +9,7 @@ import { motion3dScenarios, scriptBeats } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'speak-phrases': 5, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'speak-phrases': 5, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4, 'emotion-bands': 22, 'touch-sides': 9, 'emotion-compose': 12 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)

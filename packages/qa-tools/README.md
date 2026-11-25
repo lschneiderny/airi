@@ -98,6 +98,20 @@ she walks. A `mood` cue replaces `--mood` from its time on. `lab:motion3d report
 walk-style` measures it; its frames and clips replay it like any scenario.
 Touch is reported only and has no human reference.
 
+Three scenarios serve visual review of the emotion and touch layers and feed no
+gate or report. `emotion-bands` (version 1, emotion class, 200 s, also its cap)
+pulses every emotion but neutral as a clear pulse and, 9 s later, as a strong
+one, in a seeded order, one pulse every 9 s from 1 s, each labelled
+`s<seed>-<emotion>-<band>`. `touch-sides` (version 1, react class, 50 s, also its
+cap) pokes the head on her left and on her right, the body on her left, on her
+right and low in the middle, 6 s apart from 1 s, then pets her head on her left
+from 31 s and on her right from 39 s, 4 s each; touch x runs from the viewer's
+left to the viewer's right, as the stage reports it, so +x is her left. Only a
+seeded jitter of each place depends on the seed. `emotion-compose` (version 1,
+emotion class, 50 s, also its cap) pulses love and angry 2 s into two 7 s
+utterances at 1 s and 10 s, then walks to +8 leg lengths at 20 s with happy
+pulsed 3 s into the leg, and back to 0 at 34 s with surprised 3 s into it.
+
 `sleepy-no-clip` (C004 of goal 4, idle class) assigns no stance clip. Its
 100 s warm-up puts the director's idle-to-sit time, 120 s after load, at 20 s
 of scenario time; the user goes away at 40 s (an `activity` cue with `away`,
@@ -845,9 +859,9 @@ load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
 `idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `speak-phrases`, `gesture-under-clip`, `emotions`, `walk`,
-`walk-mood-arc`, `touch` and `sleepy-no-clip`. Seed defaults to 1;
+`walk-mood-arc`, `touch`, `sleepy-no-clip`, `emotion-bands`, `touch-sides` and `emotion-compose`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
-Scored duration is capped at 120 s, except for `walk-mood-arc` (150 s) and the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
+Scored duration is capped at 120 s, except for `walk-mood-arc` (150 s), `emotion-bands` (200 s), `touch-sides` and `emotion-compose` (50 s each) and the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
 `sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A
 600 s run is about five times a 120 s run in wall time and output size.
 Relative paths resolve against `INIT_CWD`.
