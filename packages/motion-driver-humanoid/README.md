@@ -795,11 +795,13 @@ poke fully to one side and equal to it for a central one. A poke within
 Natural's 2 s dedupe window flinches at 0.6. A head poke raises the poked side's
 guard, requests the hair touch on that side for 1.4 s where the rig reaches it,
 and lets the upper torso follow 30 % of Natural's head pulse, 90 ms late. A pet
-drops the shoulders and bends the trunk with its level, rolls the trunk toward
-the hand, pulls the support to the hand's side above half level, eases the
-finger curl, and lets the trunk follow Natural's stroke rock (0.35 upper, 0.18
-mid). Arm terms yield to an arm a gesture layer moves; owned groups receive
-none. Drag is not realised yet.
+leans the trunk into the hand, rolls the near shoulder in, drops both shoulders,
+pulls the support to the hand's side above half level, eases the finger curl,
+and lets the trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). The lean
+and the shoulders give with a 0.25 s time constant and relax with 0.7 s, so they
+let go slowly after the hand leaves; the shoulder drop saturates a degree below
+the rest pose, at the clavicle's limit. Arm terms yield to an arm a gesture
+layer moves; owned groups receive none. Drag is not realised yet.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
 by gait weight, and torso/arm terms add. `armLift` is a host's per-side override

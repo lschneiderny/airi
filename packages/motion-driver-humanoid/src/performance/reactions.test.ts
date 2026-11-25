@@ -124,18 +124,40 @@ describe('touch reaction layer', () => {
   })
 
   // Re-pinned with the side fix: a hand at +x pets her left.
-  it('drops the shoulders further the more she is petted, and leans toward the hand', () => {
+  it('gives the near shoulder more the more she is petted, and leans toward the hand', () => {
     const drop = [0.25, 0.5, 1].map(level => layerEffect(petting(level, 1), 3)[c('leftClavElev')].at(-1) ?? 0)
     expect(drop[0]).toBeLessThan(0)
     expect(drop[1]).toBeLessThan(drop[0])
     expect(drop[2]).toBeLessThan(drop[1])
-    expect(layerEffect(petting(1, 1), 3)[c('midRoll')].at(-1)).toBeLessThan(-1 * DEG)
+    const full = layerEffect(petting(1, 1), 3)
+    expect(full[c('rightClavElev')].at(-1)).toBeGreaterThan(drop[2])
+    expect(full[c('leftClavProt')].at(-1)).toBeGreaterThan(2 * DEG)
+    expect(full[c('rightClavProt')].at(-1)).toBe(0)
+    expect(full[c('midRoll')].at(-1)).toBeLessThan(-2 * DEG)
     const performer = createBodyPerformer({ traits, seed: 1, layers: [createReactionLayer()] })
     const script = petting(1, 1)
     let target = 0
     for (let tick = 0; tick < 3 * 120; tick++)
       target = performer.step(script(tick / 120)).diagnostics.shiftTarget
     expect(target).toBe(-1)
+  })
+
+  it('lets the shoulder and the lean go slower than they gave, and relaxes them back after the pet', () => {
+    const pet: Script = (t) => {
+      const input = quietInput(t)
+      const active = t >= 0.5 && t < 3
+      return { ...input, events: { ...input.events, pet: { level: active ? 1 : 0, active, x: 1, y: 0 } } }
+    }
+    const d = layerEffect(pet, 7)
+    for (const channel of [c('leftClavProt'), c('midRoll')]) {
+      const trace = d[channel]
+      const held = trace[Math.round(3 * 120) - 1]
+      const crossing = (from: number, test: (v: number) => boolean) => trace.slice(from).findIndex(test) / 120
+      const give = crossing(Math.round(0.5 * 120), v => Math.abs(v) > 0.5 * Math.abs(held))
+      const relax = crossing(Math.round(3 * 120), v => Math.abs(v) < 0.5 * Math.abs(held))
+      expect(relax, BODY_CHANNELS[channel]).toBeGreaterThan(1.5 * give)
+      expect(Math.abs(trace.at(-1) ?? 0), BODY_CHANNELS[channel]).toBeLessThan(0.05 * Math.abs(held))
+    }
   })
 
   it('writes no term to an owned group', () => {

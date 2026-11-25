@@ -35,6 +35,11 @@ const REPEAT = { seconds: 2, scale: 0.6 }
 const HEAD_FOLLOW = { seconds: 15 * 0.18, fade: 0.5, share: 0.3, delay: 0.09 }
 /** 4d pet: the trunk follows Natural's stroke-driven head rock at 0.35 (upper, 120 ms late) and 0.18 (mid, 220 ms late). */
 const PET = { upper: { share: 0.35, delay: 0.12 }, mid: { share: 0.18, delay: 0.22 } }
+/**
+ * The pet's give: the near shoulder drops and rolls in toward the hand as she leans into it, faster than it lets go, so
+ * it relaxes back after the hand leaves (time constants, seconds).
+ */
+const PET_GIVE = { in: 0.25, out: 0.7 }
 const REST = 1e-6
 
 const c = channelIndex
@@ -60,8 +65,9 @@ interface Flinch {
  * A body poke recoils the trunk and pelvis away from the spot and turns the chest away; the poked side protects itself
  * first, its arm clamping in with the forearm across the spot, and the far arm follows later and softer. A head poke lets
  * the upper torso follow Natural's head pulse, hunches the poked side's shoulder toward the ear, and takes the poked
- * side's hand to the side of the head for a moment where the rig reaches it. A pet relaxes the shoulders, leans toward
- * the hand, lets the trunk follow Natural's stroke rock, and pulls the support toward the hand. Arm terms yield to an arm a gesture moves; owned groups receive no term.
+ * side's hand to the side of the head for a moment where the rig reaches it. A pet leans the trunk into the hand, lets
+ * the near shoulder give and roll in, relaxes the fingers, lets the trunk follow Natural's stroke rock, and pulls the
+ * support toward the hand. Arm terms yield to an arm a gesture moves; owned groups receive no term.
  */
 export function createReactionLayer(): PerformanceLayer {
   const channels = new Float64Array(BODY_CHANNELS.length)
@@ -74,6 +80,9 @@ export function createReactionLayer(): PerformanceLayer {
   let petting = false
   let petMoving = false
   let petLinks = createPetLinks()
+  /** The shoulders' give and the hand's side in the body's sign (+1 her right), which outlast the pet level by `PET_GIVE.out`. */
+  let give = 0
+  let giveSide = 0
   let time = 0
 
   function createPetLinks() {
@@ -174,7 +183,14 @@ export function createReactionLayer(): PerformanceLayer {
     const { pet } = context.input.events
     const rock = context.input.head.terms.pet
     const axes = [rock.yaw, rock.pitch, rock.roll]
-    let moving = pet.level > 0
+    const l = pet.level
+    // The hand's side in the body's sign, +1 her right, full a quarter of the head from its middle.
+    if (l > 0)
+      giveSide = Math.max(-1, Math.min(1, -2 * pet.x))
+    give += (l - give) * (1 - Math.exp(-BODY_TICK / (l > give ? PET_GIVE.in : PET_GIVE.out)))
+    if (l === 0 && give < REST)
+      give = 0
+    let moving = l > 0 || give > 0
     for (let axis = 0; axis < 3; axis++) {
       const upper = petLinks.upper[axis].step(axes[axis])[0]
       const mid = petLinks.mid[axis].step(axes[axis])[0]
@@ -190,13 +206,20 @@ export function createReactionLayer(): PerformanceLayer {
       return false
     }
     petMoving = true
-    const l = pet.level
-    channels[c('lowerPitch')] += 2 * l * DEG
-    // +x is her left, and a positive roll leans her toward her right.
-    channels[c('midRoll')] += -2 * pet.x * l * DEG
+    // She leans into the hand: the trunk rolls toward its side, more in the chest than the waist, and lets go as slowly
+    // as the shoulder.
+    channels[c('lowerPitch')] += 2 * give * DEG
+    channels[c('midRoll')] += 3 * giveSide * give * DEG
+    channels[c('lowerRoll')] += 1.5 * giveSide * give * DEG
+    const activation = context.previous.diagnostics.gesture.activation
     for (const side of SIDES) {
       const start = ARM_START[side]
-      channels[start] += -3 * l * DEG
+      // Both shoulders drop and the near one rolls in toward the hand. The rest pose holds the clavicles about a degree
+      // above their lower limit, so the drop saturates there; the roll-in and the lean carry the near side's give.
+      const near = Math.max(0, (side === 'right' ? 1 : -1) * giveSide)
+      const free = (1 - activation[side]) * give * DEG
+      channels[start] += free * -(2 + 3 * near)
+      channels[start + 1] += free * 3 * near
       for (let finger = start + 12; finger < start + 24; finger++)
         channels[finger] += -0.2 * l * context.rest[finger]
     }
@@ -248,6 +271,7 @@ export function createReactionLayer(): PerformanceLayer {
       petting = false
       petMoving = false
       petLinks = createPetLinks()
+      give = giveSide = 0
       time = 0
       Object.assign(report, { seq: 0, kind: null })
     },
