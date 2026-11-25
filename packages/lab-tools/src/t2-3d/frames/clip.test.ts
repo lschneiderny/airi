@@ -30,6 +30,11 @@ describe('clip', () => {
     expect(heldLines(events, {}, 4)).toEqual([])
   })
 
+  it('names a pep above 0 and leaves the calm default unnamed', () => {
+    expect(heldLines([], { pep: 1 }, 0)).toEqual(['pep 1'])
+    expect(heldLines([], { pep: 0 }, 0)).toEqual([])
+  })
+
   it('sizes the header to every held input and caption, wrapped to a one-view panel', () => {
     const style = GAIT_STYLE_KEYS.reduce<GaitStyle>((held, key) => ({ ...held, [key]: held[key] + 0.1 }), NEUTRAL_GAIT_STYLE)
     const held = { mood: { valence: 0.8, arousal: 0.8, tension: 0.15 }, energy: 0.05, walkStyle: style }

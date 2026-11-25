@@ -42,6 +42,12 @@ it('takes a walk style in degrees for its angles, a held mood and a starting ene
   expect(options.energy).toBe(0.2)
 })
 
+it('takes a pep for the whole run, the calm 0 by default', () => {
+  const context = fixture()
+  const parse = (extra: string[]) => parseRunArguments(['--model', 'model.pmx', '--scenario', 'speak', '--out', 'capture', ...extra], context.cwd).pep
+  expect([parse([]), parse(['--pep', '0.5']), parse(['--pep', '1'])]).toEqual([0, 0.5, 1])
+})
+
 it.each(['idle', 'sleepy-no-clip'])('accepts up to 600 s for the idle-class scenario %s (owner decision O1)', (scenario) => {
   const context = fixture()
   expect(parseRunArguments(['--model', 'model.pmx', '--scenario', scenario, '--seconds', '600', '--out', 'capture'], context.cwd).seconds).toBe(600)
@@ -63,6 +69,8 @@ it.each([
   ['walk style key without a value', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style', 'head', '--out', 'capture']],
   ['mood with an empty value', ['--model', 'model.pmx', '--scenario', 'walk', '--mood=0,,0', '--out', 'capture']],
   ['empty energy', ['--model', 'model.pmx', '--scenario', 'walk', '--energy=', '--out', 'capture']],
+  ['pep out of range', ['--model', 'model.pmx', '--scenario', 'speak', '--pep', '1.5', '--out', 'capture']],
+  ['empty pep', ['--model', 'model.pmx', '--scenario', 'speak', '--pep=', '--out', 'capture']],
   ['walk style assignment with two values', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style=head=10=2', '--out', 'capture']],
   ['empty walk style', ['--model', 'model.pmx', '--scenario', 'walk', '--walk-style=', '--out', 'capture']],
 ])('refuses %s with exit 2 before a run starts', async (_, args) => {
