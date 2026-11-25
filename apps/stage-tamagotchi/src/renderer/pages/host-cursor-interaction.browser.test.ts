@@ -66,13 +66,16 @@ describe('classic cursor trust', () => {
         return view.unmount()
       })
       await nextTick()
-      for (const timestamp of [0, 1000 / 60, 2000 / 60]) {
+      const layer = view.getByTestId('stage-placement').element().parentElement?.parentElement
+      // The pixel under the cursor is read back from the GPU some frames after it is asked for, so a live cursor gets
+      // frames until the stage fades; three frames are enough to show that an untrusted one never asks.
+      const frames = live ? 300 : 3
+      for (let frame = 0; frame < frames && (frame < 3 || !layer?.classList.contains('op-0')); frame++) {
         await new Promise(requestAnimationFrame)
         gl.finish()
-        stageFrame.value?.({ timestamp, delta: 1000 / 60 })
+        stageFrame.value?.({ timestamp: frame * 1000 / 60, delta: 1000 / 60 })
         await nextTick()
       }
-      const layer = view.getByTestId('stage-placement').element().parentElement?.parentElement
 
       expect(layer?.classList.contains('op-0')).toBe(live)
       if (live) {
