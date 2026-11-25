@@ -62,6 +62,13 @@ const DOZE_DRIFT = { pelvis: 0.003, chest: 1.5 } as const
  * is up before her head and gaze have come back. A doze entered from a rest starts settled.
  */
 const STAGES = { pelvis: [0, 0.8], chest: [0.3, 1.2], head: [0.7, 1.5], wake: 0.8 } as const
+/**
+ * Waking, her weight comes back from the one leg she rested on to `WAKE_SUPPORT` of it, on the same side, while the
+ * chest rises: the stance hip comes down level, the pelvis rises and the free heel settles, so her legs stand up with
+ * her chest, a little softness left in the free knee. Otherwise the rest's full one-leg support outlived it until the
+ * posture's next shift, a free knee folded under a body that was already awake (stand-life audit rank 4).
+ */
+const WAKE_SUPPORT = 0.6
 type Stage = 'pelvis' | 'chest' | 'head'
 const STAGE_OF: Partial<Record<number, Stage>> = {}
 for (const channel of ['pelvisX', 'pelvisY', 'pelvisZ', 'hipsRoll', 'lowerPitch', 'leftFootPitch', 'rightFootPitch'] as const)
@@ -104,6 +111,8 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let endedAt = 0
   let episodes = 0
   let side = 1
+  /** The side she stood on as she woke (`WAKE_SUPPORT`), 0 when she stood even. */
+  let wakeSide = 0
   let clasped = false
   /** Whether this episode settles in stages (`STAGES`): not when it follows another one still shown. */
   let staged = true
@@ -129,9 +138,13 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
     const { input, time } = context
     const rest = input.directive.rest
     if (rest !== state) {
+      // The leg she rested on when she wakes: the posture's support as the rest lets go.
+      if (rest === 'none' && shown !== null)
+        wakeSide = Math.sign(context.previous.support)
       state = rest
       endedAt = time
       if (rest !== 'none') {
+        wakeSide = 0
         // Each rest or doze episode draws its own side or nod times from a stream of its own count.
         episodes++
         const random = createRandomStream(deriveSeed(options.seed, 300 + episodes))
@@ -219,6 +232,8 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       modulation.followerK = DOZE.tension
     }
     output.modulation = modulation
+    if (state === 'none' && wakeSide !== 0 && free('lowerBody') && free('upperBody'))
+      plan.support = wakeSide * WAKE_SUPPORT
     const waking = state === 'none' ? wakingTrunkShare(time - endedAt) : 1
     for (let channel = 0; channel < channels.length; channel++) {
       const stage = STAGE_OF[channel]
@@ -253,6 +268,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       state = 'none'
       shown = null
       staged = true
+      wakeSide = 0
       episodes = 0
       clasped = false
       nods = []

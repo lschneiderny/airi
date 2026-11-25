@@ -153,6 +153,20 @@ describe('the rest layer', () => {
     expect(stance * (delta('headRoll') + delta('neckRoll'))).toBeGreaterThan(3)
   })
 
+  it('wakes from a rest onto a soft half stance on the leg she rested on, the free heel down, instead of staying on one leg', () => {
+    // The posture's own schedule holds the support she wakes onto: no shifts of its own, no fixed support.
+    const frames = run(resting('rest', 2, 20, t => ({ ...quietInput(t), posture: { amplitude: 0, shiftRate: 0, support: null } })), 30)
+    const rested = frames[at(18)].support
+    expect(Math.abs(rested)).toBeGreaterThan(0.9)
+    const woken = frames[at(25)]
+    expect(woken.support * Math.sign(rested)).toBeGreaterThan(0.5)
+    expect(woken.support * Math.sign(rested)).toBeLessThan(0.7)
+    // The free foot's heel, lifted while she rested on one leg, is down.
+    const free = rested > 0 ? 'leftFootPitch' : 'rightFootPitch'
+    expect(frames[at(18)].channels[c(free)] / DEG).toBeLessThan(-3)
+    expect(woken.channels[c(free)] / DEG).toBeGreaterThan(-1)
+  })
+
   it('keeps the dozing knees and chest giving through the long pauses between nods', () => {
     const still = run(quietInput, 60)
     const doze = run(resting('doze', 2, 60, quietInput), 60)
