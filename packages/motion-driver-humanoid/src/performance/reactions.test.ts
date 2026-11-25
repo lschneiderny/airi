@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
-import { channelTrace, chisaTraits, fixtureRigs, quietInput } from './performance.test-fixtures'
+import { channelTrace, chisaTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 import { createReactionLayer } from './reactions'
 
 const traits = fixtureRigs[0].traits
@@ -175,6 +175,19 @@ describe('touch reaction layer', () => {
       expect(relax, BODY_CHANNELS[channel]).toBeGreaterThan(1.5 * give)
       expect(Math.abs(trace.at(-1) ?? 0), BODY_CHANNELS[channel]).toBeLessThan(0.05 * Math.abs(held))
     }
+  })
+
+  it('takes the weight back to the stance she had after the pet', () => {
+    const performer = createBodyPerformer({ traits, seed: 1, layers: [createReactionLayer()] })
+    const targets: number[] = []
+    for (let tick = 0; tick < 8 * 120; tick++) {
+      const t = tick / 120
+      const input = idleInput(t)
+      const active = t >= 0.5 && t < 3
+      targets.push(performer.step({ ...input, events: { ...input.events, pet: { level: active ? 1 : 0, active, x: 1, y: 0 } } }).diagnostics.shiftTarget)
+    }
+    expect(targets[Math.round(2.9 * 120)]).toBe(-1)
+    expect(Math.abs(targets.at(-1)! - targets[59])).toBeLessThan(0.02)
   })
 
   it('writes no term to an owned group', () => {

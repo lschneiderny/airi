@@ -187,6 +187,21 @@ describe('emotion posture layer', () => {
     expect(largest(d, 1439)).toBeLessThan(0.05 * DEG)
   })
 
+  // The support was full while any of the episode was left and then stayed where the emotion put it, so she stood on
+  // the emotion's leg until the posture's next shift, 4 to 75 s later, through the emotion-table's release window.
+  it('shifts the weight to the emotion\'s side for the hold and ends the release on the stance she had', () => {
+    const performer = createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer()] })
+    const targets: number[] = []
+    for (let tick = 0; tick < 10 * 120; tick++) {
+      const t = tick / 120
+      const input = idleInput(t)
+      targets.push(performer.step({ ...input, events: { ...input.events, impulse: t < 1 ? null : { seq: 1, at: 1, emotion: 'think', intensity: 0.6, band: 'clear', side: 1 } } }).diagnostics.shiftTarget)
+    }
+    expect(targets[4 * 120]).toBe(1)
+    // The emotion-table's release window opens 8 s after the cue.
+    expect(Math.abs(targets[9 * 120] - targets[119])).toBeLessThan(0.02)
+  })
+
   it('holds an unheld clear pulse at its intensity as long as the held face, releases with it, and ignores a slight pulse', () => {
     const d = layerEffect(pulse('angry', 0.5), 10)
     const heldAtIntensity = layerEffect(t => ({ ...quietInput(t), held: { emotion: 'angry', strength: 0.6, level: ramp(t, 0.5, 0.05), side: 1 } }), 6)

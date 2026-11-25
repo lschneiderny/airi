@@ -135,6 +135,13 @@ const SLUMP_CAP = 20
 /** Arm forms engage above "slight", at a clear pulse and above (lead ruling R3). */
 const ARM_FORM_WEIGHT = 0.5
 /**
+ * The command at which an emotion's weight shift is full: a clear pulse and above. Below it the support lies between the
+ * emotion's side and the stance she had when the emotion first asked for it, so a slight pulse shifts part of the way
+ * and a release ends on her own stance. The posture keeps the last planned support until its own next shift, so a
+ * support released where the emotion put it held her on that leg 4 to 75 s after the emotion had gone.
+ */
+const SUPPORT_FULL = 0.6
+/**
  * The weights over which the far arm beside a held form comes in, smoothly, around the form's own threshold: a part
  * of a contact pose such as an arm folded across the belly reads as an arm held out when it is only partly there.
  */
@@ -230,6 +237,8 @@ interface Track {
   episodeLevel: number
   /** The share of the arm and hand terms, set when a pulse starts from rest; a touch startle's is `TOUCH_STARTLE.arms`. */
   armShare: number
+  /** The support she stood on when this emotion's weight shift began (`SUPPORT_FULL`); null while it plans none. */
+  resume: number | null
 }
 
 /**
@@ -244,7 +253,7 @@ export function createEmotionLayer(): EmotionLayer {
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
-    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0, armShare: 1 }
+    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0, armShare: 1, resume: null }
   })
   let impulseSeq: number | null = null
   let pokeSeq: number | null = null
@@ -415,10 +424,18 @@ export function createEmotionLayer(): EmotionLayer {
       let support: PerformancePlan['support']
       let armForm: PerformancePlan['armForm']
       let strongest = 0
+      const free = owned.lowerBody <= 0.5 && owned.upperBody <= 0.5
       for (const track of tracks) {
-        if (track.spec.support !== null && track.commanded > strongest && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
-          strongest = track.commanded
-          support = track.spec.support * track.side
+        if (track.spec.support === null || track.commanded === 0 || !free) {
+          track.resume = null
+        }
+        else {
+          // The posture's own target, not the support of the frame, which a walk's gait moves from step to step.
+          track.resume ??= context.previous.diagnostics.shiftTarget
+          if (track.commanded > strongest) {
+            strongest = track.commanded
+            support = track.resume + (track.spec.support * track.side - track.resume) * Math.min(1, track.commanded / SUPPORT_FULL)
+          }
         }
         const form = track.spec.armForm
         const side = sideIndex(track.side)
@@ -475,6 +492,7 @@ export function createEmotionLayer(): EmotionLayer {
         track.target = track.commanded = track.held = track.episodeLevel = 0
         track.episode = null
         track.armShare = 1
+        track.resume = null
       }
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
