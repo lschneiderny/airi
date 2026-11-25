@@ -46,7 +46,13 @@ describe('body turns', () => {
     expect(frames[0]?.turnStarted).toBe(true)
     expect(frames.at(-1)?.turning).toBe(false)
     expect(frames.at(-1)?.facingYaw).toBeCloseTo(sign * 105 * rad, 8)
-    const steps: TurnStep[] = frames.flatMap(frame => frame.turnSteps)
+    // Re-pinned for the square-up: the other foot's step onto the facing comes 0.3 s after the turning steps.
+    const all: TurnStep[] = frames.flatMap(frame => frame.turnSteps)
+    const square = all.at(-1)
+    const steps = all.slice(0, -1)
+    expect(square?.yaw).toBe(0)
+    const last = steps[steps.length - 1]
+    expect(square?.startTime).toBeCloseTo(last.startTime + last.duration + 0.3, 8)
     expect(steps.length).toBeGreaterThan(1)
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i]
@@ -101,6 +107,7 @@ describe('body turns', () => {
     expect(Math.abs(frame.facingYaw - reference.facingYaw)).toBeLessThan(1e-3)
   })
 
+  // Re-pinned for the square-up: the three turning steps are followed by the other foot's step onto the facing.
   it('turns back to a home target beyond twenty degrees in equal steps that end on it', () => {
     const planner = createTurnPlanner()
     let facingYaw = -55 * rad
@@ -114,10 +121,40 @@ describe('body turns', () => {
     }
     expect(started).toBe(1)
     expect(steps[0]?.startTime).toBeCloseTo(0.5, 8)
-    expect(steps).toHaveLength(3)
-    for (const step of steps)
+    expect(steps).toHaveLength(4)
+    for (const step of steps.slice(0, 3))
       expect(step.yaw).toBeCloseTo(55 / 3 * rad, 12)
+    expect(steps[3]?.yaw).toBe(0)
     expect(facingYaw).toBeCloseTo(0, 12)
+  })
+
+  it('ends a turn with both feet on the facing: the weight settles on the foot that stepped last, then the other squares up', () => {
+    const planner = createTurnPlanner()
+    let facingYaw = -55 * rad
+    const frames: { t: number, stance: TurnFrame['stance'], turning: boolean, steps: TurnStep[] }[] = []
+    for (let i = 0; i < 5 * 120; i++) {
+      const frame = planner.step({ targetYaw: 0, facingYaw, home: true }, 1 / 120)
+      frames.push({ t: (i + 1) / 120, stance: frame.stance, turning: frame.turning, steps: [...frame.turnSteps] })
+      facingYaw = frame.facingYaw
+    }
+    const steps = frames.flatMap(frame => frame.steps)
+    const [last, square] = steps.slice(-2)
+    // The left foot stepped first and last, so the right one is left behind by one step and squares up.
+    expect(last.foot).toBe('left')
+    expect(square.foot).toBe('right')
+    expect(square.startTime - (last.startTime + last.duration)).toBeCloseTo(0.3, 8)
+    const during = frames.filter(frame => frame.t > last.startTime + last.duration + 0.01 && frame.t < square.startTime + square.duration - 0.01)
+    expect(during.every(frame => frame.stance === 'left' && frame.turning)).toBe(true)
+    expect(frames.filter(frame => frame.t < last.startTime + last.duration - 0.01).every(frame => frame.stance === null)).toBe(true)
+    expect(frames.at(-1)?.stance).toBeNull()
+    expect(frames.at(-1)?.turning).toBe(false)
+  })
+
+  it('squares the other foot up after a turn toward a far look too', () => {
+    const steps = simulate(78 * rad, 5).flatMap(frame => frame.turnSteps)
+    // Three steps take the facing to 63 degrees (15 left to the head and eyes); the right foot stood at 45.
+    expect(steps.map(step => step.foot)).toEqual(['left', 'right', 'left', 'right'])
+    expect(steps.map(step => step.yaw / rad)).toEqual([expect.closeTo(22.5, 9), expect.closeTo(22.5, 9), expect.closeTo(18, 9), 0])
   })
 
   it('leaves a home target within twenty degrees to the head and eyes', () => {

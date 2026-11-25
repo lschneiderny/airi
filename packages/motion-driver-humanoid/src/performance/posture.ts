@@ -34,6 +34,8 @@ const FREE_HEEL = { degrees: 6, from: 0.35 } as const
 const HEEL_AROUSAL = 0.3
 /** How the free heel eases down for a turn and back up after it: a critically damped follower of its share. */
 const TURN_HEEL = secondOrderCoefficients({ f: 1.5, zeta: 1, r: 0 }, BODY_TICK)
+/** A turn's weight transfer: settled in about half a second, against the scheduler's second and a half. */
+const QUICK = secondOrderCoefficients({ f: 1.6, zeta: 1, r: 0 }, BODY_TICK)
 const leftFootPitch = channelIndex('leftFootPitch')
 const rightFootPitch = channelIndex('rightFootPitch')
 
@@ -75,6 +77,11 @@ export class BodyPosture {
   private readonly wanderSmooth = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
   private readonly wanderCoefficients = secondOrderCoefficients({ f: 0.25, zeta: 1, r: 0 }, BODY_TICK)
   private wanderAttention = 1
+  /**
+   * Set by the performer each tick: the planned support is a turn's (centred while it steps, then toward the foot that
+   * stepped last for its square-up), which her weight takes in `QUICK`'s time.
+   */
+  quick = false
   /** Set by the performer each tick: the turn planner is turning her (`TURN_HEEL`). */
   turning = false
   private readonly heelShare = { y: 1, v: 0, x: 1 }
@@ -137,7 +144,7 @@ export class BodyPosture {
       this.target = input.posture.support
       this.shifts++
     }
-    advanceSecondOrder(this.transfer, this.target, this.transferCoefficients)
+    advanceSecondOrder(this.transfer, this.target, this.quick ? QUICK : this.transferCoefficients)
     const s = this.transfer.y
     this.support = Math.max(-1, Math.min(1, s))
     const gate = this.gate.step(BODY_TICK) * input.posture.amplitude * this.amplitude
