@@ -154,4 +154,13 @@ describe('prepareMMDSecondaryMotion', () => {
     expect(prepareMMDSecondaryMotion(mmd)).toBe(report)
     expect(readMMDArmCollisionReport(mmd)).toBe(report)
   })
+
+  it('shows its status in the diagnostics of a body that was built before it ran, as the scene builds it', () => {
+    const { mmd, body, pipeline } = bodyFixture(0, Math.PI, { arms: true, bodies: true, skin: true })
+    pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.bodyModel?.armCollisions).toBeNull()
+    const report = prepareMMDSecondaryMotion(mmd)
+    pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.bodyModel?.armCollisions).toBe(report.status)
+  })
 })

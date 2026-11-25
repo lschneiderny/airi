@@ -1726,6 +1726,7 @@ watch(componentState, (state) => {
     mesh: activeMesh,
     rig,
     colliders: buildMMDTouchColliders(mmd.pmx, activeMesh.skeleton.boneInverses, activeMesh.bindMatrix, mmdTouchRegionRoots(rig)),
+    volumes: () => body?.armVolumes ?? [],
     createIkHelper: () => mmd.ikSolver.createHelper(),
     lookAtTarget: () => motionDriver.value === 'natural' ? body?.diagnostics.lookAt.target ?? null : null,
     stage: overlayStage,

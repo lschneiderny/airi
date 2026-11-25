@@ -242,9 +242,8 @@ export interface BodyPerformanceInput {
     readonly ankles: Readonly<Record<BodySide, Readonly<Vec3>>> | null
   } | null
   /**
-   * Per-side abduction a host adds to the rig's rest (`BodyArmTraits.restAbduct`), radians: the lift of the adapter's
-   * hang solver, or its debug override. It moves the arm only; the rest reference, the fitted proxies and the arm forms
-   * keep the rig's rest.
+   * Per-side abduction added to the rig's rest (`BodyArmTraits.restAbduct`), radians: a host's override of the hang, 0
+   * otherwise. It moves the arm only; the rest reference, the fitted proxies and the arm forms keep the rig's rest.
    */
   readonly armLift: Readonly<Record<BodySide, number>>
   /** The latest idle behaviour Natural started, kept after it ends; null before the first and without an idle drive. */

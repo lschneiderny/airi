@@ -1,15 +1,12 @@
 import type { IdleBehaviourKind, IdleBehaviourRecord } from '@proj-airi/motion-driver-natural/idle-activities'
 
-import type { ExtraBody } from './fixture'
+import type { FixtureShell } from './fixture'
 
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { buildMMDArmTestColliders } from '../touch/colliders'
-import { MMDArms } from './arms'
 import { bodyFixture } from './fixture'
-import { MMDBodyPose } from './pose'
 
 const owned = { leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }
 const identityKey = [0, 0, 0, 1]
@@ -31,21 +28,17 @@ function hangClip(name: string, hangDeg: number) {
   ])
 }
 
-/**
- * The hang solver alone: the arms are posed straight at the hang it asks for, so its stepping is observable even where
- * the performer's corrector would already clear the body.
- */
-function solver(extraBodies: ExtraBody[]) {
-  const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies })
-  const { mmd, rig } = fixture
-  const { skeleton, bindMatrix } = mmd.mesh
-  const arms = new MMDArms(new MMDBodyPose(mmd, rig), buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig), [])
-  return (hangDeg: number | null, gesture = { left: 0, right: 0 }) => {
-    const lift = arms.lift({ swingWeight: 0, owned, hangDeg })
-    for (const [name, sigma] of [['左腕', 1], ['右腕', -1]] as const)
-      fixture.bone(name).quaternion.setFromEuler(new Euler(0, 0, sigma * (bindHang * degrees - (78 * degrees - lift.left))))
-    return arms.measure(owned, { left: 0, right: 0 }, gesture, { left: 0, right: 0 })
+/** A rigid jacket around the waist, 1.9 to each side: wider than the default hang clears. */
+const jacket: FixtureShell = { bone: '上半身', fromY: 11.6, toY: 13.6, halfWidth: 1.9, halfDepth: 1 }
+
+/** The diagnostics hang of a standing fixture over `frames` frames. */
+function hangs(fixture: ReturnType<typeof bodyFixture>, frames: number): number[] {
+  const out: number[] = []
+  for (let frame = 0; frame < frames; frame++) {
+    fixture.pipeline.step(1 / 60)
+    out.push(fixture.body.diagnostics.arms?.hangDeg ?? Number.NaN)
   }
+  return out
 }
 
 function play(fixture: ReturnType<typeof bodyFixture>, clip: AnimationClip, registerWithBody = true) {
@@ -55,7 +48,7 @@ function play(fixture: ReturnType<typeof bodyFixture>, clip: AnimationClip, regi
   fixture.pipeline.enqueue(() => fixture.mixer.clipAction(clip).play())
 }
 
-describe('mmd arm measurement and hang solver', () => {
+describe('mmd arm measurement and rest clearance', () => {
   it('curls the present fingers, skipping bones the model lacks', () => {
     const { rig, pipeline, bone } = bodyFixture(0, Math.PI, { arms: true })
     expect(rig.fingerBones.leftThumbMetacarpal).toBe('左親指０')
@@ -67,164 +60,153 @@ describe('mmd arm measurement and hang solver', () => {
     expect(bone('左人指０').quaternion.angleTo(new Quaternion())).toBe(0)
   })
 
-  it('hangs the arms clear of the torso, hips and skirt while standing', () => {
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+  it('hangs the arms clear of the body model at the default hang while standing', () => {
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, skin: true })
     for (let frame = 0; frame < 120; frame++)
       pipeline.step(1 / 60)
-    expect(body.diagnostics.arms).toMatchObject({ weight: 1, owned, penetration: { left: 0, right: 0 }, headPenetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, hangDeg: 78, handBelowHip: true })
+    expect(body.bodyModel?.model.volumes.length).toBeGreaterThan(4)
+    expect(body.diagnostics.arms).toMatchObject({ weight: 1, owned, penetration: { left: 0, right: 0 }, headPenetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, handBelowHip: true })
+    expect(body.diagnostics.arms?.hangDeg).toBeCloseTo(78, 9)
   })
 
-  it('reports penetration when a clip hangs the arms straight into the hip body, and lifts the hands at a 20 degree hang', () => {
-    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+  it('reports penetration when a clip hangs the arms straight into the hips, and lifts the hands at a 20 degree hang', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: true })
     play(fixture, hangClip('straight-down', 90))
     for (let frame = 0; frame < 30; frame++)
       fixture.pipeline.step(1 / 60)
     expect(fixture.body.diagnostics.arms?.penetration.left).toBeGreaterThan(0)
     expect(fixture.body.diagnostics.arms?.penetration.right).toBeGreaterThan(0)
-    const raised = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    const raised = bodyFixture(0, Math.PI, { arms: true, skin: true })
     raised.setInput({ armRestHangDeg: 20 })
     for (let frame = 0; frame < 30; frame++)
       raised.pipeline.step(1 / 60)
     expect(raised.body.diagnostics.arms?.handBelowHip).toBe(false)
+    expect(raised.body.diagnostics.arms?.hangDeg).toBeCloseTo(20, 9)
   })
 
-  it('ignores a body around the shoulder joint, which every arm starts inside', () => {
-    const shoulder = { name: 'shoulder-shell', bone: '上半身2', position: [1.5, 16, 0] as [number, number, number], radius: 0.5, collisionMask: 65535 }
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [shoulder, { ...shoulder, name: 'right-shoulder-shell', position: [-1.5, 16, 0] }] })
+  it('keeps a rigid shell around the shoulders inside the shoulder joints, which every arm starts beside', () => {
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, skin: [{ bone: '上半身2', fromY: 15, toY: 16.4, halfWidth: 2.4, halfDepth: 1 }] })
     for (let frame = 0; frame < 60; frame++)
       pipeline.step(1 / 60)
     expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+    expect(body.diagnostics.arms?.hangDeg).toBeCloseTo(78, 9)
   })
 
-  it('counts a kinematic body on the arm path whatever its collision mask, and skips a shell wider than the shoulder span', () => {
-    // On the upper arm of a clip that hangs it 50 degrees below horizontal, clear of the rest hang: a body the rest hang
-    // lies in is fitted to nothing and left out (`BodyCollision.fit`).
-    const shoulder = bodyFixture(0, Math.PI, { arms: true }).bone('左腕').getWorldPosition(new Vector3())
-    const onPath = shoulder.add(new Vector3(Math.cos(50 * degrees), -Math.sin(50 * degrees), 0).multiplyScalar(2.3)).toArray()
-    const path = (collisionMask: number, radius: number) => {
-      const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: onPath, radius, collisionMask }] })
-      play(fixture, hangClip('lifted-hang', 50))
+  it('gates the arm on rigid geometry in its path, and never on a bone-following body the author put on the trunk', () => {
+    const path = (skin: FixtureShell[], authored: boolean) => {
+      const fixture = bodyFixture(0, Math.PI, { arms: true, skin, bodies: authored, extraBodies: authored ? [{ name: 'on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0], radius: 0.6, collisionMask: 65535 }] : [] })
+      // A clip that owns the arms holds them 10 degrees inside the rest the model solved for the jacket, where the
+      // performer corrects nothing. The gate measures the jacket as the corrector fitted it to that rest.
+      play(fixture, hangClip('inside-the-rest', 82))
       for (let frame = 0; frame < 60; frame++)
         fixture.pipeline.step(1 / 60)
       return fixture.body.diagnostics.arms?.penetration.left ?? Number.NaN
     }
-    expect(path(65535, 0.6)).toBeGreaterThan(0.1)
-    // A group-0 body with self-collision off, like a real rig's own torso, still gates the arm.
-    expect(path(0xFF02, 0.6)).toBeGreaterThan(0.1)
-    // Wider than 0.65 of the 3-unit shoulder span: a coat shell, ignored.
-    expect(path(65535, 2.1)).toBe(0)
+    expect(path([jacket], false)).toBeGreaterThan(0.1)
+    expect(path([], true)).toBe(0)
   })
 
-  it('leaves out a body the performer fitted to nothing, one round the rest elbow', () => {
-    const plain = bodyFixture(0, Math.PI, { arms: true, bodies: true })
-    for (let frame = 0; frame < 60; frame++)
-      plain.pipeline.step(1 / 60)
-    plain.mesh.updateMatrixWorld(true)
-    const elbow = plain.bone('左ひじ').getWorldPosition(new Vector3())
-    const { pipeline, body, bone } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'round-the-elbow', bone: '上半身2', position: elbow.toArray(), radius: 0.5, collisionMask: 65535 }] })
-    for (let frame = 0; frame < 60; frame++)
-      pipeline.step(1 / 60)
-    expect(body.diagnostics.arms?.penetration.left).toBe(0)
-    expect(bone('左ひじ').getWorldPosition(new Vector3()).distanceTo(elbow)).toBeLessThan(1e-3)
+  it('rests the arm where the body model says with rigid geometry round the default rest elbow, and gates on the volumes as the corrector fitted them', () => {
+    const bare = bodyFixture(0, Math.PI, { arms: true, skin: true })
+    hangs(bare, 60)
+    bare.mesh.updateMatrixWorld(true)
+    const elbow = bare.mesh.worldToLocal(bare.bone('左ひじ').getWorldPosition(new Vector3()))
+    // A tube of rigid mesh round the left elbow of the default hang, which no rest within the model's bound clears.
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: [{ bone: '上半身2', fromY: elbow.y - 0.3, toY: elbow.y + 0.3, x: elbow.x, halfWidth: 0.3, halfDepth: 0.3 }] })
+    const { body } = fixture
+    const rest = body.bodyModel?.model.rest
+    // The model opens the left rest and shrinks the volume (README rule 6); the right arm keeps the default hang.
+    expect(rest?.left.limit?.kind).toBe('volume')
+    expect(rest?.left.abduct).toBeGreaterThan(18 * degrees)
+    expect(rest?.right).toEqual({ abduct: expect.closeTo(12 * degrees, 9), limit: null })
+
+    hangs(fixture, 60)
+    // The arm rests there: no volume holds it away from that rest, and the rest is no penetration.
+    expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+    expect(body.diagnostics.arms?.correctionDeg.left).toBeCloseTo(0, 6)
+    expect(body.diagnostics.arms?.hangDeg).toBeCloseTo(90 - ((rest?.left.abduct ?? 0) + (rest?.right.abduct ?? 0)) / 2 / degrees, 9)
+
+    // The gate measures each volume at the corrector's fit to that rest: the seed draws the left hang a little inside
+    // the solved one, so the volume it leans on gives way by a few percent, and every other volume keeps its size.
+    const whole = body.bodyModel?.colliders ?? []
+    expect(body.armVolumes).toHaveLength(whole.length)
+    const scales = body.armVolumes.map((volume, index) => volume.size[0] / whole[index].size[0])
+    expect(scales.filter(scale => scale !== 1)).toHaveLength(1)
+    expect(Math.min(...scales)).toBeGreaterThan(0.9)
+    expect(Math.min(...scales)).toBeLessThan(1)
+  })
+
+  it('keeps the author\'s head and neck bodies after the model\'s volumes, for the corrector and for the gate\'s head list, as fitted', () => {
+    // A skull, and a hair-collision body on the neck that reaches round the upper arm of the rest hang.
+    const skull = { name: 'skull', bone: '頭', position: [0, 19, 0] as [number, number, number], radius: 0.7, collisionMask: 65535 }
+    const collar = { name: 'collar', bone: '首', position: [0.9, 15.4, 0] as [number, number, number], radius: 1.5, collisionMask: 65535 }
+    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, skin: true, extraBodies: [skull, collar] })
+    const { body } = fixture
+    const volumes = body.bodyModel?.colliders ?? []
+    expect(volumes.length).toBeGreaterThan(4)
+    expect(body.bodyModel?.model.volumes.some(volume => volume.bone === 'head' || volume.bone === 'neck')).toBe(false)
+    // The performer's colliders: the model's volumes, then the two authored bodies on their canonical bones.
+    expect(body.traits?.colliders.map(collider => collider.bone).slice(volumes.length)).toEqual(['head', 'neck'])
+
+    // The gate's lists keep that order. The rest hang lies in the collar, so the corrector shrinks it and the gate
+    // measures it as shrunk; the skull and every volume of the model keep their size.
+    expect(body.armVolumes.slice(0, volumes.length)).toEqual(volumes)
+    expect(body.armVolumes[volumes.length]).toMatchObject({ name: 'skull', region: 'head', size: [skull.radius, 0, 0] })
+    const fitted = body.armVolumes[volumes.length + 1]
+    expect(fitted).toMatchObject({ name: 'collar', region: 'head' })
+    expect(fitted.size[0]).toBeGreaterThan(0)
+    expect(fitted.size[0]).toBeLessThan(collar.radius)
+    expect(body.armVolumes).toHaveLength(volumes.length + 2)
+
+    hangs(fixture, 60)
+    expect(body.diagnostics.arms).toMatchObject({ penetration: { left: 0, right: 0 }, headPenetration: { left: 0, right: 0 } })
+    expect(body.diagnostics.arms?.hangDeg).toBeCloseTo(78, 9)
+    // A clip that owns the arms points them from the shoulders at the skull: the head list reports it.
+    play(fixture, hangClip('at-the-skull', -117))
+    hangs(fixture, 60)
+    expect(body.diagnostics.arms?.headPenetration.left).toBeGreaterThan(0)
+    expect(body.diagnostics.arms?.headPenetration.right).toBeGreaterThan(0)
   })
 
   it('reports a dynamic cloth body on the arm path as clothContact and never as penetration', () => {
     const cloth = { name: 'cloth-on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0] as [number, number, number], radius: 0.6, collisionMask: 65535, dynamic: true }
-    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [cloth] })
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, skin: true, extraBodies: [cloth] })
     for (let frame = 0; frame < 60; frame++)
       pipeline.step(1 / 60)
     expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
     expect(body.diagnostics.arms?.clothContact.left).toBeGreaterThan(0)
-    expect(body.diagnostics.arms?.hangDeg).toBe(78)
+    expect(body.diagnostics.arms?.hangDeg).toBeCloseTo(78, 9)
   })
 
-  it('lifts the arm in 2 degree steps after the warm-up, once the clearance to a kinematic body is violated, and settles', () => {
-    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
-    const hangs: number[] = []
-    let last = step(null)
-    for (let frame = 0; frame < 300; frame++) {
-      last = step(null)
-      hangs.push(last.hangDeg)
-    }
-    expect(hangs.slice(0, 59).every(hang => hang === 78)).toBe(true)
-    expect(hangs.at(-1)).toBeLessThan(78)
-    expect(hangs.at(-1)).toBeGreaterThanOrEqual(60)
-    expect(hangs.every((hang, index) => index === 0 || [0, -2].includes(hang - hangs[index - 1]))).toBe(true)
-    expect(hangs.slice(-60).every(hang => hang === hangs.at(-1))).toBe(true)
-    expect(last.penetration).toEqual({ left: 0, right: 0 })
+  it('rests the arms at the body model\'s clearance from the first frame, and holds it', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: [jacket] })
+    const rest = fixture.body.bodyModel?.model.rest
+    expect(rest?.left.abduct).toBeGreaterThan(12 * degrees)
+    const expected = 90 - ((rest?.left.abduct ?? 0) + (rest?.right.abduct ?? 0)) / 2 / degrees
+    const series = hangs(fixture, 300)
+    expect(series.every(hang => Math.abs(hang - expected) < 1e-9)).toBe(true)
+    expect(fixture.body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
   })
 
-  it('does not lift the arm for a body that stays clear of it', () => {
-    const step = solver([])
-    let hang = 0
-    for (let frame = 0; frame < 300; frame++)
-      hang = step(null).hangDeg
-    expect(hang).toBe(78)
+  it('keeps the default hang on a body that stays clear of the arms', () => {
+    expect(hangs(bodyFixture(0, Math.PI, { arms: true, skin: true }), 300).every(hang => Math.abs(hang - 78) < 1e-9)).toBe(true)
   })
 
-  it('never lifts the arm below 60 degrees, however long the overlap lasts', () => {
-    const step = solver([{ name: 'wall', bone: '上半身2', position: [2.6, 11, 0], radius: 1.9, collisionMask: 65535 }])
-    let hang = 0
-    for (let frame = 0; frame < 400; frame++)
-      hang = step(null).hangDeg
-    expect(hang).toBe(60)
-  })
-
-  it('holds the hang while a gesture moves either arm, and solves again once both are at rest', () => {
-    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
-    const hangs: number[] = []
-    for (let frame = 0; frame < 300; frame++)
-      hangs.push(step(null, { left: 0, right: frame === 0 ? 0 : 0.4 }).hangDeg)
-    expect(hangs.every(hang => hang === 78)).toBe(true)
-    let hang = 78
-    for (let frame = 0; frame < 300; frame++)
-      hang = step(null).hangDeg
-    expect(hang).toBeLessThan(78)
-  })
-
-  // Every behaviour that moves an arm, and the clip-free rest, which drops the clavicles.
-  it.each([
-    { kind: 'stretch', seconds: 5.2, variant: 0 },
-    { kind: 'yawn', seconds: 5.4, variant: 0 },
-    { kind: 'clasp-hands', seconds: 6, variant: 0 },
-    { kind: 'clasp-hands', seconds: 6, variant: 1 },
-    { kind: 'hair-touch', seconds: 2.6, variant: 0 },
-    { kind: 'arm-swing', seconds: 3, variant: 0 },
-    { kind: 'shoulder-roll', seconds: 4.5, variant: 0 },
-  ] as const)('keeps the standing hang it had before a $kind (variant $variant) once the behaviour has ended', ({ kind, seconds, variant }) => {
-    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
-    // The fixture's standing arm solves its own hang within its first 6 s; 10 s leaves it settled.
-    for (let frame = 0; frame < 600; frame++)
-      fixture.pipeline.step(1 / 60)
-    const before = fixture.body.diagnostics.arms?.hangDeg
-    const record: IdleBehaviourRecord = { seq: 1, kind: kind as IdleBehaviourKind, intentId: null, start: 0, end: seconds, releasedAt: null, releaseSeconds: 0, side: 1, period: 2, tone: 0, count: 2, variant, keys: [], glances: [] }
+  it('keeps the rest hang through an idle behaviour that brings the arms to the body', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: [jacket] })
+    const [before] = hangs(fixture, 60)
+    const record: IdleBehaviourRecord = { seq: 1, kind: 'clasp-hands' as IdleBehaviourKind, intentId: null, start: 0, end: 6, releasedAt: null, releaseSeconds: 0, side: 1, period: 2, tone: 0, count: 2, variant: 0, keys: [], glances: [] }
     fixture.setInput({ intent: { ...fixture.input.intent, idle: { behaviour: record, errand: null, groovePhase: null } } })
-    for (let frame = 0; frame < (seconds + 3) * 60; frame++)
-      fixture.pipeline.step(1 / 60)
-    expect(fixture.body.diagnostics.arms?.hangDeg).toBe(before)
+    expect(hangs(fixture, 9 * 60).every(hang => hang === before)).toBe(true)
   })
 
-  it('keeps the standing hang it had before the clip-free rest once she stands again', () => {
-    const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true })
-    // The fixture's standing arm solves its own hang within its first 6 s; 10 s leaves it settled.
-    for (let frame = 0; frame < 600; frame++)
-      fixture.pipeline.step(1 / 60)
-    const before = fixture.body.diagnostics.arms?.hangDeg
-    fixture.setInput({ rest: 'rest' })
-    for (let frame = 0; frame < 20 * 60; frame++)
-      fixture.pipeline.step(1 / 60)
-    fixture.setInput({ rest: 'none' })
-    for (let frame = 0; frame < 3 * 60; frame++)
-      fixture.pipeline.step(1 / 60)
-    expect(fixture.body.diagnostics.arms?.hangDeg).toBe(before)
-  })
-
-  it('does not solve a hang while the debug override is set', () => {
-    const step = solver([{ name: 'post', bone: '上半身2', position: [2.2, 12, 0], radius: 0.3, collisionMask: 65535 }])
-    let hang = 0
-    for (let frame = 0; frame < 120; frame++)
-      hang = step(78).hangDeg
-    expect(hang).toBe(78)
+  it('replaces the rest clearance with the debug override on both sides, and restores it', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: [jacket] })
+    const [solved] = hangs(fixture, 30)
+    fixture.setInput({ armRestHangDeg: 78 })
+    expect(hangs(fixture, 30).at(-1)).toBeCloseTo(78, 9)
+    fixture.setInput({ armRestHangDeg: null })
+    expect(hangs(fixture, 30).at(-1)).toBe(solved)
   })
 
   it('gives a clip ownership only of the groups its keys move', () => {

@@ -1,7 +1,8 @@
 import type { HumanoidBoneName } from '@proj-airi/motion-driver-humanoid/types'
 
-import type { MMDArmTestColliders, MMDTouchCollider } from '../touch/colliders'
+import type { MMDTouchCollider } from '../touch/colliders'
 import type { MMDBodyPose } from './pose'
+import type { MMDArmCollisionReport } from './secondary-motion'
 
 import { DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
 import { Matrix4, Vector3 } from 'three'
@@ -10,32 +11,53 @@ import { mmdTouchColliderCenter } from '../touch/colliders'
 
 type Side = 'left' | 'right'
 
+/** What the arm measurement tests: `kinematic` gate the arms and `dynamic` (simulated cloth) are only reported. */
+export interface MMDArmTestColliders {
+  readonly kinematic: readonly MMDTouchCollider[]
+  readonly dynamic: readonly MMDTouchCollider[]
+}
+
 /** The clip ownership of the arm bone groups, 0 to 1. */
 export type MMDArmOwnership = Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers', number>
 
-export interface MMDArmLiftInput {
-  readonly swingWeight: number
-  readonly owned: MMDArmOwnership
-  /** Debug override of the rest hang angle in degrees below horizontal; null keeps the default. */
-  readonly hangDeg: number | null
+/** The body model the arms clear, as the diagnostics snapshot publishes it. */
+export interface MMDBodyModelSummary {
+  /** Hard volumes: her body, her rigid clothing and flesh on simulated bones. */
+  volumes: number
+  garments: number
+  /** Garments the resting arm sits inside (`BodyGarment.pinched`), which never collide with the arms. */
+  pinchedGarments: number
+  /** The rest abduction the model solved per side, in degrees from a straight-down arm. */
+  restAbductDeg: Record<Side, number>
+  /** What kept each side's rest from clearing everything: a volume that had to shrink, a garment it still overlaps, or nothing. */
+  restLimit: Record<Side, 'volume' | 'garment' | null>
+  /** Volumes the rest solve shrank or dropped. */
+  shrunkVolumes: number
+  /**
+   * The status of the arm collision setup (`prepareMMDSecondaryMotion`); null until the model gets its physics, which
+   * the scene installs after it builds the body. Never `no-body-model`: this summary exists only for a built model.
+   */
+  armCollisions: Exclude<MMDArmCollisionReport['status'], 'no-body-model'> | null
 }
 
 export interface MMDArmsMeasurement {
   /** Share of the arm layer that is active: one minus the larger arm ownership. */
   weight: number
   owned: MMDArmOwnership
-  /** Deepest arm capsule-radius overlap of a kinematic torso, hip, leg or skirt-root body per side, in model units. The gate: it must be 0. */
+  /** Deepest arm capsule-radius overlap of a hard volume of the body model (hips to chest and the thighs) per side, in model units. The gate: it must be 0. */
   penetration: Record<Side, number>
   /** Deepest arm centerline overlap of a dynamic (physics) cloth body per side, in model units. Information only: the simulation resolves it. */
   clothContact: Record<Side, number>
-  /** The rest upper-arm hang in degrees below horizontal in effect: the default, a per-rig solved lift (a smaller hang), or the debug override. */
+  /** The rest upper-arm hang in degrees below horizontal in effect: the mean of the body model's two rest hangs, or the debug override. */
   hangDeg: number
   /** Both hand bones sit below the hips bone, so the arms hang. */
   handBelowHip: boolean
-  /** Deepest arm capsule-radius overlap of a kinematic head or neck body per side, in model units. */
+  /** Deepest arm capsule-radius overlap of a kinematic head or neck body of the author's rig per side, in model units. */
   headPenetration: Record<Side, number>
   /** The performer's arm collision correction in effect per side, in degrees. */
   correctionDeg: Record<Side, number>
+  /** The body model whose volumes gate the arms; null when the rig lacks a bone the model needs. */
+  bodyModel: MMDBodyModelSummary | null
 }
 
 const radiansPerDegree = Math.PI / 180
@@ -44,25 +66,8 @@ const ARM_RADIUS_RATIO = 0.12
 /** The hand reaches this share of the forearm length beyond the wrist bone. */
 const HAND_EXTENSION = 0.65
 const SAMPLES_PER_CAPSULE = 5
-/** The upper-arm capsule starts this share of the way down the arm: the shoulder joint sits inside the chest bodies by construction. */
+/** The upper-arm capsule starts this share of the way down the arm: the shoulder joint sits beside the chest volumes by construction. */
 const SHOULDER_SKIP = 0.5
-/**
- * The per-rig hang solver lifts the arm away from the body in steps of this many degrees, down to `MIN_HANG_DEG`.
- * The hang is measured below horizontal, so a smaller hang abducts the arm: a larger one swings it into the hips.
- */
-const HANG_STEP_DEG = 2
-const MIN_HANG_DEG = 60
-/**
- * The solver reacts to a clearance, not to contact: an arm capsule grown by this share of its segment length that touches
- * a kinematic body lifts the arm before the exact capsule does, because the standing sway drives the arm into the hips
- * slowly (up to 0.1 model units over half a second). The reported `penetration` keeps the exact radius.
- */
-const SOLVER_CLEARANCE_RATIO = 0.03
-/** A step needs the clearance violated on this many consecutive solving frames, and solving starts after the warm-up, so load transients never move the hang. */
-const SOLVE_PERSISTENCE_FRAMES = 5
-const SOLVE_WARMUP_FRAMES = 60
-/** The performer's rest abduction, restated as the hang below horizontal that diagnostics and the debug override use. */
-const DEFAULT_HANG_DEG = 90 - DEFAULT_ARM_REST_POSE.abduct / radiansPerDegree
 
 function signedDistance(collider: MMDTouchCollider, point: Vector3): number {
   const [x, y, z] = collider.size
@@ -105,30 +110,39 @@ function boundingRadius(collider: MMDTouchCollider): number {
 }
 
 /**
- * Measures whether the posed arms clear the body, and runs the per-rig hang solver whose lift the performer adds to its
- * rest abduction. The performer owns every arm bone write.
+ * Measures whether the posed arms clear the body model's volumes and the author's head and neck bodies, as the
+ * performer's corrector fitted them, and turns the debug hang override into the abduction the performer adds to the
+ * rig's rest. The performer owns every arm bone write, and rests the arms at the model's rest abduction itself
+ * (`BodyArmTraits.restAbduct`).
  */
 export class MMDArms {
-  /** Degrees the arm is lifted from the default hang for this rig; only grows, in `HANG_STEP_DEG` steps, while a standing arm keeps overlapping a kinematic body. */
-  private liftDeg = 0
-  private overlapFrames = 0
-  private frames = 0
   /** The hang the last `lift` reported, which is the one `measure` reports. */
-  private appliedHang = DEFAULT_HANG_DEG
-  private solving = false
+  private appliedHang: number
   private readonly lifted = { left: 0, right: 0 }
 
-  constructor(private readonly pose: MMDBodyPose, private readonly colliders: MMDArmTestColliders, private readonly head: readonly MMDTouchCollider[]) {}
+  /** The rig's rest abduction per side, radians: the body model's, or the default hang without a model. */
+  private readonly rest: Readonly<Record<Side, number>>
+
+  /** `armCollisions` reads the status of the arm collision setup, or null while the setup has not run. */
+  constructor(private readonly pose: MMDBodyPose, private readonly colliders: MMDArmTestColliders, private readonly head: readonly MMDTouchCollider[], private model: MMDBodyModelSummary | null = null, private readonly armCollisions: () => MMDArmCollisionReport['status'] | null = () => null) {
+    const abduct = (side: Side) => model ? model.restAbductDeg[side] * radiansPerDegree : DEFAULT_ARM_REST_POSE.abduct
+    this.rest = { left: abduct('left'), right: abduct('right') }
+    this.appliedHang = this.hang()
+  }
+
+  /** The mean hang of the two arms below horizontal, degrees, with the latest lift. */
+  private hang(): number {
+    return 90 - (this.rest.left + this.lifted.left + this.rest.right + this.lifted.right) / 2 / radiansPerDegree
+  }
 
   /**
-   * The extra abduction per side in radians for this frame; solving runs only while both arms are free and not swinging,
-   * and `measure` also holds it while a gesture layer moves either arm.
+   * The abduction each side adds to the rig's rest, radians: nothing, or, under the debug override, what brings both
+   * sides to the hang `hangDeg` below horizontal.
    */
-  lift(input: MMDArmLiftInput): Readonly<Record<Side, number>> {
-    this.appliedHang = input.hangDeg ?? DEFAULT_HANG_DEG - this.liftDeg
-    this.frames++
-    this.solving = this.frames > SOLVE_WARMUP_FRAMES && input.hangDeg === null && input.swingWeight === 0 && input.owned.leftArm === 0 && input.owned.rightArm === 0
-    this.lifted.left = this.lifted.right = (DEFAULT_HANG_DEG - this.appliedHang) * radiansPerDegree
+  lift(hangDeg: number | null): Readonly<Record<Side, number>> {
+    for (const side of ['left', 'right'] as const)
+      this.lifted[side] = hangDeg === null ? 0 : (90 - hangDeg) * radiansPerDegree - this.rest[side]
+    this.appliedHang = this.hang()
     return this.lifted
   }
 
@@ -155,15 +169,7 @@ export class MMDArms {
     return positions
   }
 
-  /**
-   * `gestureActivation` and `actActivation` are the weights the performer's gesture layers and its act-order layers (an
-   * idle behaviour's form, the clip-free rest) applied to each arm on the latest tick. The hang is frozen while any is
-   * above 0 (architecture 3f): a lift step under a performed arm would move the pose the gesture retracts to, and an
-   * arm an act brings to the body (a clasp, a stretch on its way down) is not a standing arm against the hips, so a
-   * lift learnt from it would hold her arms out for the rest of the session.
-   */
-  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>, gestureActivation: Readonly<Record<Side, number>>, actActivation: Readonly<Record<Side, number>>): MMDArmsMeasurement {
-    const solving = this.solving && gestureActivation.left === 0 && gestureActivation.right === 0 && actActivation.left === 0 && actActivation.right === 0
+  measure(owned: MMDArmOwnership, correctionDeg: Readonly<Record<Side, number>>): MMDArmsMeasurement {
     const { mesh } = this.pose.mmd
     mesh.updateWorldMatrix(true, true)
     const toMesh = new Matrix4().copy(mesh.matrixWorld).invert()
@@ -175,7 +181,6 @@ export class MMDArms {
     const penetration = { left: 0, right: 0 }
     const headPenetration = { left: 0, right: 0 }
     const clothContact = { left: 0, right: 0 }
-    let tight = 0
     let handsBelow = hips !== null
     for (const side of ['left', 'right'] as const) {
       const upper = position(`${side}UpperArm`)
@@ -187,21 +192,18 @@ export class MMDArms {
         continue
       const capsules = mmdArmCapsules(upper, elbow, wrist)
       const samples = capsules.flatMap(({ from, to, radius }) =>
-        Array.from({ length: SAMPLES_PER_CAPSULE }, (_, index) => ({ point: from.clone().lerp(to, index / (SAMPLES_PER_CAPSULE - 1)), radius, clearance: SOLVER_CLEARANCE_RATIO * from.distanceTo(to) })))
+        Array.from({ length: SAMPLES_PER_CAPSULE }, (_, index) => ({ point: from.clone().lerp(to, index / (SAMPLES_PER_CAPSULE - 1)), radius })))
       penetration[side] = this.deepest(samples, this.colliders.kinematic, toMesh)
       headPenetration[side] = this.deepest(samples, this.head, toMesh)
-      if (solving)
-        tight = Math.max(tight, this.deepest(samples.map(({ point, radius, clearance }) => ({ point, radius: radius + clearance })), this.colliders.kinematic, toMesh))
       clothContact[side] = this.deepest(samples.map(({ point }) => ({ point, radius: 0 })), this.colliders.dynamic, toMesh)
     }
-    // The next frame poses with the lifted arm; the measurement above still reports this frame's overlap.
-    if (solving && tight > 0)
-      this.overlapFrames++
-    else if (solving)
-      this.overlapFrames = 0
-    if (this.overlapFrames >= SOLVE_PERSISTENCE_FRAMES) {
-      this.overlapFrames = 0
-      this.liftDeg = Math.min(this.liftDeg + HANG_STEP_DEG, DEFAULT_HANG_DEG - MIN_HANG_DEG)
+    // The setup runs when the model gets its physics, after this was built, so its status is read with each
+    // measurement until it is known.
+    // A new summary on that change, so a snapshot taken before the setup keeps the null it showed.
+    if (this.model && this.model.armCollisions === null) {
+      const armCollisions = this.armCollisions()
+      if (armCollisions !== null && armCollisions !== 'no-body-model')
+        this.model = { ...this.model, armCollisions }
     }
     return {
       weight: 1 - Math.max(owned.leftArm, owned.rightArm),
@@ -212,6 +214,7 @@ export class MMDArms {
       handBelowHip: handsBelow,
       headPenetration,
       correctionDeg: { left: correctionDeg.left, right: correctionDeg.right },
+      bodyModel: this.model,
     }
   }
 

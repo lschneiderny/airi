@@ -781,8 +781,8 @@ trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). Arm terms yield to an
 arm a gesture layer moves; owned groups receive none. Drag is not realised yet.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
-by gait weight, and torso/arm terms add. `armLift` is the existing hang solver's
-per-side abduction addition, in radians. No gait or clip contract changes here.
+by gait weight, and torso/arm terms add. `armLift` is a host's per-side override
+of the hang, in radians added to the rig's rest abduction, and 0 otherwise. No gait or clip contract changes here.
 Missing leg IK zeroes pelvis/foot channels and reduces weight rotations.
 One spine bone receives all controls at reduced amplitude and collapses the
 weight cascade to its longest torso delay. Missing clavicles/fingers/toe bend

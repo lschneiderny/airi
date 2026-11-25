@@ -6,7 +6,7 @@ import type { MMDTouchCollider } from './touch'
 import { Bone, BufferGeometry, CapsuleGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, Object3D, Scene, Skeleton, SkinnedMesh, Vector3 } from 'three'
 import { describe, expect, it, vi } from 'vitest'
 
-import { mmdOverlaysOff } from './overlay-flags'
+import { mmdOverlayColors, mmdOverlaysOff } from './overlay-flags'
 import { MMDOverlays } from './overlays'
 
 function createSource() {
@@ -26,6 +26,7 @@ function createSource() {
     { name: 'chest', boneIndex: 0, region: 'body', shape: 'box', size: [1, 2, 3], offset: new Matrix4().makeTranslation(0, 1, 0) },
     { name: 'arm', boneIndex: 0, region: 'body', shape: 'capsule', size: [0.5, 2, 0], offset: new Matrix4() },
   ]
+  const volumes: MMDTouchCollider[] = []
   const ikHelper = Object.assign(new Object3D(), { dispose: vi.fn() })
   let lookAt: { x: number, y: number, z: number } | null = { x: 1, y: 2, z: 3 }
   let stage: MMDOverlayStage | null = { floor: { minX: -40, maxX: 40 }, ground: { minX: -30, maxX: 30 }, homeX: 12, goalX: null, goalReason: null }
@@ -41,6 +42,7 @@ function createSource() {
         },
       },
       colliders,
+      volumes: () => volumes,
       createIkHelper: () => ikHelper,
       lookAtTarget: () => lookAt,
       stage: () => stage,
@@ -53,6 +55,7 @@ function createSource() {
     } satisfies MMDOverlaySource,
     ikHelper,
     labels,
+    volumes,
     setLookAt: (value: typeof lookAt) => { lookAt = value },
     setStage: (value: typeof stage) => { stage = value },
   }
@@ -101,6 +104,22 @@ describe('mmd overlays', () => {
       expect(spy).toHaveBeenCalled()
     for (const spy of materialSpies)
       expect(spy).toHaveBeenCalled()
+  })
+
+  it('draws the volumes the arms clear with the touch colliders, in their own colour, as they are when the overlay turns on', () => {
+    const scene = new Scene()
+    const { source, volumes } = createSource()
+    const overlays = new MMDOverlays(scene, source)
+    // The body is built after the overlays, so the volumes are read when the flag turns on.
+    volumes.push({ name: 'body-volume-0', boneIndex: 0, region: 'body', shape: 'capsule', size: [1, 2, 0], offset: new Matrix4().makeTranslation(0, 3, 0) })
+    overlays.apply({ ...mmdOverlaysOff, colliders: true })
+    overlays.update()
+
+    const group = scene.getObjectByName('mmd-overlay-colliders')!
+    expect(group.children).toHaveLength(4)
+    const drawn = group.children[3] as Mesh
+    expect((drawn.material as MeshBasicMaterial).color.getHex()).toBe(mmdOverlayColors.armVolume)
+    expect(new Vector3().setFromMatrixPosition(drawn.matrixWorld).toArray()).toEqual([0, 3, 0])
   })
 
   it('does not duplicate an overlay that is already on', () => {

@@ -29,6 +29,7 @@ const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`
 const legend = [
   ['collider-head', hex(mmdOverlayColors.colliderHead)],
   ['collider-body', hex(mmdOverlayColors.colliderBody)],
+  ['arm-volume', hex(mmdOverlayColors.armVolume)],
   ['foot-anchor', hex(mmdOverlayColors.footAnchor)],
   ['ankle', hex(mmdOverlayColors.ankle)],
   ['look-at', hex(mmdOverlayColors.lookAt)],
