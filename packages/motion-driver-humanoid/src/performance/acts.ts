@@ -110,23 +110,27 @@ function openHand(): Float64Array {
 /** Architecture 4e act 2: the two sides of a bilateral act are 120 ms apart. */
 const BILATERAL = 0.12
 /**
- * The shoulder roll's circle (`path` keys, seconds and degrees): the leading clavicle lifts 14, travels back 12 and
- * drops 4 below rest over 1.6 s; the other side follows at `follow` of it. The upper arm trails `trail` seconds behind
- * with 5 deg of extension and 6 of elbow bend; the chest turns `chestYaw` and opens `chestOpen` at the back of the
- * circle; the head tilts `headRoll`. The sizes are the layer's: a shrug a viewer reads at the default camera, the
- * stand-life audit's "one shoulder lifts, travels back and drops".
+ * The shoulder roll's circle (`path` keys, seconds and degrees): the leading clavicle comes forward 7, rises to 22 above
+ * rest as it goes up and over, travels back 12 while still high, drops 4 below rest and settles, over 1.8 s; the other
+ * side follows at `follow` of it. The upper arm hangs from the clavicle and is carried round with it: it swings forward
+ * 4 and back 7 behind the clavicle by `trail` seconds, out 3 at the top, and the elbow bends 8 as it swings back, so
+ * the whole arm, hand included, draws the circle. The chest turns `chestYaw` and opens `chestOpen` at the back of the
+ * circle; the head rides along with a `headRoll` tilt. The first circle (up 14, back 12, the head tilting 3) moved the
+ * shoulder a few pixels at the default camera, and the stand-life audit read the head and trunk as the act; the sizes
+ * are the layer's: a roll a viewer reads from the front at full-body scale.
  */
 const ROLL = {
-  up: [[0.4, 14], [0.8, 6], [1.15, -4], [1.6, 0]],
-  back: [[0.4, 0], [0.8, -12], [1.15, -4], [1.6, 0]],
-  flex: [[0.4, 0], [0.8, -5], [1.2, -1], [1.6, 0]],
-  elbow: [[0.4, 0], [0.8, 6], [1.2, 2], [1.6, 0]],
-  seconds: 1.6,
-  follow: 0.25,
-  trail: 0.15,
-  chestYaw: 2,
+  up: [[0.3, 6], [0.65, 22], [1.0, 14], [1.35, -4], [1.8, 0]],
+  back: [[0.3, 7], [0.65, 4], [1.0, -12], [1.35, -5], [1.8, 0]],
+  flex: [[0.3, 4], [0.65, 2], [1.0, -7], [1.4, -2], [1.8, 0]],
+  abduct: [[0.3, 1], [0.65, 3], [1.0, 2], [1.4, 0], [1.8, 0]],
+  elbow: [[0.3, 0], [0.65, 2], [1.0, 8], [1.4, 3], [1.8, 0]],
+  seconds: 1.8,
+  follow: 0.15,
+  trail: 0.12,
+  chestYaw: 3,
   chestOpen: 2,
-  headRoll: 3,
+  headRoll: 1.5,
 } as const
 /** The zone-out's settled silhouette on 4f's rest posture, degrees: chest rounding, shoulders forward, head lower. */
 const ZONE = { mid: 3, upper: 2, protraction: 4, head: 4 } as const
@@ -531,11 +535,11 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shoulder-roll': {
-        // 4e act 2, one shoulder at a time (`ROLL`): the leading clavicle circles once (up, back, down) over 1.6 s and
-        // the other follows 120 ms later at a quarter of the size; the upper arm trails the clavicle back, the chest
-        // turns and opens a little with it, and the head only tilts. 4e's form circled both clavicles at the same size
-        // and rolled the head 12 deg, so the head led the read and the shoulders did not (stand-life audit rank 15).
-        // A second roll goes to the other side.
+        // 4e act 2, one shoulder at a time (`ROLL`): the leading clavicle circles once (forward, up, back, down) over
+        // 1.8 s and the other follows 120 ms later, small; the arm is carried round after the clavicle, the chest turns
+        // and opens a little with it, and the head rides along with a small tilt. 4e's form circled both clavicles at
+        // the same size and rolled the head 12 deg, so the head led the read and the shoulders did not (stand-life
+        // audit rank 15). A second roll goes to the other side.
         const cycle = D / a.record.count
         const index = Math.min(a.record.count - 1, Math.floor(age / cycle))
         const local = age - index * cycle
@@ -548,15 +552,17 @@ export function createActLayer(): PerformanceLayer {
           const size = arm === lead ? 1 : ROLL.follow
           channels[ARM_START[arm]] += w * size * path(t, ROLL.up) * DEG
           channels[ARM_START[arm] + 1] += w * size * path(t, ROLL.back) * DEG
-          // The arm hangs from the clavicle and swings back after it.
-          add(`${arm}Flex`, size * path(t - ROLL.trail / pace, ROLL.flex))
-          add(`${arm}Elbow`, size * path(t - ROLL.trail / pace, ROLL.elbow))
+          // The arm hangs from the clavicle and is carried round after it.
+          const carried = t - ROLL.trail / pace
+          add(`${arm}Flex`, size * path(carried, ROLL.flex))
+          add(`${arm}Abduct`, size * path(carried, ROLL.abduct))
+          add(`${arm}Elbow`, size * path(carried, ROLL.elbow))
         }
         // The chest turns the leading shoulder back (a turn to her left is positive yaw) and opens as it goes back.
-        const back = path(local / pace, ROLL.back) / ROLL.back[1][1]
+        const back = Math.min(0, path(local / pace, ROLL.back)) / ROLL.back[2][1]
         add('upperYaw', -side * ROLL.chestYaw * back)
         add('upperPitch', -ROLL.chestOpen * back)
-        head(0, 0, side * path(local, [[0.5, ROLL.headRoll], [1.1, ROLL.headRoll], [cycle, 0]]))
+        head(0, 0, side * path(local / pace, [[0.65, ROLL.headRoll], [1.1, ROLL.headRoll], [ROLL.seconds, 0]]))
         break
       }
       case 'shift-stance': {
