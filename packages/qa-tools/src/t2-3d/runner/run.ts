@@ -175,7 +175,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       release: () => pipeline?.enqueue(() => {
         claimFade = { from: claimAmount, to: 0, elapsed: 0, duration: LAYER_FADE_SECONDS.upperOut }
       }),
-    })
+    }, act => perform(mind.receive({ kind: 'idle-play', act })))
     if (options.energy !== undefined && options.energy !== null)
       cues.energy = options.energy
     const look = new Motion3dLookTarget(mmd.mesh, pose)

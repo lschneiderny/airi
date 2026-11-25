@@ -4,12 +4,12 @@ import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-perform
 import { LAYER_FADE_SECONDS } from '@proj-airi/stage-ui-mmd/composables/mmd/layer-fade'
 import { describe, expect, it } from 'vitest'
 
-import { idleDriveDetail, QA_IDLE_DRIVE } from './idle-drive'
-import { motion3dScenarios, scriptBeats } from './scenarios'
+import { idleDriveDetail, QA_DRIVE_CUED, QA_IDLE_DRIVE } from './idle-drive'
+import { IDLE_ACT_CUES, motion3dScenarios, scriptBeats } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'speak-phrases': 5, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4, 'emotion-bands': 22, 'touch-sides': 9, 'emotion-compose': 12 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'speak-phrases': 5, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4, 'emotion-bands': 22, 'touch-sides': 9, 'emotion-compose': 12, 'idle-acts': 14 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -79,8 +79,20 @@ describe('motion3d scenario timelines', () => {
     expect(motion3dScenarios.filter(scenario => scenario.recordStance).map(scenario => scenario.id)).toEqual(['sleepy-no-clip'])
   })
 
+  it('asks for each whole-body act in turn while the scheduler starts none, and ends before the idle time that settles her in', () => {
+    const scenario = motion3dScenarios.find(scenario => scenario.id === 'idle-acts')
+    if (!scenario)
+      throw new Error('Missing idle-acts scenario')
+    expect(QA_DRIVE_CUED.drive).toEqual({ ...QA_IDLE_DRIVE, rate: 0 })
+    // Natural settles her in after 120 s of continuous idle mode from load, warm-up included.
+    expect(scenario.warmupSeconds + (scenario.maxSeconds ?? 0)).toBeLessThan(120)
+    const plays = scenario.timeline(1, scenario.seconds).flatMap(cue => cue.kind === 'idle-play' ? [cue.act] : [])
+    expect(plays).toEqual(IDLE_ACT_CUES.map(([, act]) => act))
+    expect(new Set(plays)).toEqual(new Set(['shift-stance', 'shoulder-roll', 'hair-touch', 'sigh', 'yawn', 'clasp-hands', 'stretch', 'arm-swing', 'zone-out', 'look-around']))
+  })
+
   it('sets an idle drive only in the scenarios that judge the idle scheduler, and replays idle\'s timeline in idle-drive, music, and music-beat', () => {
-    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day'], ['music-beat', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away']])
+    expect(motion3dScenarios.filter(scenario => scenario.idleDrive).map(scenario => [scenario.id, scenario.idleDrive?.name])).toEqual([['idle-drive', 'qa-neutral-day'], ['music', 'qa-neutral-day'], ['music-beat', 'qa-neutral-day'], ['sleepy-no-clip', 'qa-neutral-day-away'], ['idle-acts', 'qa-cued-acts']])
     const timeline = (id: string) => motion3dScenarios.find(scenario => scenario.id === id)?.timeline(3, 600)
     expect(timeline('idle-drive')).toEqual(timeline('idle'))
     expect(timeline('music')).toEqual(timeline('idle'))

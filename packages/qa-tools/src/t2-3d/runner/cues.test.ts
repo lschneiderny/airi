@@ -140,6 +140,17 @@ it('sets energy, shows and hides the chat with an unfold read, and drives the cl
   expect(events.map(event => event.kind === 'marker' ? event.label : event.kind)).toEqual(['energy:0.85', 'chat:show:unfold', 'clip-claim', 'clip-release', 'chat:hide'])
 })
 
+it('asks the mind to play an idle act by name and labels it, and refuses the cue without a mind', () => {
+  const adapter = { impulse: vi.fn(), addMood: vi.fn(), gesture: vi.fn(), poke: vi.fn(), setPet: vi.fn(), chatRead: vi.fn() }
+  const idlePlay = vi.fn()
+  const events: MotionTraceEvent[] = []
+  const driver = new Motion3dCueDriver(adapter, 2, event => events.push(event), null, idlePlay)
+  driver.apply({ at: 3, kind: 'idle-play', act: 'shoulder-roll' }, 3)
+  expect(idlePlay).toHaveBeenCalledExactlyOnceWith('shoulder-roll')
+  expect(events).toEqual([{ t: 3, kind: 'marker', label: 'play:shoulder-roll' }])
+  expect(() => boundary().driver.apply({ at: 0, kind: 'idle-play', act: 'sigh' }, 0)).toThrow(TypeError)
+})
+
 it('refuses a clip cue without the runner clip', () => {
   const { driver } = boundary()
   expect(() => driver.apply({ at: 0, kind: 'clip-claim' }, 0)).toThrow(TypeError)

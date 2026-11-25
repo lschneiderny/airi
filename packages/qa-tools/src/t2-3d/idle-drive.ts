@@ -17,6 +17,9 @@ export const QA_IDLE_DRIVE: Readonly<NaturalIdleDrive> = { energy: 0, valence: 0
 /** C001's fixed drive: the user present and inactive for the whole run. */
 export const QA_DRIVE_PRESENT: Motion3dIdleDrive = { name: 'qa-neutral-day', drive: QA_IDLE_DRIVE }
 
+/** `idle-acts`' drive: the same values at rate 0, so the scheduler starts no act itself and plays only the acts asked for. */
+export const QA_DRIVE_CUED: Motion3dIdleDrive = { name: 'qa-cued-acts', drive: { ...QA_IDLE_DRIVE, rate: 0 } }
+
 /** C004's drive: the same values; the user leaves at the scenario's away cue, which reaches Natural as `away`. */
 export const QA_DRIVE_AWAY: Motion3dIdleDrive = { name: 'qa-neutral-day-away', drive: QA_IDLE_DRIVE }
 

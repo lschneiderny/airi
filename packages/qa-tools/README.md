@@ -128,6 +128,15 @@ inactive), so the character mind decides her idle acts over the run; it defaults
 60 s and accepts up to 600 s. `idle` itself sets no drive and stays the base idle
 that `gesture-timing`, `ownership` and the gate's idle class score.
 
+`idle-acts` (idle class, version 1) asks the character mind to play each whole-body idle act in turn, as the motion
+lab's buttons do: a stance shift at 2 s, a shoulder roll at 7, a hair tuck at 15, a sigh at 21, a second stance shift
+at 28, a yawn at 33, a clasp at 41, a stretch at 53, an arm swing at 61, a second hair tuck at 68, a zone-out at 74
+and a look-around at 95 (`IDLE_ACT_CUES`), each recorded as a `play:<act>` marker beside the scheduler's own
+`idle:<kind>:<start|end>` reports. Its QA idle drive `qa-cued-acts` is `qa-neutral-day` at rate 0, so the scheduler
+starts nothing itself and the seed draws only each act's shape. It defaults to 105 s, also its cap, so it ends before
+the 120 s of idle mode after load that settle her in, and every act plays standing. Use it to compare the acts before
+and after a change; it does not replace `idle-drive`, which judges the scheduler's own pacing.
+
 `music` (CM5 of the character mind roadmap, idle class, version 1) is the `idle`
 timeline with the QA idle drive `qa-neutral-day`. The scenario also sets `music`, so the runner sends its
 character mind `{ kind: 'music', playing: true }` before the first frame and
@@ -859,7 +868,7 @@ load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
 
 `--model`, `--scenario` and `--out` are required. Scenarios are `idle`,
 `idle-drive`, `music`, `music-beat`, `gaze-shift`, `speak`, `speak-phrases`, `gesture-under-clip`, `emotions`, `walk`,
-`walk-mood-arc`, `touch`, `sleepy-no-clip`, `emotion-bands`, `touch-sides` and `emotion-compose`. Seed defaults to 1;
+`walk-mood-arc`, `touch`, `sleepy-no-clip`, `emotion-bands`, `touch-sides`, `emotion-compose` and `idle-acts`. Seed defaults to 1;
 duration and warm-up default to the scenario's values (10 s warm-up).
 Scored duration is capped at 120 s, except for `walk-mood-arc` (150 s), `emotion-bands` (200 s), `touch-sides` and `emotion-compose` (50 s each) and the idle-class `idle`, `idle-drive`, `music`, `music-beat` and
 `sleepy-no-clip` scenarios, which accept up to 600 s (owner decision O1, goal 4: a ten-minute idle). A

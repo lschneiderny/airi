@@ -1,5 +1,6 @@
 import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { IdleBehaviourKind } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { RandomStream } from '@proj-airi/motion-driver-natural/random'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
@@ -10,7 +11,7 @@ import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { createRandomStream, deriveSeed } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { QA_DRIVE_AWAY, QA_DRIVE_PRESENT } from './idle-drive'
+import { QA_DRIVE_AWAY, QA_DRIVE_CUED, QA_DRIVE_PRESENT } from './idle-drive'
 
 export interface Motion3dScenario {
   /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
@@ -77,6 +78,8 @@ export type Motion3dCue
     | { at: number, kind: 'chat', target: { x: number, y: number } | null, unfold: boolean }
     /** The runner's synthetic right-arm clip starts or ends as the app's upper clip layer, with that layer's fade. */
     | { at: number, kind: 'clip-claim' | 'clip-release' }
+    /** The run's character mind is asked to play this idle act, as the motion lab's buttons ask it (recorded as `play:<act>`). */
+    | { at: number, kind: 'idle-play', act: IdleBehaviourKind }
 
 /**
  * Plan 2.2 peaks: the first 0.6 to 1.0 s into the utterance, then seeded gaps of 0.9 to 1.5 s, so no two are closer
@@ -216,6 +219,26 @@ function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
  * them together; higher seeds repeat the sets in different seeded orders.
  * Shorter runs truncate trials; the full pooling guarantee requires 120 s.
  */
+/**
+ * `idle-acts`' cues: when each whole-body act is asked for, seconds of scored time. Each start leaves room for the
+ * longest length its kind draws (`idle-activities.ts`) and the act's exit, so no act is asked for while another plays;
+ * the stance shift comes twice, so a second re-plant starts from where the first left the foot.
+ */
+export const IDLE_ACT_CUES: readonly (readonly [at: number, act: IdleBehaviourKind])[] = [
+  [2, 'shift-stance'],
+  [7, 'shoulder-roll'],
+  [15, 'hair-touch'],
+  [21, 'sigh'],
+  [28, 'shift-stance'],
+  [33, 'yawn'],
+  [41, 'clasp-hands'],
+  [53, 'stretch'],
+  [61, 'arm-swing'],
+  [68, 'hair-touch'],
+  [74, 'zone-out'],
+  [95, 'look-around'],
+]
+
 export const motion3dScenarios: readonly Motion3dScenario[] = [
   {
     version: 1,
@@ -497,6 +520,26 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
       { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-sleepy' },
       { at: 40, kind: 'activity', mode: 'idle', away: true },
       { at: 80, kind: 'activity', mode: 'listening' },
+    ] satisfies Motion3dCue[]).filter(cue => cue.at < seconds).sort(byTime),
+  },
+  {
+    /**
+     * Each whole-body idle act in turn, for a visual review of the acts and for before and after comparisons that do not
+     * hang on the scheduler's draw. The drive's rate is 0, so the scheduler starts nothing itself, and each act is asked
+     * for by name (`IDLE_ACT_CUES`); the seed draws only each act's own shape (side, length, repeats). The run ends
+     * before the 120 s of idle mode after load that settle her in, so every act plays standing.
+     */
+    version: 1,
+    id: 'idle-acts',
+    class: 'idle',
+    warmupSeconds: 10,
+    seconds: 105,
+    maxSeconds: 105,
+    idleDrive: QA_DRIVE_CUED,
+    timeline: (seed, seconds) => ([
+      { at: 0, kind: 'activity', mode: 'idle' },
+      { at: createRandomStream(seed)() * Math.min(1, seconds), kind: 'marker', label: 'observe-idle-acts' },
+      ...IDLE_ACT_CUES.map(([at, act]): Motion3dCue => ({ at, kind: 'idle-play', act })),
     ] satisfies Motion3dCue[]).filter(cue => cue.at < seconds).sort(byTime),
   },
   {
