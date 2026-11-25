@@ -48,7 +48,9 @@ describe('walkStyleFrom', () => {
 
   it('tension bends the elbows, leans the trunk as acted tense walks do, and shrinks the swing, the roll and the lift', () => {
     const tense = style({ tension: 0.9 })
-    expect(tense.elbowCarry).toBeGreaterThan(20 * Math.PI / 180)
+    // Re-pinned from over 20 degrees: 31 degrees at anger measured 54 on the reference rig and read as pumping arms
+    // (independent visual audit, 2026-11-25).
+    expect(tense.elbowCarry).toBeGreaterThan(5 * Math.PI / 180)
     expect(tense.lean).toBeGreaterThan(8 * Math.PI / 180)
     for (const key of ['armSwing', 'roll', 'lift'] as const)
       expect(tense[key]).toBeLessThan(1)
@@ -119,9 +121,10 @@ describe('walkStyleFrom', () => {
     expect(happy.push).toBeGreaterThan(1.2)
     expect(tired.push).toBeLessThan(0.7)
     expect(sad.push).toBeLessThan(1)
-    // Only tension loads the step, most with arousal.
+    // Tension loads the step, most with arousal, and fatigue does.
     expect(angry.load).toBeGreaterThan(0.6)
     expect(happy.load).toBe(0)
+    expect(sad.load).toBe(0)
     expect(style({ tension: 1 }).load).toBeLessThan(angry.load)
     // Sadness folds the chest and narrows and shortens the step; fatigue folds it a little; gladness opens it.
     expect(sad.fold).toBeGreaterThan(8 * Math.PI / 180)
@@ -132,11 +135,34 @@ describe('walkStyleFrom', () => {
     expect(sad.stride).toBeLessThan(style({ arousal: -0.5 }).stride)
   })
 
-  it('carries an angry elbow 30 degrees over neutral, less than arousal and tension added alone would', () => {
-    const angry = style({ valence: -0.5, arousal: 0.8, tension: 1 }).elbowCarry * 180 / Math.PI
-    expect(angry).toBeGreaterThan(28)
-    expect(angry).toBeLessThan(36)
-    expect(angry).toBeLessThan((style({ arousal: 0.8 }).elbowCarry + style({ tension: 1 }).elbowCarry) * 180 / Math.PI)
+  it('puts anger into the plant and a squared trunk, not bent arms', () => {
+    const angry = style({ valence: -0.5, arousal: 0.8, tension: 1 })
+    const tense = style({ tension: 1 })
+    // Re-pinned from 30 degrees over neutral, as acted angry walks carry it: on the rig that read as short pumping arms
+    // (independent visual audit, 2026-11-25). The arms hang lower than a happy walk's.
+    expect(angry.elbowCarry * 180 / Math.PI).toBeLessThan(10)
+    expect(angry.elbowCarry).toBeLessThan(style({ valence: 1, arousal: 0.6 }).elbowCarry)
+    // The foot lifts and rolls through its heel as a neutral one does, where tension alone shuffles, and lands loaded.
+    expect(angry.lift).toBeGreaterThanOrEqual(1)
+    expect(angry.roll).toBeGreaterThanOrEqual(1)
+    expect(tense.roll).toBeLessThan(1)
+    expect(angry.load).toBe(1)
+    // The shoulders stay square to the path.
+    expect(angry.torsoTwist).toBeLessThan(0.6)
+  })
+
+  it('makes a tired walk heavy rather than sad: a slow pickup, a loaded landing, a wide step, the head carried', () => {
+    const tired = style({}, 0)
+    const sad = style({ valence: -1, arousal: -0.5 })
+    expect(tired.push).toBeLessThan(sad.push)
+    expect(tired.push).toBeLessThan(0.65)
+    expect(tired.load).toBeGreaterThan(0.4)
+    expect(tired.width).toBeGreaterThan(1)
+    expect(sad.width).toBeLessThan(1)
+    // She bends from the hips, not at the neck: a sad head drops 12 degrees, a tired one under 3.
+    expect(tired.lean).toBeGreaterThan(sad.lean)
+    expect(tired.head * 180 / Math.PI).toBeLessThan(3)
+    expect(tired.fold).toBeLessThan(sad.fold / 2)
   })
 
   it('leaves every style alone at or below the walk urgency', () => {

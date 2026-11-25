@@ -1388,6 +1388,36 @@ describe('walk style', () => {
     expect(rise(steady(styled({})))).toBeLessThan(60 * rad)
   })
 
+  it('lets a dragging push rise out of the loaded knee slowly, and loads as deep as a brisk one', () => {
+    // The pelvis drop a loaded style adds over the same style without load, by the share of the step since the strike.
+    const added = (push: number) => {
+      const loaded = steady(styled({ load: 1, push }))
+      const plain = steady(styled({ push }))
+      const byShare = new Map<number, number>()
+      loaded.forEach((frame, k) => {
+        const share = Math.round(10 * (frame.phase - Math.floor(frame.phase)))
+        byShare.set(share, Math.max(byShare.get(share) ?? 0, (frame.body.pelvisDrop - plain[k]!.body.pelvisDrop) / legLength))
+      })
+      return byShare
+    }
+    const brisk = added(1)
+    const dragging = added(0.6)
+    // Six tenths of a step after the strike the brisk knee is straight again; the dragging one still gives.
+    expect(brisk.get(6)!).toBeLessThan(1e-4)
+    expect(dragging.get(6)!).toBeGreaterThan(0.002)
+    expect(dragging.get(2)!).toBeCloseTo(brisk.get(2)!, 3)
+  })
+
+  it('takes a swing wider than the walk\'s from the shoulder: the forearm rises no higher in front than the neutral walk\'s', () => {
+    const rise = (frames: LocomotionFrame[]) => Math.max(...frames.map(frame => frame.armSwing.left.flexion + frame.armSwing.left.elbowFlex))
+    const flexion = (frames: LocomotionFrame[]) => Math.max(...frames.map(frame => frame.armSwing.left.flexion))
+    const neutral = steady(styled({}))
+    const wide = steady(styled({ armSwing: 1.8 }))
+    // The shoulder still swings 1.8 times as far forward; the elbow gives back what it adds.
+    expect(flexion(wide) - 2 * rad).toBeCloseTo(1.8 * (flexion(neutral) - 2 * rad), 2)
+    expect(rise(wide)).toBeLessThan(rise(neutral) + 2 * rad)
+  })
+
   it('rolls the arm inward as it swings forward, 7 to 20 degrees within a stride at the neutral style, sized by the swing', () => {
     const roll = (frame: LocomotionFrame) => frame.armSwing.left.twist + frame.armSwing.left.pronation
     const neutral = steady(styled({}))

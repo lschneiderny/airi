@@ -307,10 +307,13 @@ into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a cal
 tension let it drop toward the forearm's line; tension closes the hand toward a fist, most with arousal, and a calm
 positive mood opens it; a baseline's `armCarry` extends the wrist a little and opens the hand, and its `armSwing` above 0
 closes it a little. Each mood also shows in the legs and trunk: arousal and gladness push off harder, fatigue and
-sadness slowly; tension loads the step, most with arousal; sadness folds the chest, narrows and shortens the step, less
-as arousal rises, fatigue folds it a little and gladness opens it; arousal bends the elbow half as much when she is
-tense, so an angry walk carries the elbow 31 degrees. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
-more at 1; at or below it, or omitted, the urgency changes no style value.
+sadness slowly; tension loads the step, most with arousal, and fatigue loads it too, and a push below 1 rises out of
+the loaded knee slowly; sadness folds the chest, narrows and shortens the step, less as arousal rises, fatigue folds it
+a little and gladness opens it. Tension alone stiffens the step, but with arousal the foot lifts and rolls through its
+heel. Tension squares the shoulders to the path and holds the elbow lower, so an angry walk carries it 8 degrees.
+Fatigue bends her from the hips more than at the neck. An arm swing wider than the walk's comes from the shoulder: the
+elbow's front bend gives back what the shoulder adds. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6
+degrees more at 1; at or below it, or omitted, the urgency changes no style value.
 
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
