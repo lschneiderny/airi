@@ -10,7 +10,7 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo } from './gesture-forms'
+import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeArmFormHand } from './gesture-forms'
 import { handOrder, ORDER_PEAK_SLOPE, orderedCurve, orderedShare, orderedSlope, writeHandShape } from './hand-shapes'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -686,7 +686,7 @@ class GesturePerformer {
       const track = this.tracks[side]
       this.captureHome(track, context)
       track.key.set(track.home)
-      writeHandShape(ARM_FORMS[request.form].shape, track.key)
+      writeArmFormHand(request.form, side, track.key)
       if (!this.keys.armForm(side, request.form, track.key))
         return
     }
@@ -708,7 +708,7 @@ class GesturePerformer {
     if (track.state !== 'form' || !this.keys)
       return false
     const key = track.key.slice()
-    writeHandShape(ARM_FORMS[form].shape, key)
+    writeArmFormHand(form, side, key)
     if (!this.keys.armForm(side, form, key))
       return false
     const travel = this.travel(side, track.key, key)

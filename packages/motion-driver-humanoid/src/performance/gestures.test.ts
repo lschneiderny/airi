@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision } from './collision'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys } from './gesture-forms'
+import { GESTURE_FORMS, gestureGain, GestureKeys, writeArmFormHand } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { writeHandShape } from './hand-shapes'
 import { BodySkeleton, createBodyPerformer } from './index'
@@ -774,7 +774,7 @@ describe('co-speech gestures', () => {
       const from = new Float64Array(rest.subarray(start, start + 26))
       for (const form of ['hand-to-chest', 'thinking-hand'] as const) {
         const pose = from.slice()
-        writeHandShape(ARM_FORMS[form].shape, pose)
+        writeArmFormHand(form, side, pose)
         expect(keys.armForm(side, form, pose), `${side} ${form}`).toBe(true)
         expect(keys.pathDepth(side, from, pose)).toBe(0)
         for (let j = 2; j <= 8; j++) {
@@ -793,7 +793,7 @@ describe('co-speech gestures', () => {
       const start = ARM_START[side]
       const from = new Float64Array(rest.subarray(start, start + 26))
       const pose = from.slice()
-      writeHandShape(ARM_FORMS.clasp.shape, pose)
+      writeArmFormHand('clasp', side, pose)
       expect(keys.armForm(side, 'clasp', pose), side).toBe(true)
       expect(keys.pathDepth(side, from, pose), side).toBe(0)
       for (let j = 2; j <= 8; j++) {
@@ -844,7 +844,7 @@ describe('co-speech gestures', () => {
       const start = ARM_START[side]
       const from = new Float64Array(rest.subarray(start, start + 26))
       const pose = from.slice()
-      writeHandShape(ARM_FORMS['thinking-hand'].shape, pose)
+      writeArmFormHand('thinking-hand', side, pose)
       expect(keys.armForm(side, 'thinking-hand', pose), side).toBe(true)
       expect(keys.pathDepth(side, from, pose), side).toBe(0)
       const channels = rest.slice()
@@ -896,7 +896,7 @@ describe('co-speech gestures', () => {
       const start = ARM_START[side]
       const from = new Float64Array(rest.subarray(start, start + 26))
       const touch = from.slice()
-      writeHandShape(ARM_FORMS['hair-touch'].shape, touch)
+      writeArmFormHand('hair-touch', side, touch)
       expect(keys.armForm(side, 'hair-touch', touch), side).toBe(true)
       const sweep = touch.slice()
       expect(keys.armForm(side, 'hair-sweep', sweep), side).toBe(true)
