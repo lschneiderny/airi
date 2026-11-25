@@ -156,6 +156,7 @@ Every root `qa:*` script runs its entry directly with `node --import tsx`, from 
 | `pnpm qa:setup cubism [--force]` | Download Cubism Core for the desktop app without opening a window. Skip present copies; `--force` downloads again. |
 | `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, the Live2D rig directory (`AIRI_QA_RIG_FORBOOTH`) and MMD model file (`AIRI_QA_MMD_MODEL`), and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
 | `pnpm qa:live2d-rig [--emotion angry] [--band strong] [--seed 1] [--out <trace.json>]` | Run one 10 s emotion trial through the Natural driver on the headless ForBOOTH rig and Cubism Core, and print the samples, moving channels, trace hash, and speed. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. See [T2 status](#t2-status). |
+| `pnpm qa:motion3d clearance (--models <dir> \| --list <file>) --out <new dir> [--scenarios idle-drive,speak,walk] [--seconds 40] [--seed 1] [--parallel 1-3] [--compare <clearance.json>] [--fail-above <share>]` | Measure how often the arms pass through her body and clothing on every model of a folder or list, and compare two sweeps rig by rig. See [Arm clearance](#arm-clearance). |
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified] [--expect-backend <backend>] [--expect-verified <proofs>]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. On Linux, also check the desktop backend and the signals it verifies. |
 | `pnpm qa:smoke [--model <path>] [--stage-host window\|desktop] [--expect-host window\|desktop] [--xwayland] [--electron-arg=<switch>...] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
 | `pnpm qa:app run --model <path> --say <text> [options]` | Run a disposable experience session: replayed chat and speech, real model import, events, and a screenshot. See [App experience sessions](#app-experience-sessions). |
@@ -948,8 +949,7 @@ drives), head, or hair. A triangle leaves the test when the arm wears it: when
 a corner carries arm-bone weight, when a corner lies within 1.25 measured
 sleeve radii of the bind-pose arm from the middle of the upper arm down, or
 when the arm's centreline crosses it after the copy has stood 3 s in the bind
-pose with physics on, together with the triangles within two forearm sleeve
-radii of it. A triangle with a corner on a bone outside the body's regions,
+pose with physics on. A triangle with a corner on a bone outside the body's regions,
 such as a prop, is not tested.
 
 During the run it reads every second scored frame (30 Hz) through the
@@ -974,9 +974,48 @@ The measure writes nothing to the run: a run with `--clearance` has the same
 trace as one without, and `--verify-determinism` replays without the measure.
 It counts centreline crossings, not sleeve-surface overlap, so a sleeve that
 overlaps her coat while its arm's centreline stays outside is not counted. It
+skins with linear blend weights, so a crossing on SDEF-weighted triangles is
+approximate. A model without an arm chain or without a body triangle to test
+fails its run instead of reading as unpierced. It
 does not judge legs. It does not judge clip-driven arms either: a crossing
 while a clip drives an arm belongs to the clip, which the arm guard does not
-steer.
+steer. `--clearance` and the sweep therefore refuse a scenario in which a clip
+claims an arm (`gesture-under-clip`).
+
+```bash
+pnpm qa:motion3d clearance --models /models --out .temp/qa/clearance-main
+pnpm qa:motion3d clearance --list rigs.tsv --out .temp/qa/clearance-tip --compare .temp/qa/clearance-main/clearance.json --fail-above 0.05
+```
+
+`qa:motion3d clearance` runs `qa:motion3d run --clearance` for each scenario
+(default `idle-drive,speak,walk`, 40 s scored after the scenario's warm-up,
+seed 1) on every model, each in its own process, at most three at a time
+(`--parallel`, default 3). `--models <dir>` takes every `.pmx` below a folder,
+labelled by file stem; `--list <file>` takes one model path per line,
+optionally followed by a tab and a label, with relative paths resolved against
+the list and `#` lines skipped. A label names the run's folder, so it may not
+contain a path separator. A repeated stem gets the first of `-2`, `-3` and so
+on that no model has. Each
+run's directory goes to `<out>/runs/<label>--<scenario>` and its output to
+`<out>/logs`. `<out>/clearance.json` (`motion3d-clearance` v1) holds the
+commit, seed, length and scenarios, and one row per model and scenario with
+the label, the run directory relative to the file, the run's exit code, the
+model's hash, `noClearPoseTicks` (the summary's `collisions.count`) and the
+`clearance` block; a row whose run ended without a measure has `clearance:
+null`, and `error` names the missing part. The run's own output stays in its
+log, so the file never holds a local path. The command prints one line per finished run and then the table; with `--compare
+<clearance.json>` it also prints each rig's pierced share, upper-arm angle,
+cloth reversals and ticks without a clear arm pose before and after, and names
+rows found in one file only.
+
+A run with ticks without a clear arm pose exits 1 on its own, as every
+`qa:motion3d run` does; the sweep still measures it and reports the ticks in
+its row and table, and they do not change the sweep's exit code. The exit code
+is 0 when every run was measured, 1 when a run ended without a summary or,
+with `--fail-above <share>`, when a rig's `idle-drive` pierced share exceeds
+the share; 2 on invalid arguments, an existing `--out`, a missing model or an
+unreadable `--compare` file, and 130 when interrupted. Each run costs about
+1 GB and one core, and a 40 s run with its 10 s warm-up takes about a minute.
 
 ### Trace format
 

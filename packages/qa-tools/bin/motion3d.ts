@@ -25,8 +25,9 @@ async function main(): Promise<number> {
     case 'run': return (await import('../src/t2-3d/cli/run')).runMotion3d(args, context)
     case 'diff': return (await import('../src/t2-3d/cli/diff')).diffMotion3d(args, context)
     case 'affected': return (await import('../src/t2-3d/cli/affected')).affectedMotion3d(args, context)
+    case 'clearance': return (await import('../src/t2-3d/cli/clearance')).clearanceMotion3d(args, context)
     default:
-      console.error('Usage: qa:motion3d <run|diff|affected> [arguments]\nScoring and rendering (gate, report, verdicts, frames, clip, inject, matrix, reference) are lab:motion3d commands.')
+      console.error('Usage: qa:motion3d <run|diff|affected|clearance> [arguments]\nScoring and rendering (gate, report, verdicts, frames, clip, inject, matrix, reference) are lab:motion3d commands.')
       return 2
   }
 }
