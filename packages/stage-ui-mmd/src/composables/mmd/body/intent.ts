@@ -10,9 +10,9 @@ const HEAD_SPAN = Math.PI / 6
 const MICRO_TAU = 0.15
 /** The performer starts a gaze shift when its goal jumps more than this in one tick (unit D contract, `gaze.ts`). */
 const GAZE_CUT = 4 * Math.PI / 180
-const GAZE_YAW = 24
+const GAZE_YAW = 27
 
-const terms = ['emphasis', 'impulse', 'pet', 'held', 'gesture', 'cue'] as const satisfies readonly BodyHeadTerm[]
+const terms = ['emphasis', 'impulse', 'pet', 'held', 'gesture', 'cue', 'sway'] as const satisfies readonly BodyHeadTerm[]
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle))
 
 /** What the body knows once per display frame; `gaze` is already resolved in the stance frame, in radians. */
@@ -70,8 +70,8 @@ export function bodyIdleAct(record: IdleBehaviourRecord): BodyIdleAct {
  */
 export class MMDBodyIntent {
   /** Continuous scalars at the previous and current display frame, in the order `capture` writes them. */
-  private readonly from = new Float64Array(40)
-  private readonly to = new Float64Array(40)
+  private readonly from = new Float64Array(43)
+  private readonly to = new Float64Array(43)
   private captured = false
   private lowX = 0
   private lowY = 0
@@ -87,7 +87,7 @@ export class MMDBodyIntent {
     head: {
       attitude: rotation(),
       slow: rotation(),
-      terms: { emphasis: rotation(), impulse: rotation(), pet: rotation(), held: rotation(), gesture: rotation(), cue: rotation() },
+      terms: { emphasis: rotation(), impulse: rotation(), pet: rotation(), held: rotation(), gesture: rotation(), cue: rotation(), sway: rotation() },
     },
     posture: { amplitude: 1, shiftRate: 1, support: null },
     gaze: { yaw: 0, pitch: 0, kind: 'sustained' as BodyGazeGoal['kind'], saccadeSeq: 0, blinkFactor: 1, micro: { yaw: 0, pitch: 0 } },

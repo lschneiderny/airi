@@ -336,7 +336,8 @@ class BodyPerformer {
 
   /**
    * The neck and head counter-rotate a share of the trunk's world rotation from posture and breath (sway, transfer,
-   * drift, set-point), 80 ms late; the trunk's share of Natural's head yaw is intent and is not cancelled.
+   * drift, set-point), 80 ms late; the trunk's shares of Natural's head yaw and of pep's sway roll are intent and are
+   * not cancelled.
    */
   private steadyHead(targets: Float64Array): void {
     const { traits } = this.options
@@ -346,6 +347,8 @@ class BodyPerformer {
         trunk += targets[3 + axis]
       if (axis === 0)
         trunk -= this.state.posture.trunkIntentYaw
+      if (axis === 2 && this.state.posture.trunkSwayRoll !== 0)
+        trunk -= this.state.posture.trunkSwayRoll
       const steady = this.state.steady[axis].step(-STEADY_GAIN[axis] * trunk)[0]
       targets[15 + axis] += 0.35 * steady
       targets[18 + axis] += 0.65 * steady
