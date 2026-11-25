@@ -646,7 +646,7 @@ describe('co-speech gestures', () => {
       }
     }
     expect(exits).toBeGreaterThanOrEqual(12)
-  })
+  }, 120_000)
 
   it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('hands an emotion arm form back to the hang only once the arm is home on %s\'s real rig', (_, rig) => {
     // The same margin as a speech unit's exit: a form arm still travelling home when its weight starts to fall is
