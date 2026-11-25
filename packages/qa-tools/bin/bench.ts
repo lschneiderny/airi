@@ -61,9 +61,9 @@ async function main(): Promise<number> {
   loadQaEnv(repoRoot)
   // Exits 2 outside a live qa:display session, before anything is written or launched.
   assertQaDisplaySession('qa:bench', allowHostSession)
-  // Only Linux has the qa:display session that keeps the bench's windows off the user's desktop.
-  if (process.platform !== 'linux')
-    throw new BenchSetupError(`qa:bench runs on Linux only, not on ${process.platform}`)
+  // Linux runs in a qa:display session; macOS has no headless display, so the bench's windows open on the desktop.
+  if (process.platform !== 'linux' && process.platform !== 'darwin')
+    throw new BenchSetupError(`qa:bench runs on Linux and macOS only, not on ${process.platform}`)
   const models = new Map(command.scenarios.map(scenario => [scenario.model.env, resolveModel(scenario)]))
   await refuseIfWorktreeBusy(repoRoot)
   const launches = planLaunches(command.scenarios, command.runs)

@@ -4,6 +4,7 @@ import type { BenchRunRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import type { MotionQaBridgeClient } from '../t3/bridge-client'
 import type { BenchLaunch, BenchScenario } from './matrix'
+import type { PowerLimit } from './power'
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -22,6 +23,7 @@ import { AppSessionCore } from '../session/app-session'
 import { importRig, zipRig } from '../t3/import-rig'
 import { BENCH_DEADLINE_EXIT, pastNotAfter } from './deadline'
 import { appendBenchLine } from './history'
+import { readPowerLimit } from './power'
 import { measurableFrom, readRawRun, summarizeBenchRun } from './summarize'
 
 /** Longest wait for a calm host before one launch; other worktrees' work can keep the machine busy that long. */
@@ -136,6 +138,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
   const session = AppSessionCore.create({ repoRoot: context.repoRoot, profileDir, selfPids: context.selfPids, signal })
   let server: ReplayServer | undefined
   let measured: { startMs: number, endMs: number } | undefined
+  let powerLimit: PowerLimit | null = null
   let failure: unknown
   let teardownOk = false
   try {
@@ -174,6 +177,8 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
     if (measurable > Date.now())
       await session.whileRunning('the rollup settling', setTimeout(measurable - Date.now(), undefined, { signal }))
 
+    // Read at both ends: a plug or Low Power Mode change in between is missed, which a minute-long span makes rare.
+    powerLimit = readPowerLimit()
     const startMs = Date.now()
     if (measure.kind === 'idle') {
       context.log(`qa:bench: ${scenario.id} run ${run}: measuring ${measure.seconds} s`)
@@ -188,6 +193,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
       }
     }
     measured = { startMs, endMs: Date.now() }
+    powerLimit ??= readPowerLimit()
     await session.whileRunning('the last rollup', setTimeout(LAST_TICK_MS, undefined, { signal }))
   }
   catch (error) {
@@ -214,7 +220,7 @@ async function benchLaunch(launch: BenchLaunch, context: LaunchContext): Promise
   }
   if (failure !== undefined || measured === undefined)
     return outcome(null, errorMessageFrom(failure) ?? 'the launch broke')
-  const summary = summarizeBenchRun(await readRawRun(perfDir), { scenario, run, modelFingerprint: model.fingerprint, measured })
+  const summary = summarizeBenchRun(await readRawRun(perfDir), { scenario, run, modelFingerprint: model.fingerprint, measured, powerLimit })
   if (!summary.ok)
     return outcome(null, summary.reason)
   appendBenchLine(context.historyPath, JSON.stringify(summary.record))

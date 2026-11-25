@@ -20,7 +20,9 @@ runs.
 | Rendered sessions (`pnpm qa:app`, the `airi-qa` MCP server) | A visible change to motion, expression, or speech | A real chat turn in the running app, with events and screenshots that show the change works. Use a Live2D or MMD model that matches the change. | How the motion feels; that is the review backlog's job. |
 
 On Linux, start `qa:smoke`, `qa:app`, `qa:bench`, and every other command
-that opens app windows through `pnpm qa:display run --`.
+that opens app windows through `pnpm qa:display run --`. On macOS, the same
+`pnpm qa:display run -- pnpm qa:bench` runs the bench on your desktop. Plug the
+Mac in and turn Low Power Mode off, or every run is invalid.
 
 App runtime code means files under `apps/stage-tamagotchi/src/**`,
 `packages/stage-ui*/src/**`, `packages/stage-shared/src/**`,
