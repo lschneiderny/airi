@@ -259,10 +259,11 @@ describe('co-speech gestures', () => {
   })
 
   it('strokes every prominent onset at least 0.45 s apart, and never without one', () => {
-    const onsets = [{ at: 1.2 }, { at: 1.4 }, { at: 2.4, major: true }, { at: 3.5, weak: true }, { at: 4.4 }]
+    // The last onset comes 1.3 s after the one before: 2 s would let the waiting hands go first (`RISE`).
+    const onsets = [{ at: 1.2 }, { at: 1.4 }, { at: 2.4, major: true }, { at: 3.1, weak: true }, { at: 3.7 }]
     const run = perform({ utterances: [utterance(0.4, 0.65, onsets)] }, 9)
     const planned = strokes(run)
-    expect(planned.map(s => Math.round(s.onset * 10) / 10)).toEqual([1.2, 2.4, 4.4])
+    expect(planned.map(s => Math.round(s.onset * 10) / 10)).toEqual([1.2, 2.4, 3.7])
     for (const stroke of planned)
       expect(stroke.hit - stroke.onset).toBeLessThan(0.3)
   })
@@ -338,6 +339,41 @@ describe('co-speech gestures', () => {
       expect(planned[0].onset).toBeCloseTo(1, 1)
     }
   })
+
+  it('lets the hands go once a thought has nothing more to stress, while speech goes on, and raises them for the next stroke', () => {
+    // After the stroke at 2.8 s only weak onsets come until 7 s; speech never pauses.
+    for (const seed of [1, 2, 3]) {
+      const run = perform({ utterances: [{ start: 0.5, end: 8.5, energy: 0.65, onsets: [{ at: 1 }, { at: 1.9 }, { at: 2.8 }, { at: 4.2, weak: true }, { at: 5.6, weak: true }, { at: 7 }] }] }, 9, { seed })
+      const last = strokes(run).filter(s => s.hit < 4)
+      const lowered = run.frames.find(f => f.time > last.at(-1)!.hit && f.gesture.phase === 'retraction')
+      expect(lowered, `seed ${seed}`).toBeDefined()
+      expect(lowered!.time - last.at(-1)!.hit, `seed ${seed}`).toBeLessThan(2)
+      expect(strokes(run).some(s => s.onset > 6.9), `seed ${seed}`).toBe(true)
+    }
+  })
+
+  it('lets one hand of two go while the other strokes alone', () => {
+    // Strokes 1.1 s apart with no pause, so one-hand phrases follow two-hand ones. Since its last stroke a raised hand
+    // holds, recovers, waits at most 1.4 s and starts home; a hand left out of the phrase used to wait 4.4 s.
+    const onsets = Array.from({ length: 10 }, (_, i) => ({ at: 1 + i * 1.1, major: i % 3 === 0 }))
+    for (let seed = 1; seed <= 20; seed++) {
+      const run = perform({ utterances: [{ start: 0.5, end: 12.5, energy: 0.65, onsets }] }, 12.5, { seed })
+      const hits = strokes(run)
+      for (const side of SIDES) {
+        let raised = Number.NaN
+        for (const frame of run.frames) {
+          if (frame.gesture.activation[side] < 1) {
+            raised = Number.NaN
+            continue
+          }
+          if (Number.isNaN(raised))
+            raised = frame.time
+          const last = hits.filter(hit => (hit.hand === side || hit.hand === 'both') && hit.hit <= frame.time).at(-1)?.hit ?? -Infinity
+          expect(frame.time - Math.max(raised, last), `seed ${seed}, ${side} at ${frame.time.toFixed(2)}`).toBeLessThanOrEqual(3.4)
+        }
+      }
+    }
+  }, 120_000)
 
   it('lowers the hands in a pause between phrases and gestures again after it', () => {
     const run = perform({ utterances: [{ start: 0.5, end: 9, energy: 0.85, onsets: [1, 1.9, 2.8, 5.6, 6.5, 7.4].map(at => ({ at })), pauses: [[3.2, 5.2]] }] }, 9)
@@ -558,8 +594,9 @@ describe('co-speech gestures', () => {
   }, 120_000)
 
   it('retracts a stroke cut by the unit\'s cap along its cleared path, without a corrector kick', () => {
-    // Six strokes; the sixth starts 50 ms before the 9 s cap, as on the clip scenario's second rig, seed 5.
-    const onsets = [1.0, 2.5, 4.0, 5.5, 7.0, 8.95].map((at, i) => ({ at: 0.5 + at, major: i % 2 === 0 }))
+    // Six strokes; the sixth starts 50 ms before the 9 s cap, as on the clip scenario's second rig, seed 5. They come
+    // 1.6 s apart, the last 1.55 s: the calm hand waiting 1.95 s for the sixth let go first (`RISE`).
+    const onsets = [1.0, 2.6, 4.2, 5.8, 7.4, 8.95].map((at, i) => ({ at: 0.5 + at, major: i % 2 === 0 }))
     for (const energy of [0.45, 0.85]) {
       for (const seed of [2, 3, 10]) {
         const run = perform({ utterances: [{ start: 0.5, end: 12, energy, onsets }] }, 12, { seed, traits: ellenTraits })
@@ -596,7 +633,8 @@ describe('co-speech gestures', () => {
           if (start < 1)
             continue
           const home = run.frames[start - 1].channels
-          const handBack = run.frames.findIndex((frame, i) => frame.time > 6.5 && frame.gesture.activation[side] < 1 && run.frames[i - 1].gesture.activation[side] === 1)
+          // The hand lets go after its one stroke (`RISE`), before speaking ends.
+          const handBack = run.frames.findIndex((frame, i) => frame.time > 2.4 && frame.gesture.activation[side] < 1 && run.frames[i - 1].gesture.activation[side] === 1)
           expect(handBack, `seed ${seed}, energy ${energy}, ${side}`).toBeGreaterThan(0)
           exits++
           // KEY_HEADROOM's settle: 1.9 degrees past a fed-forward key plus the elbow's 1.2 degree moving-hold noise.
@@ -725,7 +763,7 @@ describe('co-speech gestures', () => {
     // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.
     const speak = [0.8, 1.8, 3.03, 3.98, 5.17].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
     let later = 0
-    for (let seed = 1; seed <= 60; seed++) {
+    for (let seed = 1; seed <= 90; seed++) {
       const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 6.5, { seed, traits: chisaTraits })
       const both = strokes(run).filter(stroke => stroke.hand === 'both')
       for (const stroke of both) {
@@ -737,7 +775,8 @@ describe('co-speech gestures', () => {
       }
       later += Math.max(0, both.length - 1)
     }
-    // Strokes after a unit's first are the ones that leave a post-stroke hold.
+    // Strokes after a unit's first are the ones that leave a post-stroke hold. 90 seeds: a hand left out of a one-hand
+    // phrase now lets go (`RISE`), so fewer units stroke with both hands again.
     expect(later).toBeGreaterThanOrEqual(5)
   }, 120_000)
 
@@ -960,13 +999,14 @@ describe('co-speech gestures', () => {
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const script: Script = { utterances: [utterance(0.5, 0.65, [])], tension: 0 }
     const frames: { channels: Float32Array, unitSeq: number, hand: string | null }[] = []
-    for (let tick = 1; tick <= Math.round(2.5 / BODY_TICK); tick++) {
+    // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 0.9 s after they are ready (`RISE`).
+    for (let tick = 1; tick <= Math.round(1.75 / BODY_TICK); tick++) {
       const frame = performer.step(speechInput(script, tick * BODY_TICK, state))
       frames.push({ channels: frame.channels.slice(), unitSeq: frame.diagnostics.gesture.unitSeq, hand: frame.diagnostics.gesture.hand })
     }
     const start = frames.findIndex(frame => frame.unitSeq === 1)
     const side = frames[start].hand === 'left' ? 'left' : 'right'
-    // By 2.5 s the layer's target has settled on the ready key; each arm angle stays between where it began and the
+    // By 1.75 s the layer's target has settled on the ready key; each arm angle stays between where it began and the
     // key, within the channel's own moving-hold noise.
     const key = targets[`gesture-${side}`]
     ;(['Flex', 'Abduct', 'Twist', 'Elbow'] as const).forEach((name, k) => {

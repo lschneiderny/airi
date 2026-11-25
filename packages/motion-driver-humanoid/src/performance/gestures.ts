@@ -147,8 +147,15 @@ const CALM = { drive: 0.4, floor: 0.5 } as const
  * is within `defer` seconds of the onset, so the rise leads into its stroke; and the unit lowers its hands only after
  * that stroke. Before, an onset that opened a unit passed while the hands rose, and a pause or the end of speech
  * lowered them again with no stroke at all.
+ *
+ * A raised hand with nothing more to stress lets go: once every hand of a unit has waited at its ready key for
+ * `settle` + `settleDrive` x drive seconds of speech with no stroke leaving, the unit lowers them while speech goes on,
+ * and the next stroking onset raises them again; one hand of two that waits so while the other strokes alone lets go by
+ * itself. Before, a hand that had taken the last stroke of a thought waited there, elbow bent, until speaking ended
+ * (2.6 s on the speak scenario's second utterance). The wait outlasts the speak scenario's widest peak gap less a
+ * recovery, so the hands stay up between close strokes.
  */
-const RISE = { defer: 0.6 } as const
+const RISE = { defer: 0.6, settle: 1, settleDrive: 0.4 } as const
 
 /**
  * A phrase's theme stroke sets its hand: the ready key turns `share` of the way to the theme's forearm and wrist and
@@ -272,6 +279,8 @@ class ArmTrack {
   readyKey: ArmKey | null = null
   /** The direction of the next elbow float, up (1) or down (-1); it alternates. */
   floatSign = 1
+  /** Seconds of speech the arm has waited at its ready key with no stroke leaving; too long, and it lets go (`RISE`). */
+  waited = 0
   readonly key = pose()
   readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1), order: pose() }
   readonly accents: StrokeAccent[] = []
@@ -575,6 +584,7 @@ class ArmTrack {
     this.warm = false
     this.readyKey = null
     this.floatSign = 1
+    this.waited = 0
   }
 }
 
@@ -752,6 +762,11 @@ class GesturePerformer {
       this.yieldOwned(side, input, now)
     this.performArmForm(context, now)
 
+    // A pause leaves the wait alone: the quiet rule decides whether hands hold through it.
+    for (const side of SIDES) {
+      const track = this.tracks[side]
+      track.waited = track.state !== 'ready' ? 0 : track.waited + (this.quiet === 0 ? BODY_TICK : 0)
+    }
     const unit = this.unit
     if (this.deferred && (!unit.active || unit.retracting || now - this.deferred.at > RISE.defer))
       this.deferred = null
@@ -761,8 +776,13 @@ class GesturePerformer {
       const holding = unit.drive >= TIMING.holdDrive
       // A hand rising into a stroke it owes strokes first (`RISE`); only a performer that may not gesture drops it.
       const owed = this.deferred !== null && this.performable(input)
-      if (!owed && (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || !this.performable(input)))
+      const settle = RISE.settle + RISE.settleDrive * unit.drive
+      const waited = unit.sides.filter(side => this.tracks[side].waited >= settle)
+      if (!owed && (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || waited.length === unit.sides.length || !this.performable(input)))
         this.retract(context, now, ended || !voice.speaking)
+      // One hand of two waits while the other strokes alone: it lets go, and the unit goes on with the hand that speaks.
+      else if (waited.length)
+        this.letGo(context, now, waited)
       // Walking keeps its one endless beat phrase.
       else if (holding && this.quiet >= TIMING.quiet && this.phrase && Number.isFinite(this.phrase.length) && this.phraseStrokes > 0 && unit.sides.every(side => this.tracks[side].state === 'ready'))
         this.nextPhrase(context, now)
@@ -828,6 +848,9 @@ class GesturePerformer {
     if (unit.active && unit.sides.length > 1 && unit.sides.includes(side)) {
       unit.sides = unit.sides.filter(other => other !== side)
       unit.twoHand = false
+      // That hand takes the thought on: its wait at the ready key starts again (`RISE`).
+      for (const other of unit.sides)
+        this.tracks[other].waited = 0
     }
   }
 
@@ -1307,6 +1330,19 @@ class GesturePerformer {
     watch.speed = speed
     if (now > watch.until)
       track.watch = null
+  }
+
+  /** Lowers `sides`, hands of the unit that waited at their ready keys (`RISE`), and goes on with the others. */
+  private letGo(context: PerformanceContext, now: number, sides: readonly BodySide[]): void {
+    const unit = this.unit
+    for (const side of sides)
+      this.retractTrack(this.tracks[side], now)
+    unit.sides = unit.sides.filter(side => !sides.includes(side))
+    unit.twoHand = unit.sides.length === 2
+    if (this.phrase)
+      this.phrase = { ...this.phrase, sides: unit.sides }
+    this.report.hand = unit.twoHand ? 'both' : unit.sides[0]
+    this.aimBody(context, now, Math.max(TIMING.exit, ...sides.map(side => TIMING.retractionScale * this.tracks[side].prepSeconds)))
   }
 
   /**
