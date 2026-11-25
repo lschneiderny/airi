@@ -1190,6 +1190,13 @@ describe('walk style', () => {
     expect(mean(shaped, frame => frame.speed) / mean(neutral, frame => frame.speed)).toBeCloseTo(1, 1)
   })
 
+  it('eases a wide, carried swing under the forearm\'s ceiling and leaves the neutral swing alone', () => {
+    const rise = (frames: LocomotionFrame[]) => Math.max(...frames.map(frame => frame.armSwing.left.flexion + frame.armSwing.left.elbowFlex))
+    // Uneased, the carry alone puts this swing's forearm past the ceiling at the front: 37 + 2 + 50 degrees.
+    expect(rise(steady(styled({ armSwing: 1.8, elbowCarry: 50 * rad })))).toBeLessThan(85 * rad)
+    expect(rise(steady(styled({})))).toBeLessThan(60 * rad)
+  })
+
   it('rolls the arm inward as it swings forward, 7 to 20 degrees within a stride at the neutral style, sized by the swing', () => {
     const roll = (frame: LocomotionFrame) => frame.armSwing.left.twist + frame.armSwing.left.pronation
     const neutral = steady(styled({}))

@@ -250,7 +250,8 @@ point holds still; `target` keeps its meaning. Without `traits.foot`, and in tur
 performer's heel raise: a host turns the foot toe-down about its ball by the performer's negative `FootPitch` channel.
 `input.style` (`GaitStyle`, default `NEUTRAL_GAIT_STYLE`) sizes the walk without changing its structure: speed,
 stride at a given speed, bounce, foot lift, roll, pelvis twist and list, step width, the torso's counter-twist, arm
-swing, elbow carry, arm hang, trunk lean, head carriage (`frame.body.neckPitch`), the wrist's carriage beyond the rest's
+swing, elbow carry (eased so the forearm never rises past 85 degrees from hanging at the front of a wide swing), arm
+hang, trunk lean, head carriage (`frame.body.neckPitch`), the wrist's carriage beyond the rest's
 10 degrees of extension (`armSwing[side].wristFlex`, palmar positive) and the hand's closure (`frame.handCurl`: 1 the
 rest hand; the MMD adapter's `writeWalkHand` blends it into the `open` shape toward the low end of
 `GAIT_STYLE_BOUNDS.handCurl` and into the `fist` toward the high end, as offsets from `DEFAULT_ARM_REST_POSE`). Like every arm
