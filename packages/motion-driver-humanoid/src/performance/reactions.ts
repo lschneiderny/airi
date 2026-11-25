@@ -8,6 +8,24 @@ import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG,
 
 /** 4d flinch: a step through the 3a response at 3.5 Hz and damping 0.45, released after 0.25 s; it peaks near 80 ms and rings once. */
 const FLINCH = { response: secondOrderCoefficients({ f: 3.5, zeta: 0.45, r: 0 }, BODY_TICK), release: 0.25 }
+/**
+ * The poked side's guard: the arm clamps in and the forearm comes across the spot as fast as the trunk recoils, and is
+ * held a little longer before it lets go; the far arm follows `delay` later at `share` of it, through a slower response.
+ */
+const GUARD = {
+  response: secondOrderCoefficients({ f: 3, zeta: 0.6, r: 0 }, BODY_TICK),
+  release: 0.6,
+  far: { response: secondOrderCoefficients({ f: 1.6, zeta: 0.8, r: 0 }, BODY_TICK), delay: 0.12, share: 0.35 },
+}
+/** Degrees of a body poke's guard on the poked arm, in arm channel order: clavicle elevation, protraction, flexion, abduction, elbow. */
+const BODY_GUARD = [6, 4, 12, -10, 55] as const
+/** A head poke hunches the poked side's shoulder toward the ear, and the far one less. */
+const HEAD_GUARD = [10, 2, 6, 0, 15] as const
+/**
+ * After a head poke the poked side's hand goes to the side of the head where it was hit (the hair tuck's `hair-touch`
+ * key) and stays there this long from the poke, then lets go; only on a rig that reaches the key.
+ */
+const HEAD_TOUCH_SECONDS = 1.4
 /** The poke surprise dedupe window (the character mind's `POKE_SURPRISE_DEDUPE_MS`): a poke this soon after the last flinches at 0.6. */
 const REPEAT = { seconds: 2, scale: 0.6 }
 /**
@@ -24,18 +42,26 @@ const c = channelIndex
 interface Flinch {
   readonly start: number
   readonly region: 'head' | 'body'
-  readonly x: number
+  /** The poke's side in the body's sign: +1 her right, -1 her left (touch x is +1 on her left). */
+  readonly side: number
   readonly y: number
   readonly scale: number
   readonly state: SecondOrderState
+  readonly guard: SecondOrderState
+  readonly far: SecondOrderState
+  readonly farDelay: ReturnType<typeof createLagChain>
 }
 
 /**
- * Layer 7 of 3g: architecture 4d's touch reactions on the body, additive. A body poke flinches the trunk, pelvis and the
- * poked side's shoulder and elbow away from the point; a head poke lets the upper torso follow Natural's head pulse
- * and lifts both shoulders. A pet relaxes the shoulders, leans toward the hand and lets the trunk follow Natural's
- * stroke rock. `x` runs from -1 to 1 the way Natural's touch does (Natural turns and rolls the head away from +x the
- * same way the trunk does here). Arm terms yield to an arm a gesture moves; owned groups receive no term.
+ * Layer 7 of 3g: architecture 4d's touch reactions on the body, additive. Touch `x` runs from -1 to 1 as the stage
+ * reports it, from the viewer's left to the viewer's right, so +x is her left while she faces the viewer; Natural turns
+ * her head away from a poke and toward a petting hand on the same reading.
+ *
+ * A body poke recoils the trunk and pelvis away from the spot and turns the chest away; the poked side protects itself
+ * first, its arm clamping in with the forearm across the spot, and the far arm follows later and softer. A head poke lets
+ * the upper torso follow Natural's head pulse, hunches the poked side's shoulder toward the ear, and takes the poked
+ * side's hand to the side of the head for a moment where the rig reaches it. A pet relaxes the shoulders, leans toward
+ * the hand, lets the trunk follow Natural's stroke rock, and pulls the support toward the hand. Arm terms yield to an arm a gesture moves; owned groups receive no term.
  */
 export function createReactionLayer(): PerformanceLayer {
   const channels = new Float64Array(BODY_CHANNELS.length)
@@ -44,6 +70,7 @@ export function createReactionLayer(): PerformanceLayer {
   let pokeSeq: number | null = null
   let lastPoke = Number.NEGATIVE_INFINITY
   let headFollow: { start: number, link: ReturnType<typeof createLagChain>[] } | null = null
+  let headTouch: { side: BodySide, until: number } | null = null
   let petting = false
   let petMoving = false
   let petLinks = createPetLinks()
@@ -68,12 +95,18 @@ export function createReactionLayer(): PerformanceLayer {
     if (pokeSeq !== null && poke && seq !== pokeSeq) {
       const scale = time - lastPoke < REPEAT.seconds ? REPEAT.scale : 1
       lastPoke = time
-      flinches.push({ start: time, region: poke.region, x: Math.max(-1, Math.min(1, poke.x)), y: Math.max(-1, Math.min(1, poke.y)), scale, state: { y: 0, v: 0, x: 0 } })
-      if (poke.region === 'head')
+      const side = -Math.max(-1, Math.min(1, poke.x))
+      const state = () => ({ y: 0, v: 0, x: 0 })
+      flinches.push({ start: time, region: poke.region, side, y: Math.max(-1, Math.min(1, poke.y)), scale, state: state(), guard: state(), far: state(), farDelay: createLagChain([GUARD.far.delay], BODY_TICK) })
+      if (poke.region === 'head') {
         headFollow = { start: time, link: [0, 1, 2].map(() => createLagChain([HEAD_FOLLOW.delay], BODY_TICK)) }
+        headTouch = context.capabilities.hairTouch ? { side: side > 0 ? 'right' : 'left', until: time + HEAD_TOUCH_SECONDS } : null
+      }
       notify(poke.region === 'head' ? 'head-poke' : 'body-poke')
     }
     pokeSeq = seq
+    if (headTouch && time >= headTouch.until)
+      headTouch = null
     const pet = context.input.events.pet
     if (pet.active && !petting)
       notify('pet')
@@ -81,27 +114,39 @@ export function createReactionLayer(): PerformanceLayer {
   }
 
   function addFlinch(flinch: Flinch, context: PerformanceContext) {
-    advanceSecondOrder(flinch.state, time - flinch.start < FLINCH.release ? 1 : 0, FLINCH.response)
+    const age = time - flinch.start
+    advanceSecondOrder(flinch.state, age < FLINCH.release ? 1 : 0, FLINCH.response)
+    advanceSecondOrder(flinch.guard, age < GUARD.release ? 1 : 0, GUARD.response)
+    advanceSecondOrder(flinch.far, flinch.farDelay.step(flinch.guard.y)[0], GUARD.far.response)
     const k = flinch.scale * flinch.state.y
     const activation = context.previous.diagnostics.gesture.activation
-    const arm = (side: BodySide, channel: number, degrees: number) => {
-      channels[ARM_START[side] + channel] += (1 - activation[side]) * k * degrees * DEG
+    const s = flinch.side
+    const poked: BodySide = s > 0 ? 'right' : 'left'
+    const far: BodySide = s > 0 ? 'left' : 'right'
+    // The near arm's share falls off toward the midline, so a central poke guards both sides alike.
+    const near = Math.abs(s)
+    const guard = (side: BodySide, weight: number, degrees: readonly number[]) => {
+      const share = (1 - activation[side]) * weight * DEG
+      for (let j = 0; j < 4; j++)
+        channels[ARM_START[side] + j] += share * degrees[j]
+      channels[ARM_START[side] + 5] += share * degrees[4]
     }
+    const g = flinch.scale * flinch.guard.y
+    const f = flinch.scale * flinch.far.y
+    const degrees = flinch.region === 'head' ? HEAD_GUARD : BODY_GUARD
+    guard(poked, g * (0.5 + 0.5 * near), degrees)
+    guard(far, f * (GUARD.far.share + (1 - GUARD.far.share) * (1 - near)), degrees)
     if (flinch.region === 'head') {
-      for (const side of SIDES)
-        arm(side, 0, 4)
+      // The trunk leans a little away from the hit as the head is knocked.
+      channels[c('midRoll')] += k * -1.5 * s * DEG
       return
     }
-    const { x, y } = flinch
-    channels[c('midYaw')] += k * -4 * x * DEG
-    channels[c('midRoll')] += k * -2.5 * x * DEG
-    channels[c('pelvisX')] += k * 0.01 * x
-    if (x !== 0) {
-      const poked: BodySide = x > 0 ? 'right' : 'left'
-      arm(poked, 0, 5)
-      arm(poked, 5, 10)
-    }
-    if (y > 0.3) {
+    // Away from the spot: the trunk leans and turns away, and the pelvis steps its weight off that side.
+    channels[c('midYaw')] += k * 4 * s * DEG
+    channels[c('midRoll')] += k * -2.5 * s * DEG
+    channels[c('lowerRoll')] += k * -1.5 * s * DEG
+    channels[c('pelvisX')] += k * 0.01 * s
+    if (flinch.y > 0.3) {
       channels[c('lowerPitch')] += k * 4 * DEG
       channels[c('pelvisZ')] -= k * 0.01
     }
@@ -147,7 +192,8 @@ export function createReactionLayer(): PerformanceLayer {
     petMoving = true
     const l = pet.level
     channels[c('lowerPitch')] += 2 * l * DEG
-    channels[c('midRoll')] += 2 * pet.x * l * DEG
+    // +x is her left, and a positive roll leans her toward her right.
+    channels[c('midRoll')] += -2 * pet.x * l * DEG
     for (const side of SIDES) {
       const start = ARM_START[side]
       channels[start] += -3 * l * DEG
@@ -167,10 +213,14 @@ export function createReactionLayer(): PerformanceLayer {
     plan(context: PerformanceContext): PerformancePlan {
       const { pet } = context.input.events
       const { owned } = context.input
+      const plan: { support?: number, armForm?: PerformancePlan['armForm'] } = {}
+      // A head poke's hand to the spot; it waits for an arm a clip or gesture holds, as every arm form does.
+      if (headTouch && time < headTouch.until && owned[`${headTouch.side}Arm`] <= 0.5)
+        plan.armForm = { side: headTouch.side, form: 'hair-touch' }
       // 4d: the support is pulled toward the petting hand while the pet is more than half in.
       if (pet.level > 0.5 && pet.x !== 0 && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5)
-        return { support: pet.x > 0 ? 1 : -1 }
-      return {}
+        plan.support = pet.x > 0 ? -1 : 1
+      return plan
     },
     step(context: PerformanceContext) {
       time = context.time
@@ -178,7 +228,8 @@ export function createReactionLayer(): PerformanceLayer {
       channels.fill(0)
       for (const flinch of flinches)
         addFlinch(flinch, context)
-      flinches = flinches.filter(f => time - f.start < FLINCH.release || Math.abs(f.state.y) > REST || Math.abs(f.state.v) > REST)
+      const settled = (state: SecondOrderState) => Math.abs(state.y) <= REST && Math.abs(state.v) <= REST
+      flinches = flinches.filter(f => time - f.start < GUARD.release + GUARD.far.delay || !settled(f.state) || !settled(f.guard) || !settled(f.far))
       const following = addHeadFollow(context)
       const petted = addPet(context)
       const active = flinches.length > 0 || following || petted
@@ -193,6 +244,7 @@ export function createReactionLayer(): PerformanceLayer {
       pokeSeq = null
       lastPoke = Number.NEGATIVE_INFINITY
       headFollow = null
+      headTouch = null
       petting = false
       petMoving = false
       petLinks = createPetLinks()

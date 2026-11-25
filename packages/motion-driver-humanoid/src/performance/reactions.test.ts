@@ -1,4 +1,5 @@
 import type { BodyPerformanceInput } from './contracts'
+import type { MergedPerformancePlan, PerformanceLayer } from './stack'
 
 import { describe, expect, it } from 'vitest'
 
@@ -44,22 +45,54 @@ function layerEffect(script: Script, seconds: number) {
   return layered.map((trace, channel) => trace.map((v, i) => v - base[channel][i]))
 }
 
+function armForms(script: Script, seconds: number) {
+  const seen: MergedPerformancePlan['armForm'][] = []
+  const recorder: PerformanceLayer = {
+    id: 'recorder',
+    order: 'reaction',
+    mode: 'additive',
+    mask: new Float64Array(BODY_CHANNELS.length),
+    step: (context) => {
+      seen.push(context.plan.armForm)
+      return { channels: new Float64Array(BODY_CHANNELS.length), weight: 0, sequence: 0 }
+    },
+    reset() {},
+  }
+  channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createReactionLayer(), recorder] }), seconds, script)
+  return seen
+}
+
 const peak = (values: readonly number[]) => values.reduce((best, v) => Math.abs(v) > Math.abs(best) ? v : best, 0)
 const trunk = ['lowerYaw', 'lowerPitch', 'lowerRoll', 'midYaw', 'midPitch', 'midRoll', 'upperYaw', 'upperPitch', 'upperRoll'] as const
 
 describe('touch reaction layer', () => {
-  it('flinches away from a body poke, lifting the poked side\'s shoulder, and returns to rest', () => {
+  // The stage reports x from the viewer's side: +x is her left, where Natural turns the head away from. Re-pinned: the
+  // layer read +x as her right and flinched toward the poke with the far arm.
+  it('flinches away from a body poke, guarding the poked side first, and returns to rest', () => {
     for (const x of [-1, 1]) {
       const d = layerEffect(poking([{ at: 0.5, region: 'body', x, y: 0 }]), 4)
-      // Natural turns and rolls the head away from +x with negative yaw and roll; the trunk flinches the same way.
-      expect(Math.sign(peak(d[c('midRoll')]))).toBe(-x)
+      // +roll leans her toward her right, +yaw turns her chest to her left and +X is her left.
+      expect(Math.sign(peak(d[c('midRoll')]))).toBe(x)
       expect(Math.sign(peak(d[c('midYaw')]))).toBe(-x)
-      expect(Math.sign(peak(d[c('pelvisX')]))).toBe(x)
-      const [poked, other] = x > 0 ? ['rightClavElev', 'leftClavElev'] as const : ['leftClavElev', 'rightClavElev'] as const
-      expect(peak(d[c(poked)])).toBeGreaterThan(2 * DEG)
-      expect(peak(d[c(other)])).toBe(0)
+      expect(Math.sign(peak(d[c('pelvisX')]))).toBe(-x)
+      const [poked, far] = x > 0 ? ['leftElbow', 'rightElbow'] as const : ['rightElbow', 'leftElbow'] as const
+      const pokedPeak = peak(d[c(poked)])
+      const farPeak = peak(d[c(far)])
+      expect(pokedPeak).toBeGreaterThan(20 * DEG)
+      expect(farPeak).toBeGreaterThan(2 * DEG)
+      expect(farPeak).toBeLessThan(0.5 * pokedPeak)
+      expect(d[c(far)].indexOf(farPeak)).toBeGreaterThan(d[c(poked)].indexOf(pokedPeak))
       expect(Math.max(...d.map(trace => Math.abs(trace.at(-1) ?? 0)))).toBeLessThan(1e-3 * DEG)
     }
+  })
+
+  it('brings the poked side\'s hand to the head after a head poke, for a moment and on a rig that reaches it', () => {
+    const forms = armForms(poking([{ at: 0.5, region: 'head', x: 1, y: 0 }]), 3)
+    const at = (t: number) => forms[Math.round(t * 120)]
+    expect(at(0.4)).toBeNull()
+    const reaches = createBodyPerformer({ traits, seed: 1 }).step(quietInput(0)).capabilities.hairTouch
+    expect(at(1)).toEqual(reaches ? { side: 'left', form: 'hair-touch' } : null)
+    expect(at(2.5)).toBeNull()
   })
 
   it('peaks at the 3.5 Hz flinch response\'s peak time and rings once', () => {
@@ -90,17 +123,19 @@ describe('touch reaction layer', () => {
     expect(trunkPeak(twice, 240, 480) / trunkPeak(twice, 0, 240)).toBeCloseTo(0.6, 1)
   })
 
+  // Re-pinned with the side fix: a hand at +x pets her left.
   it('drops the shoulders further the more she is petted, and leans toward the hand', () => {
-    const drop = [0.25, 0.5, 1].map(level => layerEffect(petting(level, 1), 3)[c('rightClavElev')].at(-1) ?? 0)
+    const drop = [0.25, 0.5, 1].map(level => layerEffect(petting(level, 1), 3)[c('leftClavElev')].at(-1) ?? 0)
     expect(drop[0]).toBeLessThan(0)
     expect(drop[1]).toBeLessThan(drop[0])
     expect(drop[2]).toBeLessThan(drop[1])
+    expect(layerEffect(petting(1, 1), 3)[c('midRoll')].at(-1)).toBeLessThan(-1 * DEG)
     const performer = createBodyPerformer({ traits, seed: 1, layers: [createReactionLayer()] })
     const script = petting(1, 1)
     let target = 0
     for (let tick = 0; tick < 3 * 120; tick++)
       target = performer.step(script(tick / 120)).diagnostics.shiftTarget
-    expect(target).toBe(1)
+    expect(target).toBe(-1)
   })
 
   it('writes no term to an owned group', () => {
