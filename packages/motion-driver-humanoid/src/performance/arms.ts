@@ -69,8 +69,26 @@ const SPREAD_NOISE = 1
  * second lag (`seconds`), so the hands settle last.
  */
 const SETTLE = { elbow: 3, pron: 6, wflex: 3, curl: 0.1, seconds: 0.6 } as const
-/** The elbow on the stance side straightens and the other bends as the weight shifts, degrees at a full shift. */
-const WEIGHT_ELBOW = { stance: -3, free: 4.5 } as const
+/**
+ * Contrapposto's arms, degrees at a full shift, crossed with the legs (chiasmus): over the stance leg that arm hangs long
+ * and slack, drawn in against the hip that juts under it, since the trunk's counter-roll carries that shoulder out over
+ * the hip; on the free leg's side the shoulder rides up and that arm is the active one, rolled in a little with the
+ * elbow bent and the hand turned in, so the hand comes forward instead of out. The shoulders' share is the free side's
+ * clavicle, which follows the shoulder's arrival directly, so the shoulder line tilts against the hips with the trunk;
+ * a lowered stance clavicle sank into its joint limit, which stilled the breath that shoulder carries. The rest of the
+ * arm follows through a light underdamped follower (`follow`, Hz and damping), so the elbows and hands settle after
+ * her weight has arrived. The first pass straightened the stance elbow
+ * by 3 degrees and bent the free one by 4.5, which the stand-life audit could not see from the front.
+ */
+const CONTRAPPOSTO = {
+  stance: { clavElev: 0, abduct: -3, twist: 0, elbow: -4, pron: 0 },
+  free: { clavElev: 3, abduct: -1, twist: 3, elbow: 11, pron: 8 },
+  follow: { f: 0.9, zeta: 0.55 },
+} as const
+/** The arm block indices `CONTRAPPOSTO` moves through its follower: abduction, twist, elbow, pronation. */
+const CONTRAPPOSTO_JOINTS = [3, 4, 5, 6] as const
+const CONTRAPPOSTO_KEYS = ['abduct', 'twist', 'elbow', 'pron'] as const
+const CONTRAPPOSTO_FOLLOW = secondOrderCoefficients({ ...CONTRAPPOSTO.follow, r: 0 }, BODY_TICK)
 /**
  * Finger follow-through: drag gains (seconds) of a digit's three joints, knuckle to tip; the tension at which it stops
  * (`looseness`, 1 at the neutral 0.4); the summed curl of a digit (radians) at which the digit no longer trails, about a
@@ -151,6 +169,8 @@ export class BodyArms {
   }
 
   private readonly elbowWeight = createLagChain([ELBOW_WEIGHT_LAG], BODY_TICK)
+  /** Each side's contrapposto hang (`CONTRAPPOSTO`), abduction, elbow and pronation, through its follower. */
+  private readonly hang = { left: CONTRAPPOSTO_JOINTS.map(() => ({ y: 0, v: 0, x: 0 })), right: CONTRAPPOSTO_JOINTS.map(() => ({ y: 0, v: 0, x: 0 })) }
   /** Each shift's drawn re-settle of the hanging arms (`SETTLE`), its stream, and the shift count it was drawn for. */
   private readonly settleRandom
   private readonly settleTarget = new Float64Array(BODY_CHANNELS.length)
@@ -256,8 +276,18 @@ export class BodyArms {
         // The settle belongs to a one-leg stance: it grows as she goes over onto one leg and is gone standing even.
         out[start + j] += this.rest[start + j] + noise + this.settle[start + j] * Math.abs(support)
       }
-      const onSupport = (side === 'right' ? 1 : -1) * support > 0
-      out[start + 5] += (onSupport ? WEIGHT_ELBOW.stance : WEIGHT_ELBOW.free) * DEG * Math.abs(support)
+      // Positive support stands her on the right foot. The clavicles take the support as it reaches the shoulders, the
+      // hanging arm the elbow's later arrival of it.
+      const sign = side === 'right' ? 1 : -1
+      const shoulders = sign * shoulderSupport
+      out[start] += (Math.max(0, shoulders) * CONTRAPPOSTO.stance.clavElev + Math.max(0, -shoulders) * CONTRAPPOSTO.free.clavElev) * DEG
+      const arm = sign * support
+      for (let k = 0; k < CONTRAPPOSTO_JOINTS.length; k++) {
+        const key = CONTRAPPOSTO_KEYS[k]
+        const goal = (Math.max(0, arm) * CONTRAPPOSTO.stance[key] + Math.max(0, -arm) * CONTRAPPOSTO.free[key]) * DEG
+        advanceSecondOrder(this.hang[side][k], goal, CONTRAPPOSTO_FOLLOW)
+        out[start + CONTRAPPOSTO_JOINTS[k]] += this.hang[side][k].y
+      }
       out[start + 3] += input.armLift[side]
     }
   }
