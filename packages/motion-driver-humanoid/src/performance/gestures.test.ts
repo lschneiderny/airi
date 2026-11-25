@@ -375,6 +375,32 @@ describe('co-speech gestures', () => {
     }
   }, 120_000)
 
+  it('raises a hand only into a stroke of its own, also when a new phrase hands the thought to the other hand', () => {
+    // Strokes 1 s apart, then weak onsets only. A phrase ending on the unit's sixth stroke could draw the other hand,
+    // and a two-hand phrase of beats left its second hand no stroke: either hand rose, waited and lowered unstroked.
+    const onsets = [...[1, 2, 3, 4, 5, 6].map(at => ({ at, major: at % 2 === 1 })), ...[7.2, 8.4].map(at => ({ at, weak: true }))]
+    let rises = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const run = perform({ utterances: [{ start: 0.5, end: 9.5, energy: 0.65, onsets }] }, 11, { seed })
+      const hits = strokes(run)
+      for (const side of SIDES) {
+        let rose = Number.NaN
+        for (let i = 1; i < run.frames.length; i++) {
+          const [before, frame] = [run.frames[i - 1].gesture.activation[side], run.frames[i].gesture.activation[side]]
+          if (before === 0 && frame > 0)
+            rose = frame === 0 ? Number.NaN : run.frames[i].time
+          if (before > 0 && frame === 0 && !Number.isNaN(rose)) {
+            const stroked = hits.some(hit => (hit.hand === side || hit.hand === 'both') && hit.hit > rose && hit.hit < run.frames[i].time)
+            expect(stroked, `seed ${seed}, ${side} raised at ${rose.toFixed(2)}`).toBe(true)
+            rises++
+            rose = Number.NaN
+          }
+        }
+      }
+    }
+    expect(rises).toBeGreaterThanOrEqual(30)
+  }, 120_000)
+
   it('lowers the hands in a pause between phrases and gestures again after it', () => {
     const run = perform({ utterances: [{ start: 0.5, end: 9, energy: 0.85, onsets: [1, 1.9, 2.8, 5.6, 6.5, 7.4].map(at => ({ at })), pauses: [[3.2, 5.2]] }] }, 9)
     const inPause = run.frames.filter(f => f.time > 3.2 && f.time < 5.6)

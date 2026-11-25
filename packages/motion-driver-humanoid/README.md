@@ -894,7 +894,10 @@ unit's caps. From drive 0.6 up the speaker holds the hands through up to
 stroked go on to the next phrase's place in the pause. A hand rises only to say
 something: an onset that opens a unit, or finds its lead hand still preparing,
 strokes as soon as the preparation lets it, within 0.6 s of the onset, and the
-unit lowers its hands only after that stroke (`RISE`). A hand with nothing more
+unit lowers its hands only after that stroke (`RISE`). A unit that has played
+its sixth stroke lowers its hands at its phrase's end instead of drawing another
+phrase, and in a two-hand phrase a hand that has risen and not stroked yet beats
+with the lead, 30 to 90 ms behind it. A hand with nothing more
 to stress lets go: once it has waited at its ready key 1 s + 0.4 s x drive of
 speech with no stroke leaving, it retracts while speech goes on, alone when the
 other hand of the unit still strokes, and the next stroking onset raises it
