@@ -61,6 +61,11 @@ type MutableFrame = Mutable<Omit<BodyPerformanceFrame, 'pelvis' | 'gaze' | 'eyes
 const STEADY_GAIN = [0.5, 0.6, 0.6] as const
 /** Vestibulo- and cervico-collic reflex latency, seconds. */
 const STEADY_LAG = 0.08
+/**
+ * How far a turn's square-up leans her onto the foot that stepped last: enough to free the other foot visibly, short of
+ * a full shift, which carries the hips past the stance foot's reach while the other foot is in the air.
+ */
+const SQUARE_UP_SUPPORT = 0.7
 /** A held gaze's eye residue. */
 const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
 const GAIT_SHAPED_CHANNELS: ReadonlySet<number> = new Set(SIDES.flatMap(side => [channelIndex(`${side}Abduct`), channelIndex(`${side}Flex`)]))
@@ -110,6 +115,8 @@ class BodyPerformer {
   private readonly turnInput = { targetYaw: 0, facingYaw: 0, allowTurn: false, home: false }
   /** The saccade count a held gaze keeps (`PerformancePlan.holdGaze`); null while the gaze is free to move. */
   private heldSaccade: number | null = null
+  /** The foot the turn planner had her stand on at the last tick (`TurnFrame.stance`), as a support. */
+  private turnSupport: number | null = null
 
   constructor(private readonly options: BodyPerformerOptions) {
     const { traits } = options
@@ -239,16 +246,21 @@ class BodyPerformer {
     stack.prepare(this.context)
     let effective = input
     this.heldSaccade = stack.plan.holdGaze ? this.heldSaccade ?? input.gaze.saccadeSeq : null
-    if (stack.plan.support !== null || stack.plan.gaze !== null || this.heldSaccade !== null) {
+    // A layer's planned support comes first. A turn centres her weight while its steps go, since stepping in place from a
+    // full weight shift leaves the stance leg straight and short of the swing foot's target, then leans her on the foot
+    // that stepped last for the square-up; both quickly.
+    const support = stack.plan.support ?? this.turnSupport
+    state.posture.quick = stack.plan.support === null && this.turnSupport !== null
+    if (support !== null || stack.plan.gaze !== null || this.heldSaccade !== null) {
       this.mapped ??= { ...input, posture: { ...input.posture }, gaze: { ...input.gaze } }
       const posture = this.mapped.posture
       const gaze = this.mapped.gaze
       Object.assign(posture, input.posture)
       Object.assign(gaze, input.gaze)
-      if (stack.plan.support !== null) {
+      if (support !== null) {
         this.plannedPosture.amplitude = input.posture.amplitude
         this.plannedPosture.shiftRate = input.posture.shiftRate
-        this.plannedPosture.support = stack.plan.support
+        this.plannedPosture.support = support
         Object.assign(posture, this.plannedPosture)
       }
       if (stack.plan.gaze !== null)
@@ -350,6 +362,7 @@ class BodyPerformer {
     frame.turning = turn.turning
     frame.turnStarted = turn.turnStarted
     frame.turnSteps = turn.turnSteps
+    this.turnSupport = turn.stance !== null ? (turn.stance === 'right' ? 1 : -1) * SQUARE_UP_SUPPORT : turn.turning ? 0 : null
     frame.footSteps = stack.footSteps
     frame.lidClose = Math.max(state.gaze.lidClose, stack.lidClose)
     frame.mouthOpen = stack.mouthOpen
@@ -434,6 +447,7 @@ class BodyPerformer {
     this.state = this.createState()
     this.context = null
     this.mapped = null
+    this.turnSupport = null
   }
 }
 

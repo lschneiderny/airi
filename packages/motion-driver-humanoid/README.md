@@ -129,7 +129,12 @@ the same dwell, and the turn takes equal steps of at most 22.5 degrees that end
 on the target. `turnSteps` contains events emitted once at step start, alternating
 left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed yaw
 (45 degrees per pair). The facing follows each step on a minimum-jerk profile,
-so it starts and ends every step at rest. Event timestamps are elapsed seconds since controller
+so it starts and ends every step at rest. A turn ends with both feet on the new
+facing: when its last step leaves the other foot more than 3 degrees off it,
+`stance` names the foot that stepped last for 0.3 seconds, and then the other
+foot squares up in a step of yaw 0. The performer centres her weight while a
+turn's steps go and leans her 0.7 onto `stance` for the square-up, both in
+about half a second. Event timestamps are elapsed seconds since controller
 creation. A foot-contact adapter consumes the events; this module never moves
 feet or writes bones.
 
