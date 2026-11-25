@@ -188,7 +188,6 @@ class BodyPerformer {
         cue: stack.cue,
         emotion: stack.emotion,
         reaction: stack.reaction,
-        actActivation: stack.actActivation,
       },
     }
     for (const layer of this.options.layers ?? [])
