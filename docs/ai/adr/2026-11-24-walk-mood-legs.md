@@ -36,7 +36,7 @@ On the reference rig (walk, 40 s, seed 1; `lab:motion3d report walk-style`):
 
 An independent visual audit of 2026-11-25 found three moods still wrong. The angry walk pumped short, bent arms over a low, flat step. The tired walk read as the sad one. The happy walk carried the hand forward at shoulder height at the front of each swing.
 
-1. **Anger goes into the plant and the trunk, not the arms.** Tension alone holds the elbow at 8 degrees and takes arousal's bend away, so an angry walk carries 8 degrees, not 31. This changes decision 5. Tension squares the shoulders to the path: its torso-twist gain doubles, from -0.4 to -0.8. Tension still stiffens the lift and roll, but only by its share without arousal, so an angry foot lifts and rolls through its heel as a neutral one does. Its load reaches the bound of 1. Opening the chest with tension and arousal was tried and dropped: it took 1.3 degrees off the angry trunk lean, which already sits at its bound.
+1. **Anger goes into the plant and the trunk, not the arms.** Tension alone holds the elbow at 8 degrees and takes arousal's bend away, so an angry walk carries 8 degrees, not 31. This changes decision 5. Tension squares the shoulders to the path: its torso-twist gain doubles, from -0.4 to -0.8. Tension still lowers the lift, but only by its share without arousal, so an angry foot lifts clear as a neutral one does, and its load reaches the bound of 1. Tension keeps flattening the roll: an angry heel strike at the neutral roll raised the reversal's contact skate from 0.023 to 0.030 on the reference rig. Opening the chest with tension and arousal was tried and dropped: it took 1.3 degrees off the angry trunk lean, which already sits at its bound.
 2. **Fatigue loads the step and rises out of it slowly.** Fatigue now loads the step as well (0.48 at full fatigue). This changes decision 2. Its push falls to near the floor (0.62). A push below 1 stretches the loaded knee's recovery from mid-stance to 0.7 of the step at the push's floor. The tired head drops 4 degrees per unit of fatigue instead of 10, so she bends from the hips, not at the neck as a sad walk does.
 3. **A swing wider than the walk's comes from the shoulder.** The elbow's front bend gives back what the wider shoulder swing adds (19.5 degrees per unit of swing at the shoulder, 34 at the elbow). The forearm then rises no higher in front than the neutral walk's. The neutral and narrower swings are unchanged.
 
@@ -46,7 +46,7 @@ Consequences on the reference rig and Chisa (walk, 40 s, seed 1; `lab:motion3d r
 
 | Mood | Before | After |
 | --- | --- | --- |
-| Angry | elbow carry 53.6 deg, shoulder twist 8.9 and 8.8 deg, foot lift 0.129 and 0.127 L, knee swing 58.0 and 57.9 deg | elbow carry 30.4 deg, shoulder twist 7.7 deg, foot lift 0.163 and 0.161 L, knee swing 66.6 and 66.4 deg; trunk lean unchanged |
+| Angry | elbow carry 53.6 deg, shoulder twist 8.9 and 8.8 deg, foot lift 0.129 and 0.127 L, knee swing 58.0 and 57.9 deg | elbow carry 30.4 deg, shoulder twist 7.7 deg, foot lift 0.152 and 0.150 L, knee swing 63.5 and 63.4 deg; trunk lean unchanged |
 | Tired | head carriage 19.7 and 32.5 deg, bounce 0.020 and 0.019 L | head carriage 15.9 and 28.7 deg, bounce 0.025 and 0.023 L |
 | Happy | elbow carry 41.8 and 41.9 deg, arm swing 66.3 and 73.5 deg | elbow carry 35.4 deg, arm swing 57.4 and 64.3 deg |
 

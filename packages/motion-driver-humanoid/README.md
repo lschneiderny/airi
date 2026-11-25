@@ -309,8 +309,7 @@ positive mood opens it; a baseline's `armCarry` extends the wrist a little and o
 closes it a little. Each mood also shows in the legs and trunk: arousal and gladness push off harder, fatigue and
 sadness slowly; tension loads the step, most with arousal, and fatigue loads it too, and a push below 1 rises out of
 the loaded knee slowly; sadness folds the chest, narrows and shortens the step, less as arousal rises, fatigue folds it
-a little and gladness opens it. Tension alone stiffens the step, but with arousal the foot lifts and rolls through its
-heel. Tension squares the shoulders to the path and holds the elbow lower, so an angry walk carries it 8 degrees.
+a little and gladness opens it. Tension alone lowers the step, but with arousal the foot lifts clear. Tension squares the shoulders to the path and holds the elbow lower, so an angry walk carries it 8 degrees.
 Fatigue bends her from the hips more than at the neck. An arm swing wider than the walk's comes from the shoulder: the
 elbow's front bend gives back what the shoulder adds. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6
 degrees more at 1; at or below it, or omitted, the urgency changes no style value.

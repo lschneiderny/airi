@@ -142,10 +142,9 @@ describe('walkStyleFrom', () => {
     // (independent visual audit, 2026-11-25). The arms hang lower than a happy walk's.
     expect(angry.elbowCarry * 180 / Math.PI).toBeLessThan(10)
     expect(angry.elbowCarry).toBeLessThan(style({ valence: 1, arousal: 0.6 }).elbowCarry)
-    // The foot lifts and rolls through its heel as a neutral one does, where tension alone shuffles, and lands loaded.
+    // The foot lifts clear as a neutral one does, where tension alone shuffles, and lands loaded.
     expect(angry.lift).toBeGreaterThanOrEqual(1)
-    expect(angry.roll).toBeGreaterThanOrEqual(1)
-    expect(tense.roll).toBeLessThan(1)
+    expect(tense.lift).toBeLessThan(1)
     expect(angry.load).toBe(1)
     // The shoulders stay square to the path.
     expect(angry.torsoTwist).toBeLessThan(0.6)

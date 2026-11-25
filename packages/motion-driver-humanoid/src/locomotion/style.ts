@@ -203,12 +203,11 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   // length its speed would add; falling arousal shortens the step as well as slowing it.
   out.stride = Math.exp(0.07 * Math.min(0, a) - 0.1 * up + 0.05 * v - 0.05 * sad - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
   out.bounce = Math.exp(0.75 * a + 0.2 * v - 0.5 * t + 0.6 * b('bounce'))
-  // Tension stiffens the step, a shuffle with a flat roll, unless arousal drives it: an angry foot lifts and plants
-  // through its heel, where a flat, low step under a lunging trunk read as hurrying, not force (independent visual
-  // audit, 2026-11-25; angry gait is heavy-footed, Montepare, Goldstein and Clausen 1987).
-  const stiff = t * (1 - up)
-  out.lift = Math.exp(0.15 * a - 0.3 * stiff - 0.2 * f)
-  out.roll = Math.exp(0.1 * a - 0.35 * stiff - 0.2 * f)
+  // Tension lowers the step unless arousal drives it: an angry foot lifts clear, where a low step read as hurrying
+  // (independent visual audit, 2026-11-25; heavy-footed angry gait, Montepare and others 1987). Tension still flattens
+  // the roll: at the neutral roll the angry reversal's contact skate rose from 0.023 to 0.030.
+  out.lift = Math.exp(0.15 * a - 0.3 * t * (1 - up) - 0.2 * f)
+  out.roll = Math.exp(0.1 * a - 0.35 * t - 0.2 * f)
   out.pelvisTwist = Math.exp(0.2 * a - 0.3 * t + 0.35 * b('sway'))
   out.pelvisList = Math.exp(0.15 * a + 0.15 * v - 0.3 * t + 0.6 * b('sway'))
   out.width = Math.exp(0.4 * f + 0.1 * t - 0.35 * sad * (1 - up) + 0.6 * b('width'))
