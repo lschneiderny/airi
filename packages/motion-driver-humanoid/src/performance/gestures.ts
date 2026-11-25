@@ -155,13 +155,14 @@ const CALM = { drive: 0.4, floor: 0.5 } as const
  * lowered them again with no stroke at all.
  *
  * A raised hand with nothing more to stress lets go: once every hand of a unit has waited at its ready key for
- * `settle` + `settleDrive` x drive seconds of speech with no stroke leaving, the unit lowers them while speech goes on,
- * and the next stroking onset raises them again; one hand of two that waits so while the other strokes alone lets go by
- * itself. Before, a hand that had taken the last stroke of a thought waited there, elbow bent, until speaking ended
- * (2.6 s on the speak scenario's second utterance). The wait outlasts the speak scenario's widest peak gap less a
- * recovery, so the hands stay up between close strokes.
+ * `settle` seconds of speech with no stroke leaving, the unit lowers them while speech goes on, and the next stroking
+ * onset raises them again; one hand of two that waits so while the other strokes alone lets go by itself. Before, a
+ * hand that had taken the last stroke of a thought waited there, elbow bent, until speaking ended (2.6 s on the speak
+ * scenario's second utterance), and then 1 s + 0.4 s x drive, up to 1.45 s still to the eye. The wait outlasts the
+ * speak scenario's widest peak gap (1.5 s) less a beat, its shortest hold and its recovery (0.46 s at drive 0.85), so
+ * the hands stay up between close strokes; at 1 s a lively hand let go just before such a stroke.
  */
-const RISE = { defer: 0.6, settle: 1, settleDrive: 0.4 } as const
+const RISE = { defer: 0.6, settle: 1.1 } as const
 
 /**
  * A phrase's theme stroke sets its hand: the ready key turns `share` of the way to the theme's forearm and wrist and
@@ -834,8 +835,7 @@ class GesturePerformer {
       const holding = unit.drive >= TIMING.holdDrive
       // A hand rising into a stroke it owes strokes first (`RISE`); only a performer that may not gesture drops it.
       const owed = this.deferred !== null && this.performable(input)
-      const settle = RISE.settle + RISE.settleDrive * unit.drive
-      const waited = unit.sides.filter(side => this.tracks[side].waited >= settle)
+      const waited = unit.sides.filter(side => this.tracks[side].waited >= RISE.settle)
       if (!owed && (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || waited.length === unit.sides.length || !this.performable(input)))
         this.retract(context, now, ended || !voice.speaking)
       // One hand of two waits while the other strokes alone: it lets go, and the unit goes on with the hand that speaks.
