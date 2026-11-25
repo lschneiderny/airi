@@ -64,12 +64,13 @@ export function createRunnerMind(options: Pick<Motion3dRunOptions, 'seed' | 'sce
 const recordedMoodSchema = v.strictObject({ valence: v.number(), arousal: v.number(), tension: v.number() })
 const recordedWalkStyleSchema = v.record(v.picklist(GAIT_STYLE_KEYS), v.number())
 
-/** The walk style, mood and energy overrides a run recorded in its trace source detail, so a replay can reproduce it. */
-export function recordedOverrides(detail: MotionTraceSource['detail']): Pick<Motion3dRunOptions, 'walkStyle' | 'mood' | 'energy'> {
+/** The walk style, mood, energy and pep overrides a run recorded in its trace source detail, so a replay can reproduce it. */
+export function recordedOverrides(detail: MotionTraceSource['detail']): Pick<Motion3dRunOptions, 'walkStyle' | 'mood' | 'energy' | 'pep'> {
   return {
     walkStyle: typeof detail.walkStyle === 'string' ? { ...NEUTRAL_GAIT_STYLE, ...v.parse(recordedWalkStyleSchema, JSON.parse(detail.walkStyle)) } : null,
     mood: typeof detail.mood === 'string' ? v.parse(recordedMoodSchema, JSON.parse(detail.mood)) : null,
     energy: typeof detail.energy === 'number' ? detail.energy : null,
+    pep: typeof detail.pep === 'number' ? detail.pep : 0,
   }
 }
 
@@ -91,6 +92,8 @@ export interface Motion3dRunOptions {
   readonly mood?: { readonly valence: number, readonly arousal: number, readonly tension: number } | null
   /** The user energy until the scenario's first `energy` cue; recorded in the trace source when set. */
   readonly energy?: number | null
+  /** The character's pep for the whole run, 0 by default; recorded in the trace source only above 0. */
+  readonly pep?: number
   readonly git: RunGitState
   readonly signal: AbortSignal
   /** Called after each pipeline step with the frame index and the posed mesh; read-only (`lab:motion3d frames` re-runs). */
@@ -230,8 +233,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
           natural.advance(dt, {
             performance: cues.performance,
             energy: cues.energy,
-            // Scenarios run the calm default.
-            pep: 0,
+            // Scenarios run the calm default unless the run names a pep.
+            pep: options.pep ?? 0,
             voice: cues.voice,
             cursor,
             chat,
@@ -282,6 +285,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       ...options.walkStyle ? { walkStyle: JSON.stringify(options.walkStyle) } : {},
       ...options.mood ? { mood: JSON.stringify(options.mood) } : {},
       ...options.energy !== undefined && options.energy !== null ? { energy: options.energy } : {},
+      // Pep 0 records nothing, so `--pep 0` and no option give byte-identical traces.
+      ...options.pep ? { pep: options.pep } : {},
       ...idleDrive ? idleDriveDetail(idleDrive) : {},
       ...options.scenario.music ? { music: true } : {},
       ...options.scenario.beats ? { beats: JSON.stringify(options.scenario.beats) } : {},

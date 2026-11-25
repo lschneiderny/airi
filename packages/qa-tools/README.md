@@ -875,6 +875,9 @@ that record.
 holds the mood the body reads until the scenario's first `mood` cue (use the `=` form, since a negative value would read as a flag), and
 `--energy <0-1>` sets the user energy until the scenario's first `energy` cue. Each is recorded in the trace source
 detail when set, and each leaves the trace byte-identical when absent. They exist to review walk styles.
+`--pep <0-1>` hands Natural that [pep](../../docs/ai/context/glossary.md#pep) for the whole run, where the app hands it
+the active card's; it defaults to 0, the calm Natural. A pep above 0 is recorded in the trace source detail as `pep`,
+so `frames` and `clip` re-run it; 0 records nothing, so `--pep 0` and no option give byte-identical traces.
 An existing output directory is refused with exit 2.
 Measured on 2026-11-12 on both rigs and every scenario (two timings each), a run uses one core ((user + sys) / wall 1.01 to 1.10) and peaks at about 0.95 GB (first rig, 0.5 to 0.6 GB on the second) plus about 0.3 GB for its pnpm and tsx launchers. Each run creates:
 

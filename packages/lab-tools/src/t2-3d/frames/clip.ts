@@ -36,16 +36,19 @@ export function clipTimes(from: number, to: number, hz: number): number[] {
   return Array.from({ length: Math.floor((to - from) * hz + 1e-6) + 1 }, (_, i) => from + i / hz)
 }
 
-/** The walk style, mood and energy a run's trace source records it held from the start. */
+/** The walk style, mood, energy and pep a run's trace source records it held from the start. */
 export interface HeldInputs {
   readonly walkStyle?: GaitStyle | null
   readonly mood?: { readonly valence: number, readonly arousal: number, readonly tension: number } | null
   readonly energy?: number | null
+  /** The character's pep for the whole run; 0 names nothing. */
+  readonly pep?: number
 }
 
 /**
  * Header lines naming what a run held at `t`: its recorded mood and energy, replaced by the scenario's `mood:` and
- * `energy:` cues up to `t`, and the walk style's values that differ from the neutral walk. The clip wraps a long style line.
+ * `energy:` cues up to `t`, a pep above 0, and the walk style's values that differ from the neutral walk. The clip wraps a
+ * long style line.
  */
 export function heldLines(events: readonly MotionTraceEvent[], held: HeldInputs, t: number): string[] {
   let mood = held.mood ? `${held.mood.valence},${held.mood.arousal},${held.mood.tension}` : null
@@ -63,6 +66,7 @@ export function heldLines(events: readonly MotionTraceEvent[], held: HeldInputs,
   return [
     ...mood ? [`mood ${mood}`] : [],
     ...energy ? [`energy ${energy}`] : [],
+    ...held.pep ? [`pep ${held.pep}`] : [],
     ...style ? [`style ${styled.join(', ') || 'neutral'}`] : [],
   ]
 }

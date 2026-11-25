@@ -70,6 +70,7 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
         'walk-style': { type: 'string' },
         'mood': { type: 'string' },
         'energy': { type: 'string' },
+        'pep': { type: 'string' },
       },
       strict: true,
       allowPositionals: false,
@@ -106,7 +107,10 @@ export function parseRunArguments(args: readonly string[], cwd: string) {
     const energy = values.energy === undefined ? null : values.energy.trim() === '' ? Number.NaN : Number(values.energy)
     if (energy !== null && (!(energy >= 0) || !(energy <= 1)))
       throw new Motion3dUsageError('--energy must lie in [0, 1]')
-    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'], acts, walkStyle, mood, energy }
+    const pep = values.pep === undefined ? 0 : values.pep.trim() === '' ? Number.NaN : Number(values.pep)
+    if (!(pep >= 0) || !(pep <= 1))
+      throw new Motion3dUsageError('--pep must lie in [0, 1]')
+    return { model, scenario, seed, seconds, warmupSeconds, out, verifyDeterminism: values['verify-determinism'], acts, walkStyle, mood, energy, pep }
   }
   catch (error) {
     if (error instanceof Motion3dUsageError)
