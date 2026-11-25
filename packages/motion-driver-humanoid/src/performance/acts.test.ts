@@ -213,6 +213,22 @@ describe('the act layer', () => {
     }
   })
 
+  it('rolls one shoulder at a time: the leading clavicle lifts and goes back with its arm trailing, the other follows small and the head only tilts', () => {
+    const still = run(chisaTraits, quietInput, START + 4)
+    const acted = run(chisaTraits, playing(record('shoulder-roll', 3.2, { count: 1, side: 1 })), START + 4)
+    const diff = (channel: Parameters<typeof c>[0]) => acted.channels.map((frame, k) => (frame[c(channel)] - still.channels[k][c(channel)]) / DEG)
+    const peak = (values: number[]) => Math.max(...values.map(Math.abs))
+    // Side 1 leads with the right shoulder.
+    expect(Math.max(...diff('rightClavElev'))).toBeGreaterThan(10)
+    expect(Math.min(...diff('rightClavProt'))).toBeLessThan(-8)
+    expect(peak(diff('leftClavElev'))).toBeLessThan(0.35 * peak(diff('rightClavElev')))
+    const back = diff('rightClavProt').indexOf(Math.min(...diff('rightClavProt')))
+    const arm = diff('rightFlex').indexOf(Math.min(...diff('rightFlex')))
+    expect(diff('rightFlex')[arm]).toBeLessThan(-3)
+    expect(arm).toBeGreaterThan(back)
+    expect(peak(diff('headRoll')) + peak(diff('neckRoll'))).toBeLessThan(3.5)
+  })
+
   it('turns each re-planted foot back toward where it stood, so its steps never add up past 12 degrees', () => {
     const acts = Array.from({ length: 8 }, (_, k) => record('shift-stance', 1.6, { seq: k + 1, side: 1 }))
     const { steps } = replants(chisaTraits, acts)
