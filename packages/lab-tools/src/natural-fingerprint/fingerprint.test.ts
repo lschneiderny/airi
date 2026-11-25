@@ -49,6 +49,13 @@ describe('fingerprint', () => {
     expect(print.midBandShare).toBeLessThan(0.5)
   })
 
+  it('counts no swing across tracking gaps between still stretches', () => {
+    // Still at 0, 20 and 0 degrees, with a 1 s gap between the stretches.
+    const print = fingerprint(series(30, { tilt: t => t < 9 ? 0 : t < 10 ? null : t < 19 ? 20 : t < 20 ? null : 0 }))
+    expect(print.swingsPerMin).toBe(0)
+    expect(print.swingSizeDeg).toBeNull()
+  })
+
   it('counts blinks, long closures and the closed share', () => {
     // A 0.15 s blink every 3 s, and a 1 s closure at 31 s and at 91 s.
     const eyeOpen = (t: number) => t % 3 < 0.15 || (t >= 31 && t < 32) || (t >= 91 && t < 92) ? 0.05 : 0.3

@@ -28,6 +28,8 @@ from PIL import Image  # noqa: E402
 TRACKER = "track-avatar-video 1"
 SAMPLE_RATE = 16000
 VOICED_DB_BELOW_P95 = 25
+# RMS at or under this is digital silence (-100 dBFS).
+SILENT_RMS = 1e-5
 
 
 def parse_args():
@@ -97,14 +99,18 @@ def read_voice(video, start, fps, frames):
                "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-"]
     pcm = np.frombuffer(subprocess.run(command, check=True, capture_output=True).stdout, dtype=np.float32)
     hop = SAMPLE_RATE / fps
-    env = np.full(frames, 1e-6)
+    env = np.zeros(frames)
     for i in range(frames):
         chunk = pcm[int(i * hop):int((i + 1) * hop)]
         if chunk.size:
-            env[i] = math.sqrt(float(np.mean(chunk.astype(np.float64) ** 2)) + 1e-12)
+            env[i] = math.sqrt(float(np.mean(chunk.astype(np.float64) ** 2)))
+    # Frames of digital silence, padding included, never set the scale and are never voiced.
+    loud = env > SILENT_RMS
+    if not loud.any():
+        return [0.0] * frames, [False] * frames
     db = 20 * np.log10(env + 1e-6)
-    voiced = db > np.percentile(db, 95) - VOICED_DB_BELOW_P95
-    level = np.clip(env / np.percentile(env, 95), 0, 1)
+    voiced = loud & (db > np.percentile(db[loud], 95) - VOICED_DB_BELOW_P95)
+    level = np.clip(env / np.percentile(env[loud], 95), 0, 1)
     return [round(float(v), 4) for v in level], [bool(v) for v in voiced]
 
 

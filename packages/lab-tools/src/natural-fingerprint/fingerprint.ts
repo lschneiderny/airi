@@ -141,20 +141,21 @@ interface Swing {
   sharpness: number
 }
 
-/** Swings between consecutive reversals of at least `minDeg`, skipping any that spans a gap. */
+/** Swings between consecutive reversals of at least `minDeg`, found inside each present stretch on its own. */
 function swings(tilt: Series, tiltSpeed: Series, minDeg: number): Swing[] {
-  const index = tilt.flatMap((value, i) => value === null ? [] : [i])
-  const extremes = reversalExtremes(index.map(i => tilt[i] as number), minDeg).map(k => index[k])
   const out: Swing[] = []
-  for (let k = 1; k < extremes.length; k++) {
-    const a = extremes[k - 1]
-    const b = extremes[k]
-    const span = tiltSpeed.slice(a, b + 1)
-    if (span.includes(null) || b - a < 2)
-      continue
-    const size = Math.abs((tilt[b] as number) - (tilt[a] as number))
-    const seconds = (b - a) / HZ
-    out.push({ size, seconds, sharpness: Math.max(...span.map(value => Math.abs(value as number))) / (size / seconds) })
+  for (const { start, end } of spansOf(tilt)) {
+    const extremes = reversalExtremes(tilt.slice(start, end) as number[], minDeg).map(k => start + k)
+    for (let k = 1; k < extremes.length; k++) {
+      const a = extremes[k - 1]
+      const b = extremes[k]
+      const span = tiltSpeed.slice(a, b + 1)
+      if (span.includes(null) || b - a < 2)
+        continue
+      const size = Math.abs((tilt[b] as number) - (tilt[a] as number))
+      const seconds = (b - a) / HZ
+      out.push({ size, seconds, sharpness: Math.max(...span.map(value => Math.abs(value as number))) / (size / seconds) })
+    }
   }
   return out
 }
@@ -273,7 +274,8 @@ export function fingerprint(series: Resampled): Fingerprint {
   const absSpeed = tiltSpeed.map(value => value === null ? null : Math.abs(value))
   const values = present(tilt)
   const speeds = present(absSpeed)
-  const counted = Math.max(0, reversalExtremes(values, SWING_DEG).length - 1)
+  // Reversals are counted inside each present stretch, so a jump across a tracking gap is never a swing.
+  const counted = spansOf(tilt).reduce((sum, { start, end }) => sum + Math.max(0, reversalExtremes(tilt.slice(start, end) as number[], SWING_DEG).length - 1), 0)
   const shaped = swings(tilt, tiltSpeed, SHAPE_SWING_DEG)
   return {
     tiltSdDeg: values.length ? sd(values) : null,

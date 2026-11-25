@@ -47,7 +47,7 @@ function numberOption(value: string | undefined, name: string, fallback: number,
   if (value === undefined)
     return fallback
   const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max)
+  if (value.trim() === '' || !Number.isFinite(parsed) || parsed < min || parsed > max)
     throw new NaturalCliError(`--${name} must be a number in [${min}, ${max}], got ${value}`)
   return parsed
 }
