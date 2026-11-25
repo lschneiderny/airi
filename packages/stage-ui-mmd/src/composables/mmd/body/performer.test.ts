@@ -159,6 +159,13 @@ describe('mmd body performer adapter', () => {
     expect(silent.filter(event => event.kind === 'act' || event.kind === 'rest')).toEqual([])
   })
 
+  it('holds its capabilities as plain values, so publishing them never starts the core\'s arm form search', () => {
+    const { performer } = performerOf(bodyFixture())
+    const lazy = Object.values(Object.getOwnPropertyDescriptors(performer.capabilities)).filter(descriptor => descriptor.get)
+    expect(lazy).toEqual([])
+    expect(performer.capabilities).toBe(performer.capabilities)
+  })
+
   it('takes a claimed arm from the gesture layers before the claim reaches half', () => {
     const fixture = bodyFixture()
     const { traits } = performerOf(fixture)

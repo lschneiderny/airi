@@ -1420,6 +1420,9 @@ async function loadModel(src: string) {
         publishPlacement()
       } },
     })
+    // Reads the rig's capabilities while the model loads: the first read searches the clasp and hair-tuck forms, which
+    // must not happen inside a frame.
+    void body.capabilities
     diagnostics.setMetrics(animation.pipeline.metrics)
     const activeBody = body
     const sampler = createMMDMotionTraceSampler(resolved.mmd, rig, new MMDBodyPose(resolved.mmd, rig))
