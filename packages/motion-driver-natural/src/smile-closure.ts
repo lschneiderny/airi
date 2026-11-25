@@ -78,7 +78,8 @@ export class NaturalSmileClosure {
       if (this.age >= this.duration + EASE_OUT_SECONDS)
         this.running = false
     }
-    if (this.hazard >= this.threshold) {
+    // A drawn threshold can be exactly 0; without a rate nothing is due, so pep 0 never starts a closure.
+    if (rate > 0 && this.hazard >= this.threshold) {
       this.hazard = 0
       this.threshold = this.drawThreshold()
       const duration = Math.max(DURATION_MIN, Math.min(DURATION_MAX, DURATION_MEDIAN * Math.exp(DURATION_LOG_SD * gaussian(this.random))))
