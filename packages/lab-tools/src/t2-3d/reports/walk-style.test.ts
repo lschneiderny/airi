@@ -10,7 +10,11 @@ import { loadedRun, rotX, rotY, TEST_BONES } from './test-runs'
 import { walkStyleReading } from './walk-style'
 
 const DEG = Math.PI / 180
-const BONES: readonly MotionTraceBone[] = [...TEST_BONES, 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot']
+const FINGERS = (['left', 'right'] as const).flatMap(side => [
+  `${side}MiddleProximal`,
+  ...(['Index', 'Little'] as const).flatMap(finger => (['Proximal', 'Intermediate', 'Distal'] as const).map(joint => `${side}${finger}${joint}`)),
+] as MotionTraceBone[])
+const BONES: readonly MotionTraceBone[] = [...TEST_BONES, 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot', ...FINGERS]
 /** Joint offsets from the parent joint at rest, leg length 1: hips 0.2 wide, shoulders 0.3 wide. */
 const OFFSETS: Partial<Record<MotionTraceBone, [number, number, number]>> = {
   leftUpperLeg: [0.1, -0.05, 0],
@@ -27,7 +31,22 @@ const OFFSETS: Partial<Record<MotionTraceBone, [number, number, number]>> = {
   rightLowerArm: [0, -0.3, 0],
   leftHand: [0, -0.25, 0],
   rightHand: [0, -0.25, 0],
+  // The hand hangs with its palm toward the thigh and its thumb side forward: the index knuckle ahead of the little one,
+  // which sits nearer the wrist.
+  ...Object.fromEntries((['left', 'right'] as const).flatMap(side => [
+    [`${side}MiddleProximal`, [0, -0.08, 0]],
+    [`${side}IndexProximal`, [0, -0.08, 0.02]],
+    [`${side}LittleProximal`, [0, -0.07, -0.02]],
+    ...(['Index', 'Little'] as const).flatMap(finger => [[`${side}${finger}Intermediate`, [0, -0.04, 0]], [`${side}${finger}Distal`, [0, -0.03, 0]]]),
+  ])),
 }
+const rotZ = (a: number): Quat => [0, 0, Math.sin(a / 2), Math.cos(a / 2)]
+
+/** The wrist extends 15 degrees and moves 10 either way with the swing; the arm twists 4 and pronates 5 either way. */
+const WRIST = { mean: 15, swing: 10 }
+const ROLL = { twist: 4, pronation: 5 }
+/** Curl of each joint, knuckle to tip, degrees. */
+const CURL = { Index: [10, 15, 5], Little: [20, 25, 10] } as const
 
 /** Strides per second: 1.4 steps per second at 1 L/s, so a step of 1 / 1.4 L. */
 const STRIDE_HZ = 0.7
@@ -70,9 +89,18 @@ function walk() {
       return multiply(yaw, rotX(-25 * DEG * side * Math.sin(phase(t)) + 30 * DEG))
     if (bone.endsWith('UpperArm'))
       return multiply(yaw, rotX(15 * DEG * side * Math.sin(phase(t))))
-    if (bone.endsWith('LowerArm') || bone.endsWith('Hand'))
-      return multiply(yaw, rotX(15 * DEG * side * Math.sin(phase(t)) - 20 * DEG))
-    return yaw
+    // Each side mirrors the other: extension bends the hand outward and pronation turns it inward on both, and a finger
+    // curls toward the palm, which faces the thigh.
+    const swing = multiply(yaw, rotX(15 * DEG * side * Math.sin(phase(t))))
+    const lower = multiply(swing, multiply(rotY(-side * ROLL.twist * DEG * Math.sin(phase(t))), rotX(-20 * DEG)))
+    if (bone.endsWith('LowerArm'))
+      return lower
+    const hand = multiply(lower, multiply(rotY(-side * ROLL.pronation * DEG * Math.sin(phase(t))), rotZ(side * (WRIST.mean + WRIST.swing * Math.sin(phase(t))) * DEG)))
+    if (bone.endsWith('Hand') || bone.endsWith('MiddleProximal'))
+      return hand
+    const finger = bone.includes('Index') ? 'Index' : 'Little'
+    const joints = bone.endsWith('Proximal') ? 1 : bone.endsWith('Intermediate') ? 2 : 3
+    return CURL[finger].slice(0, joints).reduce((q, curl) => multiply(q, rotZ(-side * curl * DEG)), hand)
   }
   const input = analyticTrace({ seconds: 40, bones: BONES, scenario: 'walk', world, position, yaw: t => heading(t) + twist(t), mode: t => t < 1 ? 2 : 3 })
   input.trace.rig.restOffsets = input.trace.rig.bones.map(bone => OFFSETS[bone] ?? [0, 0.1, 0])
@@ -105,5 +133,15 @@ describe('walk-style measures', () => {
     expect(m.trunk).toBeCloseTo(Math.atan2(0.3 * Math.sin(LEAN), 0.15 + 0.3 * Math.cos(LEAN)) / DEG, 1)
     expect(m.head).toBeCloseTo(10, 1)
     expect(m.kneeSwing).toBeCloseTo(30, 1)
+  })
+
+  it('reads the hand: wrist carriage and its range in a stride, the forearm\'s roll, and each finger\'s summed curl', () => {
+    const m = reading.measures
+    // The steady spans end partway into a stride, which moves the mean of the 10 degree swing by up to a degree.
+    expect(Math.abs((m.wrist ?? Number.NaN) - WRIST.mean)).toBeLessThan(1)
+    expect(m.wristMove).toBeCloseTo(2 * WRIST.swing, 1)
+    expect(m.roll).toBeCloseTo(2 * (ROLL.twist + ROLL.pronation), 1)
+    expect(m.index).toBeCloseTo(30, 3)
+    expect(m.little).toBeCloseTo(55, 3)
   })
 })
