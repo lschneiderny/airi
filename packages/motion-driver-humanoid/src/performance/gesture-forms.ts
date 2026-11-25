@@ -55,7 +55,9 @@ export const BEAT_PATHS: readonly (readonly [number, number, number])[] = [GESTU
 /**
  * The held arm forms (4a, 4e): hand shape, palm orientation and the contact anchor they reach for; the thinking hand
  * stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in arm lengths: the
- * hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side. The yawn's hand covers
+ * hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side. The hand to chest
+ * goes 0.15 A up, which puts the wrist on the upper chest above the bust: at 0.05 A the march stopped on the
+ * bust's front on chested rigs and left the hand floating in front of the chest. The yawn's hand covers
  * the mouth 0.06 A in front of it (4e act 9), at the chin seed, palm toward the face as the thinking hand holds it; it
  * comes 0.08 A to its own side, the nearest offset from the midline, in 0.02 A steps, at which Chisa's and Ellen's arms
  * solve a key inside their limits (E/g4/a/scratch/probe-cover.ts).
@@ -90,7 +92,7 @@ export const BEAT_PATHS: readonly (readonly [number, number, number])[] = [GESTU
  * pronation and flexion.
  */
 export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape | Readonly<Record<BodySide, HandShape>>, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
-  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
+  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.15 }, hands: 'one' },
   'thinking-hand': { shape: 'thinking', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
   'hair-touch': { shape: 'comb', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
