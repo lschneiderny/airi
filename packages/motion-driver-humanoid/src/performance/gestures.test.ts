@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision } from './collision'
-import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, writeArmFormHand } from './gesture-forms'
+import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, writeArmFormHand, writeHandShare } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { writeHandShape } from './hand-shapes'
 import { BodySkeleton, createBodyPerformer } from './index'
@@ -466,15 +466,15 @@ describe('co-speech gestures', () => {
   }, 60_000)
 
   it('moves a beat\'s fingers with the stroke and brings them back with the recovery', () => {
-    // A beat closes the relaxed hand 0.45 of the way to a cup, or in a set phrase opens the half-open hand fully. The
-    // index knuckle (channel 12) peaks in the hold behind its follower (4a: the hand shape last).
+    // A beat closes the hand toward a cup, or in a set phrase opens the half-open hand fully. The index knuckle (channel
+    // 12) follows behind the arm (4a: the hand shape last), so its turn counts from the hit, after the recovery's.
     let closing = 0
     for (const seed of [1, 2, 3, 4]) {
       const run = perform({ utterances: [utterance(0.5, 0.45, peaks(0.5, false))] }, 6.5, { seed })
       for (const beat of strokes(run).filter(s => s.form === 'beat' && s.hand !== 'both' && s.hit < 5.5)) {
         const side = beat.hand === 'left' ? 'left' : 'right'
         const curl = (time: number) => run.frames[Math.round(time / BODY_TICK) - 1].channels[ARM_START[side] + 12]
-        const start = curl(beat.hit - 0.2)
+        const start = curl(beat.hit)
         let turn = 0
         for (let t = beat.hit; t <= beat.hit + 0.35; t += BODY_TICK) {
           if (Math.abs(curl(t) - start) > Math.abs(turn))
@@ -737,10 +737,12 @@ describe('co-speech gestures', () => {
       const landed = SIDES.map(side => apexes(run, side).find(time => time >= both.onset + 0.06) ?? Number.NaN)
       const frame = run.frames[Math.round((Math.max(...landed) + 0.1) / BODY_TICK)]
       const shape = new Float64Array(26)
-      const relaxed = new Float64Array(26)
+      const ready = new Float64Array(26)
       writeHandShape(GESTURE_FORMS[both.form as keyof typeof GESTURE_FORMS].shape, shape)
-      writeHandShape('relaxed', relaxed)
-      // Each hand's summed finger curl away from the form's shape, in degrees, against the shape's own way from relaxed.
+      // The ready hand, half way from relaxed to open: both hands ease back toward it through the hold.
+      writeHandShare('open', 0.5, ready)
+      // Each hand's summed finger curl away from the form's shape, in degrees, against the shape's own way from the
+      // ready hand.
       const off = SIDES.map((side) => {
         let sum = 0
         for (let j = 12; j < 24; j++)
@@ -749,13 +751,27 @@ describe('co-speech gestures', () => {
       })
       let span = 0
       for (let j = 12; j < 24; j++)
-        span += Math.abs(relaxed[j] - shape[j]) / DEG
+        span += Math.abs(ready[j] - shape[j]) / DEG
       const first = landed[0] < landed[1] ? 0 : 1
       // The second hand sits a share of the way back toward relaxed; the first holds the shape.
       expect(off[1 - first] - off[first]).toBeGreaterThan(0.2 * span)
       return
     }
     throw new Error('No two-hand stroke of a shaped form in 200 seeds at energy 0.85')
+  })
+
+  it('holds a hand at its ready key curled less than the rest hand, so held palm down it is no claw', () => {
+    // Hands raised at 0.5 s with nothing to stroke wait at their ready keys until they let go.
+    const relaxed = new Float64Array(26)
+    writeHandShape('relaxed', relaxed)
+    const curl = (hand: ArrayLike<number>, start: number) => Array.from({ length: 4 }, (_, finger) => hand[start + 13 + finger * 3] + hand[start + 14 + finger * 3]).reduce((a, b) => a + b)
+    for (const rig of [chisaTraits, ellenTraits]) {
+      const run = perform({ utterances: [utterance(0.5, 0.65, [])] }, 1.6, { traits: rig })
+      const frame = run.frames.at(-1)!
+      const side = frame.gesture.hand === 'left' ? 'left' : 'right'
+      expect(frame.gesture.activation[side]).toBe(1)
+      expect(curl(frame.channels, ARM_START[side])).toBeLessThanOrEqual(0.8 * curl(relaxed, 0))
+    }
   })
 
   it('sends consecutive beats of a hand along different paths', () => {

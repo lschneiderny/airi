@@ -883,7 +883,9 @@ down and forward, then shallower and further forward, then diagonally out to
 its side, by turns (`BEAT_PATHS`), so no two consecutive beats share a path. A phrase's theme stroke (palm-up, press,
 frame) sets its hand: the ready key turns 0.6 of the way to the theme's forearm
 and wrist with the hand half-way to its shape, and the phrase's beats keep that
-palm. The arm prepares to the phrase's ready key, strokes on every onset that passes the gate's S2 voice-peak
+palm. Outside a set phrase the hand at the ready key is half way from the rest
+hand to the open one (`READY_HAND`): the rest hand's cascade, held palm down in
+front of the body, reads as a claw. The arm prepares to the phrase's ready key, strokes on every onset that passes the gate's S2 voice-peak
 rule (accepted emphases major, others 0.6), at least 0.45 s apart and at most
 six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
 1.3 times its preparation, after 0.4 s of quiet, after speaking ends or at the

@@ -172,6 +172,13 @@ const SET = { share: 0.6, hand: 0.5, beatFlex: 10 * DEG } as const
  */
 const FLOAT = { out: 0.04, up: 0.05, forward: 0.04, swivel: 10 * DEG } as const
 
+/**
+ * The hand at a ready key outside a set phrase: `share` of the way from the rest hand to the open one. The rest hand's
+ * cascade, curled most at the middle joints, reads as a claw held palm down in front of the body; this shallower curl
+ * hovers, and a beat's hand settles into it through the fingertips (`handOrder`).
+ */
+const READY_HAND = { shape: 'open', share: 0.5 } as const
+
 /** During the post-stroke hold the hand eases this share of the way back toward the ready hand before the recovery opens it fully. */
 const HOLD_SOFTEN = 0.35
 
@@ -1068,7 +1075,7 @@ class GesturePerformer {
       if (spec)
         writeHandShare(spec.shape, SET.hand * spec.shapeShare, candidate)
       else
-        writeHandShape('relaxed', candidate)
+        writeHandShare(READY_HAND.shape, READY_HAND.share, candidate)
       if (keys.solve(track.side, key, candidate, track.home, headroom) && (!via || keys.pathDepth(track.side, via, candidate) === 0)) {
         track.ready.set(candidate)
         track.readyKey = key
