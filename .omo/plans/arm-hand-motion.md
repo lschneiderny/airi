@@ -1,6 +1,6 @@
 # arm-hand-motion - Work Plan
 
-Status: in progress, 2026-11-24. Builds on the walk style work ([plan](walk-style.md)). Roadmap rows: Walk and Idle life, in [`docs/ai/context/3d-character-roadmap.md`](../../docs/ai/context/3d-character-roadmap.md). Required reading for every worker: the `enforce-rules-for-render-loops`, `enforce-rules-for-typescript`, `enforce-rules-for-vitest` and `motion-qa` skills, [Body ownership](../../docs/ai/context/body-ownership.md), and the nested `AGENTS.md` of each package touched.
+Status: slices T0 and H1 to H6 built, 2026-11-25; follow-ups in section 6. Builds on the walk style work ([plan](walk-style.md)). Roadmap rows: Walk and Idle life, in [`docs/ai/context/3d-character-roadmap.md`](../../docs/ai/context/3d-character-roadmap.md). Required reading for every worker: the `enforce-rules-for-render-loops`, `enforce-rules-for-typescript`, `enforce-rules-for-vitest` and `motion-qa` skills, [Body ownership](../../docs/ai/context/body-ownership.md), and the nested `AGENTS.md` of each package touched.
 
 ## TL;DR (For humans)
 
@@ -137,3 +137,25 @@ Rig matrix: the reference rig, the two collision and arm test rigs, and five mor
 - **D3. Hand style rides the gait's weight**, as `elbowCarry` does. Standing hand shape stays with the emotion layer.
 - **D4. No new card editor control.** The existing baseline values `armCarry` and `armSwing` also move the hand. A hand control of its own waits for a visual review that asks for it.
 - **D5. Out of scope:** finger animation within a stride, props, VRM, and Live2D.
+
+## 6. Outcome and follow-ups
+
+Decisions taken while building, beyond section 5:
+
+- **Bind bends come off half per joint and half per finger.** Bone centres zigzag inside straight finger meshes on some rigs, so a per-joint correction alone kinks them, and a whole-finger correction alone leaves authored bent-back tips. Compared on rendered flat hands of ten rigs.
+- **The palm the adapter poses is the palm the arm kinematics assume.** A rig's bind roll about the hand's axis comes off with the wrist's bind bend, on the wrist twist bone where the rig has one.
+- **Twist bones carry the whole twist.** A share by rig or by sleeve was not built: full twist on the twist bones is how these rigs are authored, and bare forearms and fitted cuffs improved with it. A puffy sleeve wrings at 60 degrees of pronation.
+- **Body proxies are fitted to each rig's rest hang.** A proxy the rest arms enter shrinks about its centre until they clear it. Before this one rig's arms never moved and three more stood with distorted rests.
+- **`wristCarry` is bounded at -10 to 12 degrees.** At 30 the hand looked braced, and with the old wrist drag a happy walk waved at each step. The wrist now trails the forearm's swing instead of the elbow's rate.
+- **The walk's closed hand blends toward the fist shape**, and shapes blend in the hand's closing order: knuckles lead a closing hand and fingertips lead an opening one.
+
+Open:
+
+- The thinking hand's contact point is one hand length along the palm, not the posed index fingertip, which sits about 0.05 model units inside the face proxy. Placing the real fingertip made the search back the hand off to the chest; the search's back-off and upright-hand preference need rework around a fingertip contact.
+- During a clip fade over a twist bone that sits off its segment line, the upper arm's length changes by up to 0.4 percent.
+- The corrector's 6 degree step cap counts shoulder flexion and abduction, not the elbow.
+- The hair tuck's palm-facing solve costs 68 guard scans in a 120 s idle run on one rig, and five rigs whose wrist limits allow no palm-facing pair still touch the hair with the palm forward.
+- Hands still pass into physics-driven cloth (skirts, tails, hip pouches), which the corrector leaves to the simulation by design.
+- `wristMove` in the walk-style report reads 0.8 to 2.5 degrees against an acted range of 5 to 30: the trail turns the hand mostly as deviation, because the walking palm faces the thigh.
+- No rendered-app review yet: every visual check ran on the grey posed mesh.
+
