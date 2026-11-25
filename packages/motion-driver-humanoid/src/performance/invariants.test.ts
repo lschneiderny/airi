@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createRandomStream } from '../random'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG, JOINT_LIMITS } from './channels'
-import { BodyCollision, proxyColliders } from './collision'
+import { BodyCollision, KEY_HEADROOM, proxyColliders } from './collision'
 import { createBodyPerformer } from './index'
 import { channelTrace, chisaTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 import { BodySkeleton } from './skeleton'
@@ -51,6 +51,33 @@ describe('performer invariants', () => {
     for (const side of ['left', 'right'] as const)
       expect(collision.measure(side, rest).depth).toBe(0)
     expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBe(plain.distance(elbow.x, elbow.y, elbow.z))
+  })
+
+  it('rests each arm at the rig\'s own abduction and fits the proxies to that rest, not to the default hang', () => {
+    // A ball beside the default rest elbow, toward the body: the default hang leans on it, and a rest 10 degrees
+    // further out clears it.
+    const natural = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(natural)
+    const elbow = { ...skeleton.arm('left', natural).elbow }
+    const chest = traits.spineChain[traits.spineChain.length - 1]
+    const ball: BodyCollider = { bone: 'spine2', shape: 'sphere', radius: 0.3, centre: { x: elbow.x - 0.75 - chest.x, y: elbow.y - chest.y, z: elbow.z - chest.z }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
+    const colliders = [...proxyColliders(traits), ball]
+    const wide = { ...traits, arms: { ...traits.arms, left: { ...traits.arms.left, restAbduct: traits.arms.left.restAbduct + 10 * DEG } } }
+    const rest = createBodyPerformer({ traits: wide, seed: 1 }).restChannels()
+    // The seed's offsets ride on the rig's abduction; the other side and every other angle keep the default pose.
+    expect(rest[c('leftAbduct')] - natural[c('leftAbduct')]).toBeCloseTo(10 * DEG, 6)
+    expect(rest[c('rightAbduct')]).toBe(natural[c('rightAbduct')])
+    expect(rest[c('leftFlex')]).toBe(natural[c('leftFlex')])
+
+    const atDefault = new BodyCollision({ ...traits, colliders }, natural.slice())
+    expect(atDefault.fit.at(-1)).toBeGreaterThan(0)
+    expect(atDefault.fit.at(-1)).toBeLessThan(1)
+    // At the rig's own rest the ball keeps its size, so the corrector still keeps an arm out of it.
+    const atRigRest = new BodyCollision({ ...wide, colliders }, rest.slice())
+    expect(atRigRest.fit.at(-1)).toBe(1)
+    expect(atRigRest.measure('left', natural, KEY_HEADROOM).depth).toBeGreaterThan(0)
+    expect(atRigRest.measure('left', rest, KEY_HEADROOM).depth).toBe(0)
   })
 
   it('keeps every proxy as given for a caller that measures them unfitted', () => {

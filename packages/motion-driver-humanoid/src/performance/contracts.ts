@@ -102,6 +102,13 @@ export interface BodyArmTraits {
   readonly handLength: number
   readonly fingers: 'full' | 'partial' | 'none'
   readonly twist: boolean
+  /**
+   * The abduction this arm rests at, radians from a straight-down arm: where the hanging arm clears this rig's body
+   * (`BodyModel.rest`), or `DEFAULT_ARM_REST_POSE.abduct` for a rig nobody measured. The rest pose's other angles are
+   * the performer's. The seeded rest pose, the reference the corrector fits its proxies to (`BodyCollision.fit`) and
+   * the pose every arm form starts from all take it.
+   */
+  readonly restAbduct: number
 }
 
 export interface BodyRigTraits {
@@ -234,7 +241,11 @@ export interface BodyPerformanceInput {
      */
     readonly ankles: Readonly<Record<BodySide, Readonly<Vec3>>> | null
   } | null
-  /** Per-side standing hang clearance added to abduction, radians, from the adapter's hang solver. */
+  /**
+   * Per-side abduction a host adds to the rig's rest (`BodyArmTraits.restAbduct`), radians: the lift of the adapter's
+   * hang solver, or its debug override. It moves the arm only; the rest reference, the fitted proxies and the arm forms
+   * keep the rig's rest.
+   */
   readonly armLift: Readonly<Record<BodySide, number>>
   /** The latest idle behaviour Natural started, kept after it ends; null before the first and without an idle drive. */
   readonly idle: BodyIdleAct | null

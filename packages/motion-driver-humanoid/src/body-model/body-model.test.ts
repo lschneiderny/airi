@@ -1,4 +1,4 @@
-import type { BodyCollider, BodySide } from '../performance'
+import type { BodyCollider, BodyRigTraits, BodySide } from '../performance'
 import type { BodyMeshSource, BodyModel } from './contracts'
 
 import { describe, expect, it } from 'vitest'
@@ -21,6 +21,13 @@ function restDepth(source: BodyMeshSource, model: BodyModel, side: BodySide, abd
   const collision = new BodyCollision({ ...restTraits(source), colliders }, channels.slice(), false)
   channels[BODY_CHANNELS.indexOf(`${side}Abduct`)] = abduct
   return collision.measure(side, channels, clearance).depth
+}
+
+/** The rig traits a host hands the performer: the source's skeleton with the model's volumes and its rest abduction per arm. */
+function rigTraits(source: BodyMeshSource, model: BodyModel): BodyRigTraits {
+  const skeleton = restTraits(source)
+  const arm = (side: BodySide) => ({ ...skeleton.arms[side], restAbduct: model.rest[side].abduct })
+  return { ...skeleton, arms: { left: arm('left'), right: arm('right') }, colliders: model.volumes }
 }
 
 /** A trunk slice lies left to right, or front to back, by a quarter turn of pitch, when it is deeper than it is wide. */
@@ -386,7 +393,7 @@ describe('buildBodyModel', () => {
       expect(restDepth(source, model, side)).toBe(0)
     }
     // The corrector keeps a clear guard pose on both sides: the shell does not trap it.
-    const traits = { ...restTraits(source), colliders: model.volumes }
+    const traits = rigTraits(source, model)
     expect(new BodyCollision(traits, createBodyPerformer({ traits, seed: 1 }).restChannels()).capabilities.gestures).toEqual({ left: true, right: true })
   })
 
