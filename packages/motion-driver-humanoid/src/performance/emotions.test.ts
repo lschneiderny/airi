@@ -300,16 +300,20 @@ describe('emotion posture layer', () => {
     expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 100, 0)
   })
 
+  // Re-pinned: a body poke's startle kept a quarter of its arms, and both hands still opened low into one recoil after
+  // the guarding forearm (audit of 2026-11-25). A head poke keeps the quarter.
   it('leaves the arms of a startle from a poke to the touch reaction, and keeps its trunk recoil', () => {
-    const poked = (at: number): Script => (t) => {
+    const poked = (at: number, region: 'head' | 'body'): Script => (t) => {
       const input = pulse('surprised', 0.5)(t)
-      return { ...input, events: { ...input.events, poke: t < at ? null : { seq: 1, at, region: 'body', x: 0.7, y: 0 } } }
+      return { ...input, events: { ...input.events, poke: t < at ? null : { seq: 1, at, region, x: 0.7, y: 0 } } }
     }
     const alone = emotionOutput(pulse('surprised', 0.5), 0.8).channels
-    const touched = emotionOutput(poked(0.5), 0.8).channels
-    const earlier = emotionOutput(poked(0.1), 0.8).channels
-    expect(touched[c('leftElbow')] / alone[c('leftElbow')]).toBeCloseTo(0.25, 6)
-    expect(touched[c('midPitch')]).toBeCloseTo(alone[c('midPitch')], 9)
+    const body = emotionOutput(poked(0.5, 'body'), 0.8).channels
+    const head = emotionOutput(poked(0.5, 'head'), 0.8).channels
+    const earlier = emotionOutput(poked(0.1, 'body'), 0.8).channels
+    expect(body[c('leftElbow')]).toBe(0)
+    expect(head[c('leftElbow')] / alone[c('leftElbow')]).toBeCloseTo(0.25, 6)
+    expect(body[c('midPitch')]).toBeCloseTo(alone[c('midPitch')], 9)
     expect(earlier[c('leftElbow')]).toBeCloseTo(alone[c('leftElbow')], 9)
   })
 
