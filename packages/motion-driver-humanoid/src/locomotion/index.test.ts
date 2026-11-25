@@ -192,8 +192,9 @@ describe('sidestep', () => {
     // through the stop, a goal during the settle started her at once, the turn lean came to scale with speed, and the gaze
     // came to lead her facing by at most 40 degrees. Re-pinned when a start from standing came to turn over 2 steps with its
     // gaze half a step ahead. Re-pinned when the chest came to roll and nod after the pelvis, the head to nod, the elbow
-    // to trail by 0.1 s and the arm's hang floor to fall to 12 and 16 degrees.
-    expect(hash.digest('hex')).toBe('e3343d02b65a3a9136830751c1fbc4e201bddef22f6120480a1bf4b529c97839')
+    // to trail by 0.1 s and the arm's hang floor to fall to 12 and 16 degrees. Re-pinned when a start from standing came
+    // to turn about each stance hip in turn and a walking foot to finish its turn by 0.7 of the swing.
+    expect(hash.digest('hex')).toBe('5625fa813ebe1d78cf7e5668959a7615a0f70cbc7a683ac38e47c51a0f9bad3f')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -844,13 +845,27 @@ describe('procedural gait', () => {
   it('start: from standing the gaze leaves before the first foot, which lands with her body turned toward travel', () => {
     const run = createRun({ x: 0, yaw: 0 })
     run.advance(2, () => ({ goalX: -60, arriveFacing: 0 }))
-    const lift = run.frames.find(frame => frame.events.some(event => event.kind === 'liftOff'))!
-    const strike = run.frames.find(frame => frame.events.some(event => event.kind === 'heelStrike'))!
-    // The body still faces the viewer as the first foot lifts, and the gaze is already well on its way.
-    expect(Math.abs(lift.root.yaw)).toBeLessThan(2 * rad)
+    const liftAt = run.frames.findIndex(frame => frame.events.some(event => event.kind === 'liftOff'))
+    const strikeAt = run.frames.findIndex(frame => frame.events.some(event => event.kind === 'heelStrike'))
+    const lift = run.frames[liftAt]!
+    const midSwing = run.frames[Math.round((liftAt + strikeAt) / 2)]!
+    const strike = run.frames[strikeAt]!
+    // The loaded hip has begun to turn with the weight shift as the first foot lifts, and the gaze is well on its way.
+    expect(lift.root.yaw).toBeLessThan(-3 * rad)
+    expect(lift.root.yaw).toBeGreaterThan(-10 * rad)
     expect(lift.root.yaw - lift.lookAhead).toBeGreaterThan(30 * rad)
-    // Over 2.4 steps the body had turned 25 degrees of the quarter turn at the first strike; now more than 35.
-    expect(strike.root.yaw).toBeLessThan(-35 * rad)
+    // The hips point down the path while the foot is in the air: in one minimum-jerk sweep they stood 9 degrees round
+    // at mid-swing and 38 at the strike, so the foot swept out sideways from a body square to the viewer.
+    expect(midSwing.root.yaw).toBeLessThan(-30 * rad)
+    expect(strike.root.yaw).toBeLessThan(-45 * rad)
+    // The swinging foot turns with the opening hip and comes in pointing where it lands: by mid-swing it has made most of
+    // its turn (half of it when it turned over the whole swing).
+    const foot = run.frames[liftAt]!.events.find(event => event.kind === 'liftOff')!.foot
+    const turned = (midSwing.feet[foot].target.yaw - lift.feet[foot].target.yaw) / (strike.feet[foot].target.yaw - lift.feet[foot].target.yaw)
+    expect(turned).toBeGreaterThan(0.75)
+    // The standing foot still lifts within 60 degrees of her facing.
+    const second = run.frames.slice(strikeAt).find(frame => frame.events.some(event => event.kind === 'liftOff'))!
+    expect(second.root.yaw).toBeGreaterThan(-60 * rad)
   })
 
   it('look ahead: a turn-around sweeps to its final facing over every step but the last', () => {

@@ -325,6 +325,18 @@ const lookLeadMax = 40 * radians
  */
 const standingTurnSteps = 2.0
 const standingLookLead = 0.5
+/**
+ * A start from standing turns about each stance hip in turn: the loaded hip carries `standingHipShare` of the turn from
+ * the first weight shift to the first heel strike, and the first foot's hip the rest from `standingSecondFrom` of a step
+ * before that strike to the end of the turn. In one minimum-jerk sweep over the 2.0 steps her hips stood 9 degrees round
+ * at the first foot's mid-swing and 38 at its strike, so the foot swept out sideways from a lower body still square to
+ * the viewer (independent visual audit, 2026-11-25). Now they stand about 36 and 51 degrees round. The share keeps the
+ * standing foot within 57 degrees of her facing until it lifts, under the 60 a planted foot may; 0.58 reached 60.1. The
+ * two turns overlap by 0.2 step, so the turn never stops while both feet are down. Judged on the stills; walking adults
+ * turn the pelvis toward a new direction over the stance limb (Hase and Stein 1999, J Neurophysiol 81:2914).
+ */
+const standingHipShare = 0.55
+const standingSecondFrom = 0.8
 /** A start that must turn further than this first turns the excess on the spot, so she never sets off backwards. */
 const mergedTurnMax = 100 * radians
 const mergedTurn = 90 * radians
@@ -361,6 +373,8 @@ const heelStrikePitch = 20 * radians
 const toeOffPitch = 28 * radians
 /** The toe-down pitch a swinging foot hangs at behind the knee, reached 30 % into the swing. */
 const swingHangPitch = 36 * radians
+/** Share of a walking swing by which the foot has turned to its landing facing (`sampleSwing`); judged on the stills. */
+const swingTurnBy = 0.7
 /** The ankle's speed at lift-off as a share of the swing's mean speed: the toe-off roll hands its motion on. */
 const swingStartSpeed = 0.45
 /** Stance shares: the foot is flat from 12 % and its heel rises from 62 %. */
@@ -617,9 +631,19 @@ interface YawPlan {
   readonly fromPhase: number
   readonly toPhase: number
   readonly startRate: number
+  /**
+   * A start from standing's two turns (`standingHipShare`): `share` of the turn from `fromPhase` to `endPhase`, the rest
+   * from `secondFrom` to `toPhase`, each a minimum-jerk sweep. Without it the plan is one sweep.
+   */
+  readonly stance?: { readonly share: number, readonly endPhase: number, readonly secondFrom: number }
   /** Steps the gaze's look-ahead runs ahead of the plan, and the share of the plan over which it turns. */
   readonly lookLead: number
   readonly lookShare: number
+  /**
+   * The walk phase the look-ahead's sweep starts from, `fromPhase` when omitted: a start from standing's gaze keeps the
+   * walk's own clock, since its turn's clock runs ahead of it through the preparation.
+   */
+  readonly lookFromPhase?: number
 }
 
 interface Turn {
@@ -1291,8 +1315,12 @@ class Locomotion {
     // From standing the turn is quicker and the gaze leads it; a start that carries an on-spot turn's yaw rate keeps
     // the walking turn's pace.
     const standing = Math.abs(this.yawRate) <= turnTolerance
+    // From standing the turn's clock starts with the preparation (`prepare`), so the loaded hip turns as the weight arrives.
+    const stance = { share: standingHipShare, endPhase: 1, secondFrom: standingSecondFrom }
     this.yawPlan = Math.abs(turn) > turnTolerance
-      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + (standing ? standingTurnSteps : departTurnSteps), startRate: this.yawRate / minRate, lookLead: standing ? standingLookLead : 0, lookShare: lookLeadShare }
+      ? standing
+        ? { from: this.yaw, to: this.yaw + turn, fromPhase: doubleSupport - minRate * preparationDuration, toPhase: this.phase + standingTurnSteps, startRate: this.yawRate / minRate, lookLead: standingLookLead, lookShare: lookLeadShare, lookFromPhase: this.phase, stance }
+        : { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate, lookLead: 0, lookShare: lookLeadShare }
       : null
     if (sidestep) {
       this.walk.sidestep = {
@@ -1311,8 +1339,13 @@ class Locomotion {
       return this.yaw
     const span = plan.toPhase - plan.fromPhase
     const u = clamp((phase - plan.fromPhase) / span, 0, 1)
+    const stance = plan.stance
+    const share = stance
+      ? stance.share * minJerk(clamp((phase - plan.fromPhase) / (stance.endPhase - plan.fromPhase), 0, 1))
+      + (1 - stance.share) * minJerk(clamp((phase - stance.secondFrom) / (plan.toPhase - stance.secondFrom), 0, 1))
+      : minJerk(u)
     // Minimum jerk between the facings, plus the rate the turn starts at, which dies out as (1 - u)^2.
-    return plan.from + (plan.to - plan.from) * minJerk(u) + plan.startRate * span * u * (1 - u) ** 2
+    return plan.from + (plan.to - plan.from) * share + plan.startRate * span * u * (1 - u) ** 2
   }
 
   private followYawPlan(phase = this.phase) {
@@ -1513,7 +1546,10 @@ class Locomotion {
     this.phase = 0.1 + (doubleSupport - 0.1) * a ** power
     // The yaw clock joins the preceding turn and the first walking tick at the minimum step rate.
     const yawPhase = 0.1 + (doubleSupport - 0.1) * smoothstep(a) + minRate * preparationDuration * a * (1 - a) * (1 - 2 * a)
-    this.followYawPlan(this.yawPlan?.startRate ? yawPhase : this.phase)
+    // A start from standing runs its turn's clock through the preparation at the slowest step rate, so it reaches the
+    // walk's phase as the first foot lifts.
+    const plan = this.yawPlan
+    this.followYawPlan(plan?.stance ? plan.fromPhase + (doubleSupport - plan.fromPhase) * a : plan?.startRate ? yawPhase : this.phase)
     this.speed = 0
     this.leanBias = drawBackLean * Math.sin(Math.PI * a)
     this.posture = this.pelvis(0, this.x)
@@ -1643,7 +1679,10 @@ class Locomotion {
         y: this.traits.footBaselineY + height,
         z: swing.lift.position.z + (swing.land.position.z - swing.lift.position.z) * blend,
       },
-      yaw: swing.lift.yaw + wrap(swing.land.yaw - swing.lift.yaw) * turn,
+      // A walking foot turns to its landing facing by `swingTurnBy` of the swing, as the hip opens it, and comes in
+      // already pointing where it lands; turned over the whole swing, a start's first foot still faced the viewer at
+      // mid-swing and swept out sideways (independent visual audit, 2026-11-25).
+      yaw: swing.lift.yaw + wrap(swing.land.yaw - swing.lift.yaw) * (this.walkForm ? cycloid(Math.min(1, swing.progress / swingTurnBy)) : turn),
     }
   }
 
@@ -1694,9 +1733,12 @@ class Locomotion {
   private planLookAhead(plan: YawPlan): number {
     // A start's lead ramps in over the preparation, so the gaze leaves her facing at rest.
     const ready = this.walk ? smoothstep(this.walk.preparation / preparationDuration) : 1
-    const u = clamp((this.phase + plan.lookLead * ready - plan.fromPhase) / (plan.toPhase - plan.fromPhase), 0, 1)
+    const from = plan.lookFromPhase ?? plan.fromPhase
+    const u = clamp((this.phase + plan.lookLead * ready - from) / (plan.toPhase - from), 0, 1)
     const look = plan.from + (plan.to - plan.from) * minJerk(Math.min(1, u / plan.lookShare))
-    return this.yaw + clamp(look - this.yaw, -lookLeadMax, lookLeadMax)
+    // The gaze never trails the body's turn: a start's hips leave with its first weight shift, as its gaze does.
+    const lead = (look - this.yaw) * Math.sign(plan.to - plan.from)
+    return this.yaw + Math.sign(plan.to - plan.from) * clamp(lead, 0, lookLeadMax)
   }
 
   private footFrame(side: Foot, strideScale: number): LocomotionFoot {
