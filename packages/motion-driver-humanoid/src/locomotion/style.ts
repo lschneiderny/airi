@@ -78,7 +78,9 @@ export const GAIT_STYLE_KEYS = Object.keys(NEUTRAL_GAIT_STYLE) as readonly GaitS
  * urgency sets the rest), bounce 0.35 to 3, arm swing 0.13 to 1.6, elbow carry up to 59 degrees more than normal, trunk
  * lean up to 17 degrees, head carriage up to 36 degrees forward. Head carriage stops at 18 degrees: the gaze must still
  * reach the viewer over it. The rest wrist carries 10 degrees of extension; authored walks hold 0 (runs with fists) to 30
- * (feminine and skip walks) and acted mocap walks up to 51, so the carriage spans 0 to 40 in all. The rest curl sums
+ * (feminine and skip walks) and acted mocap walks up to 51. The MMD rig turns the carriage in the frontal plane, where
+ * more than about 12 degrees reads as a flared, braced hand from the front (visual review, 2026-11-24), so it stops
+ * there; the low end brings the hand in line with the forearm. The rest curl sums
  * 45 degrees over the index finger's three joints; authored walks hold 14 to 17 (an open hand) up to 266 to 294 (a
  * fist), and the curl stops at 3.5 times the rest, where the joint limits close the fist (arm-hand plan, section 1).
  */
@@ -97,7 +99,7 @@ export const GAIT_STYLE_BOUNDS: Readonly<Record<GaitStyleKey, readonly [number, 
   armOut: [-4 * radians, 12 * radians],
   lean: [-4 * radians, 14 * radians],
   head: [-8 * radians, 18 * radians],
-  wristCarry: [-10 * radians, 30 * radians],
+  wristCarry: [-10 * radians, 12 * radians],
   handCurl: [0.3, 3.5],
 })
 
@@ -186,11 +188,11 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   out.armOut = radians * 3 * b('armCarry')
   out.lean = radians * (20 * f + 4 * sad + 10 * t + 4 * up - 3 * b('posture') + 6 * hurry)
   out.head = radians * (12 * sad + 10 * f - 5 * glad * (1 - up) - 6 * b('posture'))
-  // Valence and arousal extend the wrist (acted happy 31 to 38, feminine 31 to 51, normal 7 to 26); sadness, low arousal
-  // and fatigue drop it toward the forearm (sad 5 to 12); tension straightens it (masculine 0 to 14); a carried arm
-  // extends it a little.
+  // Valence, arousal and a carried arm extend the wrist (acted happy 31 to 38, feminine 31 to 51) at half the acted
+  // gain, where the review saw a loose hand; sadness and fatigue drop it (sad 5 to 12); tension straightens it
+  // (masculine 0 to 14).
   const down = Math.max(0, -a)
-  out.wristCarry = radians * (12 * up + 10 * glad - 7 * sad - 3 * down - 8 * f - 6 * t + 10 * Math.max(0, b('armCarry')))
+  out.wristCarry = radians * (6 * up + 5 * glad - 7 * sad - 3 * down - 8 * f - 6 * t + 5 * Math.max(0, b('armCarry')))
   // Tension closes the hand, most with arousal (angry; masculine and energetic authored walks hold a fist); a calm
   // positive walk opens it (model and feminine walks: index curl 14 to 17, normal 43); a carried arm opens it, a wide
   // swing closes it a little.
