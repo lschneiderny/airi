@@ -263,7 +263,10 @@ swing, elbow carry (eased so the forearm never rises past 85 degrees from hangin
 hang, trunk lean, head carriage (`frame.body.neckPitch`), the wrist's carriage beyond the rest's
 10 degrees of extension (`armSwing[side].wristFlex`, palmar positive) and the hand's closure (`frame.handCurl`: 1 the
 rest hand; the MMD adapter's `writeWalkHand` blends it into the `open` shape toward the low end of
-`GAIT_STYLE_BOUNDS.handCurl` and into the `fist` toward the high end, as offsets from `DEFAULT_ARM_REST_POSE`). Like every arm
+`GAIT_STYLE_BOUNDS.handCurl` and into the `fist` toward the high end, as offsets from `DEFAULT_ARM_REST_POSE`), the push
+off the trailing foot (`push`: above 1 a deeper toe-off and a quicker swing start, below 1 a slow swing start, never less
+toe-off than the gait's), the knee's give after each strike (`load`, up to a bounce of 2's loading dip) and the chest's
+fold (`fold`: chest pitch, the shoulders rounded by half of it, the head keeping half off its line of sight). Like every arm
 term, the hand rides the gait's weight: standing, the hand shape stays the emotion layer's. Ratios are 1 and offsets 0 in the
 neutral style, which reproduces the refitted walk exactly, and `GAIT_STYLE_BOUNDS` holds each value inside the range
 acted walking styles span. Between walks the style follows its input at once; a walk or a turn under way eases into a
@@ -289,7 +292,10 @@ into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a cal
 0.5 with no baseline gives the neutral style. Valence, arousal and energy extend the wrist and sadness, fatigue and
 tension let it drop toward the forearm's line; tension closes the hand toward a fist, most with arousal, and a calm
 positive mood opens it; a baseline's `armCarry` extends the wrist a little and opens the hand, and its `armSwing` above 0
-closes it a little. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
+closes it a little. Each mood also shows in the legs and trunk: arousal and gladness push off harder, fatigue and
+sadness slowly; tension loads the step, most with arousal; sadness folds the chest, narrows and shortens the step, less
+as arousal rises, fatigue folds it a little and gladness opens it; arousal bends the elbow half as much when she is
+tense, so an angry walk carries the elbow 31 degrees. An urgency above `WALK_URGENCY` leans the trunk forward, up to 6 degrees
 more at 1; at or below it, or omitted, the urgency changes no style value.
 
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and

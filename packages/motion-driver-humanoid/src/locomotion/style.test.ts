@@ -110,6 +110,35 @@ describe('walkStyleFrom', () => {
     expect(style({}, 0.5, { armSwing: -0.6 }).handCurl).toBe(1)
   })
 
+  it('each mood shows in the legs and trunk: a springy happy step, a loaded angry one, a dragging tired one, a folded sad one', () => {
+    const happy = style({ valence: 1, arousal: 0.6 })
+    const angry = style({ valence: -0.5, arousal: 0.8, tension: 1 })
+    const sad = style({ valence: -1, arousal: -0.5 })
+    const tired = style({}, 0)
+    // Happy pushes off hardest; tired and sad let the trailing foot go slowly.
+    expect(happy.push).toBeGreaterThan(1.2)
+    expect(tired.push).toBeLessThan(0.7)
+    expect(sad.push).toBeLessThan(1)
+    // Only tension loads the step, most with arousal.
+    expect(angry.load).toBeGreaterThan(0.6)
+    expect(happy.load).toBe(0)
+    expect(style({ tension: 1 }).load).toBeLessThan(angry.load)
+    // Sadness folds the chest and narrows and shortens the step; fatigue folds it a little; gladness opens it.
+    expect(sad.fold).toBeGreaterThan(8 * Math.PI / 180)
+    expect(tired.fold).toBeGreaterThan(0)
+    expect(happy.fold).toBeLessThan(0)
+    expect(angry.fold).toBeLessThan(1.5 * Math.PI / 180)
+    expect(sad.width).toBeLessThan(1)
+    expect(sad.stride).toBeLessThan(style({ arousal: -0.5 }).stride)
+  })
+
+  it('carries an angry elbow 30 degrees over neutral, less than arousal and tension added alone would', () => {
+    const angry = style({ valence: -0.5, arousal: 0.8, tension: 1 }).elbowCarry * 180 / Math.PI
+    expect(angry).toBeGreaterThan(28)
+    expect(angry).toBeLessThan(36)
+    expect(angry).toBeLessThan((style({ arousal: 0.8 }).elbowCarry + style({ tension: 1 }).elbowCarry) * 180 / Math.PI)
+  })
+
   it('leaves every style alone at or below the walk urgency', () => {
     const sad = { mood: { valence: -0.7, arousal: -0.4, tension: 0.5 }, energy: 0.2, baseline: { posture: 0.5 } }
     for (const urgency of [0, STROLL_URGENCY, WALK_URGENCY]) {

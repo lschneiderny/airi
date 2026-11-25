@@ -506,11 +506,11 @@ function cycloid(progress: number) {
 }
 
 /** Share of a swing's travel at progress `u`: the speed rises at once, peaks at two thirds and stops at touchdown. */
-function swingTravel(u: number) {
+function swingTravel(u: number, start = swingStartSpeed) {
   const rest = 1 - clamp(u, 0, 1)
   const bell = 1 - 2.5 * rest ** 1.5 + 1.5 * rest ** 2.5
-  // A start at `swingStartSpeed` that dies out as (1 - u)^2 covers a third of that speed in travel.
-  return swingStartSpeed * (1 - rest ** 3) / 3 + (1 - swingStartSpeed / 3) * bell
+  // A start at `start` that dies out as (1 - u)^2 covers a third of that speed in travel.
+  return start * (1 - rest ** 3) / 3 + (1 - start / 3) * bell
 }
 
 /** Share of a swing's height at progress `u`: the ankle is highest at 0.29 and comes in low over the last quarter. */
@@ -1086,19 +1086,19 @@ class Locomotion {
     if (foot && !rolled)
       return Math.max(0, front, rear)
     const stance = 1 + doubleSupport
-    const toeOff = toeOffPitch * this.style.roll * Math.min(1, strideScale)
+    const toeOff = toeOffPitch * this.style.roll * Math.max(1, this.style.push) * Math.min(1, strideScale)
     const [ballAhead, ballUp] = foot ? pivotOffset(-(foot.left.ballForward + foot.right.ballForward) / 2, (foot.left.ankleHeight + foot.right.ankleHeight) / 2, -toeOff) : [0, 0]
     const lift = drop(Math.max(0, stance * length - halfSpan + hipAhead + ripple * Math.sin(2 * Math.PI * (stance - rippleLag)) - ballAhead), ballUp) / shape(stance)
     return Math.max(0, front, rear, lift)
   }
 
   /**
-   * A bouncy style's extra knee give after each heel strike, leg lengths: none at the strike, deepest 0.25 step later
-   * (the loading response) and gone by mid-stance, so the knee still lands straight.
+   * A bouncy or loaded style's extra knee give after each heel strike, leg lengths: none at the strike, deepest 0.25 step
+   * later (the loading response) and gone by mid-stance, so the knee still lands straight.
    */
   private loadingDip(strideScale: number) {
     const t = this.phase - Math.floor(this.phase)
-    const amount = bounceDipShare * this.traits.legLength * Math.max(0, this.style.bounce - 1) * Math.min(1, strideScale)
+    const amount = bounceDipShare * this.traits.legLength * (Math.max(0, this.style.bounce - 1) + this.style.load) * Math.min(1, strideScale)
     return t < 0.5 ? amount * Math.sin(2 * Math.PI * t) ** 2 : 0
   }
 
@@ -1632,7 +1632,8 @@ class Locomotion {
 
   private sampleSwing(swing: Swing): FootAnchor {
     const turn = cycloid(swing.progress)
-    const blend = this.walkForm ? swingTravel(swing.progress) : turn
+    // The style's push hands the toe-off on faster or slower: a springy step leaves the ground quickly, a tired one drags.
+    const blend = this.walkForm ? swingTravel(swing.progress, swingStartSpeed * this.style.push) : turn
     const height = this.walkForm
       ? swing.liftUp * (1 - minJerk(Math.min(1, swing.progress / 0.5))) + swing.height * swingLift(swing.progress)
       : swing.height * Math.sin(Math.PI * swing.progress)
@@ -1731,7 +1732,8 @@ class Locomotion {
     // The style's roll acts on full strides only: the short steps of a start or a stop keep the gait's own.
     const styled = 1 + (this.style.roll - 1) * clamp(2 * scale - 1, 0, 1)
     const strike = heelStrikePitch * styled * scale
-    const toeOff = toeOffPitch * styled * scale
+    // A springy push rolls further onto the ball; a dragging one only leaves late, so the rig's step limit stands.
+    const toeOff = toeOffPitch * styled * Math.max(1, this.style.push) * scale
     const heel = (pitch: number) => pivotOffset(foot.heelBack, foot.ankleHeight, pitch)
     const ball = (pitch: number) => pivotOffset(-foot.ballForward, foot.ankleHeight, pitch)
     if (swing) {
@@ -1833,7 +1835,8 @@ class Locomotion {
         flexion,
         elbowFlex: (rise <= knee ? rise : knee + room * Math.tanh((rise - knee) / room)) - flexion,
         abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward) + this.style.armOut,
-        clavProt: -3 * radians * share * girdle,
+        // A folded chest rounds the shoulders forward by half its angle.
+        clavProt: -3 * radians * share * girdle + 0.5 * this.style.fold,
         // The arm turns inward as it swings forward and back out behind, timed with the elbow.
         twist: -size * radians * armRollTwist * late,
         pronation: -size * radians * armRollPronation * late,
@@ -1857,9 +1860,9 @@ class Locomotion {
         upperBodyRoll: 1.5 * radians * strideScale * support + (this.walkForm ? this.turnRoll : 0),
         chestCounterRoll: this.walkForm ? chestCounterShare * pelvisList * this.style.pelvisList * strideScale * this.support(this.phase + listLead - chestRollLag) : 0,
         spinePitch: 0.6 * (this.lean.y + nod),
-        chestPitch: 0.4 * (this.lean.y + chestNod),
+        chestPitch: 0.4 * (this.lean.y + chestNod) + (this.walkForm ? this.style.fold : 0),
         // The head keeps half of a forward-leaning style's lean off its line of sight, and nods a little after the trunk.
-        neckPitch: this.walkForm ? this.style.head - 0.5 * this.style.lean + headNod * Math.sqrt(this.style.bounce) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag - headNodLag)) : 0,
+        neckPitch: this.walkForm ? this.style.head - 0.5 * (this.style.lean + this.style.fold) + headNod * Math.sqrt(this.style.bounce) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag - headNodLag)) : 0,
         chestCounterYaw: -0.5 * lowerBodyYaw,
         twist: { lower, mid, upper, head },
       },
