@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
-import { channelTrace, fixtureRigs, quietInput } from './performance.test-fixtures'
+import { channelTrace, chisaTraits, fixtureRigs, quietInput } from './performance.test-fixtures'
 import { createReactionLayer } from './reactions'
 
 const traits = fixtureRigs[0].traits
@@ -83,6 +83,23 @@ describe('touch reaction layer', () => {
       expect(farPeak).toBeLessThan(0.5 * pokedPeak)
       expect(d[c(far)].indexOf(farPeak)).toBeGreaterThan(d[c(poked)].indexOf(pokedPeak))
       expect(Math.max(...d.map(trace => Math.abs(trace.at(-1) ?? 0)))).toBeLessThan(1e-3 * DEG)
+    }
+  })
+
+  // A guard that clamped the arm in ran a slim rig's arm into its torso proxy, and the collision projection stopped it in
+  // one frame: the pops report's velocity step. This is its per-channel shape on the 60 Hz grid the report reads.
+  it('guards without an arm stopping short against the body of a slim rig', () => {
+    const arms = BODY_CHANNELS.flatMap((name, channel) => channelGroup(name) === 'leftArm' || channelGroup(name) === 'rightArm' ? [channel] : [])
+    for (const [x, y] of [[-0.7, -0.35], [0.7, -0.35], [-0.7, 0.6], [0.2, 0.6], [0, 0]]) {
+      const trace = channelTrace(createBodyPerformer({ traits: chisaTraits, seed: 1, layers: [createReactionLayer()] }), 4, poking([{ at: 2, region: 'body', x, y }]))
+      for (const channel of arms) {
+        const v = trace[channel].filter((_, i) => i % 2 === 0).map((value, i, grid) => i === 0 ? 0 : (value - grid[i - 1]) * 60 / DEG)
+        const dv = v.map((value, i) => i === 0 ? 0 : Math.abs(value - v[i - 1]))
+        for (let k = 2; k < dv.length - 1; k++) {
+          const isolated = Math.max(dv[k - 1], dv[k + 1]) <= 0.25 * dv[k]
+          expect(isolated ? dv[k] : 0, `${BODY_CHANNELS[channel]} at ${k / 60} s, poke ${x}, ${y}`).toBeLessThan(30)
+        }
+      }
     }
   })
 

@@ -794,8 +794,10 @@ architecture 4d's touch reactions. The stage reports touch `x` from the
 viewer's side, so `+x` is her left. A body poke turns, rolls and shifts the
 trunk away from the point (and bends the belly in on a low poke) through a
 3.5 Hz, 0.45-damped step released after 0.25 s, which peaks at 0.16 s and rings
-once. The poked side's arm guards first (3 Hz, released after 0.6 s) and the far
-arm follows 0.12 s later through a softer response, at 0.35 of the guard for a
+once. The poked side's arm guards first (3 Hz, released after 0.6 s): the
+forearm comes across in front of the side with the elbow a little out, because
+an arm clamped in ran into a slim rig's torso proxy and stopped in one frame.
+The far arm follows 0.12 s later through a softer response, at 0.35 of the guard for a
 poke fully to one side and equal to it for a central one. A poke within
 Natural's 2 s dedupe window flinches at 0.6. A head poke raises the poked side's
 guard, requests the hair touch on that side for 1.4 s where the rig reaches it,
