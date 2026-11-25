@@ -380,7 +380,11 @@ shares. The adapter has four parts:
   `body-arms` writes clavicles, arms, hands and fingers; it carries the
   canonical straight-down arm onto the bind arm, so the posed segments sit
   where the performer's own forward kinematics (and its arm collision
-  corrector) put them. Upper-arm twist turns `腕捩` and pronation turns
+  corrector) put them. A calibrated hand is turned onto the performer's hand:
+  its axis along the forearm and its palm toward the palm the performer's hand
+  frame assumes, so wrist 0 and pronation 0 give the same palm on every rig
+  whatever its bind roll; a usable `手捩` carries that roll with pronation.
+  Upper-arm twist turns `腕捩` and pronation turns
   `手捩` where that bone sits directly between its joints and has a PMX fixed
   axis, and every joint below keeps its world pose, also under a clip that owns
   part of the arm: the joints are blended with the clip pose first and the twist
