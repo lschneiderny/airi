@@ -76,6 +76,11 @@ export interface BodyEmotionSpec {
   readonly breath: number
   /** The onset is one deeper inhale (4c sad). */
   readonly sigh: boolean
+  /**
+   * A startle in a walking body: the pelvis dips this far (leg lengths) while the accent lasts, so the stance knee gives
+   * under the step it is on instead of the stride carrying on unchanged (`STRIDE`).
+   */
+  readonly startle?: number
 }
 
 /**
@@ -108,7 +113,7 @@ export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>
   sad: { posture: { slump: 18, hipsPitch: -3, pelvisY: -0.016, pelvisZ: 0.003, arms: { clavElev: -6, clavProt: 10, flex: 4, abduct: -5, twist: 10, elbow: 6 } }, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: 0, armForm: null, tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
   angry: { posture: { lowerPitch: 6, midPitch: -1, upperPitch: -2, hipsPitch: 2, pelvisY: -0.008, pelvisZ: 0.006, arms: { clavElev: 7, clavProt: 5, flex: -8, abduct: 6, twist: 10, elbow: 35 } }, hands: { shape: 'fist', amount: 0.9 }, response: { f: 2.2, zeta: 0.7, r: -0.25 }, heldShare: 1, support: 0, armForm: null, tempo: 1.1, amplitude: 0.75, tension: 0.9, breath: 1.3, sigh: false },
   think: { posture: { lowerRoll: 6, midPitch: 2, pelvisZ: -0.003, farArm: { flex: 16, abduct: -4, twist: 40, elbow: 80 } }, hands: null, response: { f: 0.8, zeta: 0.9, r: 0 }, heldShare: 1, support: 1, armForm: 'thinking-hand', tempo: 0.8, amplitude: 0.7, tension: 0.4, breath: 1, sigh: false },
-  surprised: { posture: { lowerPitch: -5, midPitch: -6, upperPitch: -3, pelvisY: 0.002, pelvisZ: -0.01, arms: { clavElev: 12, clavProt: -2, flex: 12, abduct: 10, twist: -10, elbow: 75, pron: -30, wflex: -30 } }, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4.5, zeta: 0.4, r: 0 }, heldShare: 0.35, support: 0, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
+  surprised: { posture: { lowerPitch: -5, midPitch: -6, upperPitch: -3, pelvisY: 0.002, pelvisZ: -0.01, arms: { clavElev: 12, clavProt: -2, flex: 12, abduct: 10, twist: -10, elbow: 75, pron: -30, wflex: -30 } }, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4.5, zeta: 0.4, r: 0 }, heldShare: 0.35, support: 0, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false, startle: -0.03 },
   awkward: { posture: { midPitch: 3, upperPitch: 2, lowerRoll: -3, lowerYaw: 4, midYaw: 4, pelvisZ: -0.006, arms: { clavElev: 3 }, sideArm: { clavElev: 4 }, farArm: { flex: 8, abduct: -4, elbow: 20 } }, hands: null, response: { f: 1.2, zeta: 0.7, r: -0.2 }, heldShare: 1, support: -1, armForm: 'hair-touch', tempo: 1.25, amplitude: 0.9, tension: 0.6, breath: 1, sigh: false },
   question: { posture: { lowerPitch: 2, lowerRoll: 7, midRoll: 6, arms: { clavElev: 3, flex: 6, abduct: 2, twist: -15, elbow: 45, pron: -60, wflex: -10 }, sideArm: { clavElev: 5 } }, hands: { shape: 'open', amount: 0.8 }, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: -1, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   // Natural keeps the head; the body never adds a second head posture (plan 3.2).
@@ -162,6 +167,20 @@ const HELD_REST = 1e-4
 /** Natural retires face hints this many release time constants after the hold (`impulses.ts` `impulseFaceLifetime`). */
 const RELEASE_LIFETIME = 15
 const REST = 1e-6
+/**
+ * While she walks an emotion is an accent the stride absorbs, not a pose held over the swing (2026-11-25 amendment of the
+ * emotion silhouettes ADR). Its arm joints (clavicle to wrist; the hand shape stays) show in full from the emotion's
+ * start, and at the first change of stance foot at least `hold` seconds later, or `step` seconds after that without one,
+ * they ease to `residue` of their size through `response`, a critically damped follower that settles in about a step,
+ * so the walk's own swing carries the arms again. A new pulse accents again from where the arms are. The share follows
+ * the gait's weight, so a stop gives her the whole pose back as the walk lets go.
+ */
+const STRIDE = {
+  hold: 0.3,
+  step: 0.6,
+  residue: 0.2,
+  response: secondOrderCoefficients({ f: 1.2, zeta: 1, r: 0 }, BODY_TICK),
+} as const
 
 /** One held part of an unheld pulse: a share of its intensity, held until `hold` seconds after it, then released. */
 interface EpisodePart {
@@ -239,6 +258,12 @@ interface Track {
   armShare: number
   /** The support she stood on when this emotion's weight shift began (`SUPPORT_FULL`); null while it plans none. */
   resume: number | null
+  /** When the arm accent last started: an onset from rest or a new pulse (`STRIDE`). */
+  accentFrom: number
+  /** The stride has absorbed the accent, until the next pulse or until she stands. */
+  absorbed: boolean
+  /** The accent's share of the arm terms, 1 standing (`STRIDE.response`). */
+  readonly accent: SecondOrderState
 }
 
 /**
@@ -253,8 +278,12 @@ export function createEmotionLayer(): EmotionLayer {
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
-    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0, armShare: 1, resume: null }
+    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0, armShare: 1, resume: null, accentFrom: 0, absorbed: false, accent: { y: 1, v: 0, x: 1 } }
   })
+  /** The gait's stance foot on the last tick (the sign of its support), 0 while she does not walk. */
+  let stance = 0
+  /** The gait's weight this tick: how much of the stride the arms belong to. */
+  let walking = 0
   let impulseSeq: number | null = null
   let pokeSeq: number | null = null
   let pokedAt = Number.NEGATIVE_INFINITY
@@ -294,6 +323,8 @@ export function createEmotionLayer(): EmotionLayer {
         }
         if (track.commanded === 0)
           track.side = impulse.side
+        track.accentFrom = time
+        track.absorbed = false
         // Only from rest, so a share never changes under a held pose.
         if (Math.abs(track.state.y) < REST)
           track.armShare = track.emotion === 'surprised' && time - pokedAt <= TOUCH_STARTLE.within ? TOUCH_STARTLE.arms : 1
@@ -327,6 +358,8 @@ export function createEmotionLayer(): EmotionLayer {
       if (commanded > 0 && track.commanded === 0) {
         if (heldTarget > 0)
           track.side = held.side
+        track.accentFrom = time
+        track.absorbed = false
         report.seq++
         report.emotion = track.emotion
         report.phase = 'onset'
@@ -357,6 +390,33 @@ export function createEmotionLayer(): EmotionLayer {
     }
   }
 
+  /**
+   * Advances each emotion's arm accent against the stride (`STRIDE`): the gait's weight says how much of the arms the
+   * walk owns, and its support changing sign is a change of stance foot, where the accent lets go.
+   */
+  function stride(input: BodyPerformanceInput) {
+    const gait = input.gait
+    walking = gait ? Math.max(0, Math.min(1, gait.weight)) : 0
+    // The host passes a gait at weight 0 while she stands, so standing is the weight, not a missing gait.
+    const foot = gait && walking > 0 ? Math.sign(gait.support) : 0
+    const stepped = foot !== 0 && stance !== 0 && foot !== stance
+    if (foot !== 0)
+      stance = foot
+    else if (walking === 0)
+      stance = 0
+    for (const track of tracks) {
+      const age = time - track.accentFrom
+      if (walking === 0)
+        track.absorbed = false
+      else if (!track.absorbed && age >= STRIDE.hold && (stepped || age >= STRIDE.hold + STRIDE.step))
+        track.absorbed = true
+      advanceSecondOrder(track.accent, track.absorbed ? 0 : 1, STRIDE.response)
+    }
+  }
+
+  /** The share of an emotion's arm joints the stride leaves it: all standing, its accent while she walks. */
+  const armStride = (track: Track) => 1 - walking * (1 - STRIDE.residue - (1 - STRIDE.residue) * track.accent.y)
+
   function addArm(start: number, k: number, arm: BodyEmotionArm | undefined) {
     if (!arm)
       return
@@ -386,17 +446,18 @@ export function createEmotionLayer(): EmotionLayer {
     channels[c('lowerYaw')] += k * s * (p.lowerYaw ?? 0)
     channels[c('midYaw')] += k * s * (p.midYaw ?? 0)
     channels[c('upperYaw')] += k * s * (p.upperYaw ?? 0)
-    channels[c('pelvisY')] += w * (p.pelvisY ?? 0)
+    channels[c('pelvisY')] += w * (p.pelvisY ?? 0) + walking * track.accent.y * w * (track.spec.startle ?? 0)
     channels[c('pelvisZ')] += w * (p.pelvisZ ?? 0)
     const hand = Math.max(0, Math.min(1, w)) * track.armShare
-    const arms = k * track.armShare
+    const strideShare = armStride(track)
+    const arms = k * track.armShare * strideShare
     for (const arm of SIDES) {
       const start = ARM_START[arm]
       addArm(start, arms, p.arms)
       if (arm === sideIndex(s))
         addArm(start, arms, p.sideArm)
       else
-        addArm(start, track.spec.armForm ? companion(w) * DEG : arms, p.farArm)
+        addArm(start, track.spec.armForm ? companion(w) * strideShare * DEG : arms, p.farArm)
       if (!hands)
         continue
       if ('curl' in hands) {
@@ -440,7 +501,8 @@ export function createEmotionLayer(): EmotionLayer {
         const form = track.spec.armForm
         const side = sideIndex(track.side)
         // The hair touch needs a rig that reaches it; a key that never solves would be asked for on every tick.
-        if (form && track.commanded > ARM_FORM_WEIGHT && owned[`${side}Arm`] <= 0.5 && (form !== 'hair-touch' || context.capabilities.hairTouch))
+        // While she walks a form is an accent too: it goes once the stride has absorbed the emotion's arms.
+        if (form && track.commanded > ARM_FORM_WEIGHT && !track.absorbed && owned[`${side}Arm`] <= 0.5 && (form !== 'hair-touch' || context.capabilities.hairTouch))
           armForm = { side, form }
       }
       return { ...(support === undefined ? {} : { support }), ...(armForm === undefined ? {} : { armForm }) }
@@ -455,6 +517,7 @@ export function createEmotionLayer(): EmotionLayer {
       modulation.tempo = modulation.amplitude = modulation.breath = 1
       modulation.tension = BODY_EMOTIONS.neutral.tension
       holdHandBase(context.input, context.rest)
+      stride(context.input)
       for (const track of tracks) {
         if (!track.coefficients)
           continue
@@ -493,7 +556,12 @@ export function createEmotionLayer(): EmotionLayer {
         track.episode = null
         track.armShare = 1
         track.resume = null
+        track.accentFrom = 0
+        track.absorbed = false
+        Object.assign(track.accent, { y: 1, v: 0, x: 1 })
       }
+      stance = 0
+      walking = 0
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
       impulseSeq = pokeSeq = null
