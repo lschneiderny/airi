@@ -19,7 +19,7 @@ import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
 
 import { closeUpFraming } from '../frames/close-up'
-import { armDegrees, HAND_SHEET_CELLS, handSheetChannels } from '../frames/hand-sheet'
+import { armDegrees, CONTACT_CELLS, contactChannels, HAND_SHEET_CELLS, handSheetChannels } from '../frames/hand-sheet'
 import { frameRigFromMMD, meshSpacePoses } from '../frames/model'
 import { skin } from '../frames/pose'
 import { cameraToward, contactSheet, encodePng, rasterize } from '../frames/render'
@@ -48,6 +48,18 @@ const VIEWS = {
   front: (): Vec3 => [0, 0, 1],
   rear: (): Vec3 => [0, 0, -1],
 } as const
+/**
+ * A contact cell's views, in her frame at bind, for the hand on side `sigma`: from in front, from her own side, between
+ * the two, and from in front and above. The whole mesh is drawn, so the body hides what lies behind it.
+ */
+const CONTACT_VIEWS = {
+  front: (): Vec3 => [0, 0, 1],
+  lateral: (sigma: number): Vec3 => [sigma, 0, 0],
+  oblique: (sigma: number): Vec3 => [sigma * Math.SQRT1_2, 0, Math.SQRT1_2],
+  above: (): Vec3 => [0, Math.SQRT1_2, Math.SQRT1_2],
+} as const
+/** A contact cell spans this many hand lengths, so the face, chest or other hand the hand meets is in view. */
+const CONTACT_SPAN_HAND_LENGTHS = 3.2
 const VIEW_NOTES = {
   lateral: 'from outside the arm: the back of the hand at rest',
   medial: 'from inside the arm, body cut away: the palm at rest',
@@ -55,7 +67,7 @@ const VIEW_NOTES = {
   rear: 'from behind: the little-finger side at rest',
 } as const
 
-export const HANDS_LIMITS = 'Only the forearm, hand and fingers are drawn: triangles whose vertices are skinned mostly to the lower arm or a bone under it, flat grey, no materials. The arm hangs at the performer\'s rest; the hand and wrist channels are set directly and written by MMDBodyPerformer.applyArms, then grants and fixed axes are solved as the frame pipeline does, without physics: cloth on physics bones under the forearm keeps its bind pose relative to its parent.'
+export const HANDS_LIMITS = 'Only the forearm, hand and fingers are drawn: triangles whose vertices are skinned mostly to the lower arm or a bone under it, flat grey, no materials. The arm hangs at the performer\'s rest; the hand and wrist channels are set directly and written by MMDBodyPerformer.applyArms, then grants and fixed axes are solved as the frame pipeline does, without physics: cloth on physics bones under the forearm keeps its bind pose relative to its parent. Contact cells draw the whole mesh with both arms at the gesture layer\'s key and the trunk, head and legs at rest, so the emotion\'s or act\'s posture is absent; hair and cloth on physics bones keep their bind pose.'
 
 class HandsUsageError extends Error {
   override readonly name = 'HandsUsageError'
@@ -136,13 +148,12 @@ export async function handsMotion3d(args: readonly string[], context: Motion3dCl
       const clean: MMDCleanPose = { positions: bones.map(bone => bone.position.clone()), quaternions: bones.map(bone => bone.quaternion.clone()), morphs: [], clipWeights: new Map() }
       const rest = performer.restChannels()
       const span = SPAN_HAND_LENGTHS * Math.max(sides.left.length, sides.right.length)
+      const contactSpan = CONTACT_SPAN_HAND_LENGTHS * Math.max(sides.left.length, sides.right.length)
       const git = readGitStateFromRepo(context.repoRoot)
-      console.info(`hands ${options.model}: ${HAND_SHEET_CELLS.length} cells x 2 hands x ${Object.keys(VIEWS).length} views; ${span.toFixed(3)} model units across ${options.pixels} pixels`)
+      console.info(`hands ${options.model}: ${HAND_SHEET_CELLS.length + CONTACT_CELLS.length} cells x 2 hands x ${Object.keys(VIEWS).length} views; ${span.toFixed(3)} model units across ${options.pixels} pixels`)
       const strips: Record<BodySide, { rgb: Uint8Array, caption: string[] }[]> = { left: [], right: [] }
       const cells = []
-      for (const cell of HAND_SHEET_CELLS) {
-        context.signal.throwIfAborted()
-        const channels = handSheetChannels(rest, cell)
+      const drawCell = async (name: string, channels: Float32Array, contact: { readonly reached: readonly BodySide[] } | null) => {
         // The frame pipeline's order: restore the clean pose, run the arm stage, then the solvers.
         mmd.beforeUpdate()
         bones.forEach((bone, i) => {
@@ -161,21 +172,35 @@ export async function handsMotion3d(args: readonly string[], context: Motion3dCl
           const [a, b] = [rotate(rig.basis, posed.positions[hand]), rotate(rig.basis, posed.positions[tip])]
           const focus: Vec3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]
           const degrees = armDegrees(channels, side)
-          const row = Object.entries(VIEWS).map(([view, toward]) => {
+          const views = contact ? CONTACT_VIEWS : VIEWS
+          const row = Object.entries(views).map(([view, toward]) => {
             const camera = cameraToward(toward(side === 'left' ? 1 : -1))
-            const { framing, centre } = closeUpFraming(camera, focus, span, options.pixels)
+            const { framing, centre } = closeUpFraming(camera, focus, contact ? contactSpan : span, options.pixels)
+            const reach = contact && !contact.reached.includes(side) ? ' (not reached)' : ''
             return {
-              rgb: rasterize(vertices, triangles, camera, framing, centre),
-              caption: [`${cell.name} ${side} ${view}`, `pron ${degrees.Pron.toFixed(0)} wflex ${degrees.Wflex.toFixed(0)} wdev ${degrees.Wdev.toFixed(0)}`],
+              rgb: rasterize(vertices, contact ? rig.triangles : triangles, camera, framing, centre),
+              caption: [`${name} ${side} ${view}${reach}`, `pron ${degrees.Pron.toFixed(0)} wflex ${degrees.Wflex.toFixed(0)} wdev ${degrees.Wdev.toFixed(0)}`],
             }
           })
           strips[side].push(...row)
           const strip = contactSheet(row, options.pixels, options.pixels, row.length)
-          files[side] = join(side, `${cell.name}.png`)
+          files[side] = join(side, `${name}.png`)
           await mkdir(join(options.out, side), { recursive: true })
           await writeFile(join(options.out, files[side]), await encodePng(strip.rgb, strip.width, strip.height))
         }
+        return files
+      }
+      for (const cell of HAND_SHEET_CELLS) {
+        context.signal.throwIfAborted()
+        const channels = handSheetChannels(rest, cell)
+        const files = await drawCell(cell.name, channels, null)
         cells.push({ name: cell.name, shape: cell.shape, blend: cell.blend ?? null, walk: cell.walk ?? null, wristDeg: cell.wrist, files, channelsDeg: { left: armDegrees(channels, 'left'), right: armDegrees(channels, 'right') } })
+      }
+      for (const contact of CONTACT_CELLS) {
+        context.signal.throwIfAborted()
+        const { channels, reached } = contactChannels(rest, traits, contact)
+        const files = await drawCell(contact, channels, { reached })
+        cells.push({ name: contact, contact: { reached }, files, channelsDeg: { left: armDegrees(channels, 'left'), right: armDegrees(channels, 'right') } })
       }
       const sheets: Partial<Record<BodySide, string>> = {}
       for (const side of SIDES) {
