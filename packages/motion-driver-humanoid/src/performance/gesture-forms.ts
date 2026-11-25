@@ -207,12 +207,13 @@ export class GestureKeys {
 
   /**
    * 4a's ready key at `energy`; `outward` moves the hand out in arm lengths, `swivel` adds degrees. The wrist comes up
-   * 10 degrees more extended than the rest's 10, into the hand's functional position, so the preparation still moves
-   * the wrist after the elbow; at 5 degrees it moved too little to show beside the wrist's passive drag.
+   * in line with the forearm, 10 degrees out of the rest's extension, so the preparation still moves the wrist after
+   * the elbow and the hand hovers relaxed in front of the body; held 20 degrees extended, the relaxed fingers read as a
+   * claw on a calibrated hand.
    */
   readyKey(energy: number, outward = 0, swivel = 0): ArmKey {
     const lift = Math.max(0, Math.min(1, energy))
-    return { hand: [-0.05 + outward, -0.6 + 0.22 * lift, 0.42], swivel: (20 + swivel) * DEG, pron: 20 * DEG, wflex: -20 * DEG, wdev: 0 }
+    return { hand: [-0.05 + outward, -0.6 + 0.22 * lift, 0.42], swivel: (20 + swivel) * DEG, pron: 20 * DEG, wflex: 0, wdev: 0 }
   }
 
   /** The stroke key of `form` from `ready`, by size factor `size` (gain x scale x amplitude), yawed by `yaw` radians. */
