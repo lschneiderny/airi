@@ -277,7 +277,12 @@ cadence slows the walk instead; a rig without `traits.foot` is not limited. `fra
 style values the rig held below the style's ask, and `qa:motion3d run` records each change as a `gait-limit` marker.
 The performer eases each walking arm's back swing into the room the rig has behind the hip (`BodyCollision.backSwing`,
 probed once per rig in 1 degree steps up to 36 degrees): the swing is unchanged to half the room and never passes it,
-so a wide style's swing slows into a tail or a skirt instead of stepping off it.
+so a wide style's swing slows into a tail or a skirt instead of stepping off it. A walking arm opens at least 1.5
+degrees beyond its rest hang, or to the gait's floor of 12 degrees out at the back of the swing and 16 at the front
+where that is wider. The upper body follows the pelvis through each step: the chest rolls against the pelvis list by
+0.35 of it, 0.06 step behind; the chest's share of the trunk's 2-degree nod comes 0.06 step after the spine's; the head
+nods 1.5 degrees, scaled by the root of the style's bounce, 0.12 step after the trunk; and the elbow trails the shoulder
+by 0.1 s.
 `walkStyleFrom({ mood, energy, baseline, urgency })` turns the performer's mood, the host energy, a character's
 `GaitBaseline` (a card's walking baseline, owned by `@proj-airi/stage-shared/character-state`) and the goal's urgency
 into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting tension and energy

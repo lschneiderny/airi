@@ -79,9 +79,11 @@ const ABDUCT_JOINT = 3
  * How far a walking arm opens beyond its rest hang at least, radians. The rest hang clears the rig's bodies while she
  * stands; a walk sways and lists the hips into the arm and keeps a soft skin around every body, and without this room
  * the arm rode the skin on rigs with a tail, wings or a flared skirt (18 velocity steps a minute on one, 2026-11-23).
- * A clearance probed per rig against the skin asked for up to 10 degrees and held the arms wider still.
+ * A clearance probed per rig against the skin asked for up to 10 degrees and held the arms wider still. Once the body
+ * proxies were fitted to the rest hang, 6 degrees held walking arms 18 to 25 degrees out on ten rigs against 12 to 15 in
+ * walking adults; at 1.5 the same ten rigs walk 40 s with no collision, hold or pop (2026-11-24).
  */
-const GAIT_ARM_CLEARANCE = 6 * DEG
+const GAIT_ARM_CLEARANCE = 1.5 * DEG
 /** The arm block index of the flexion channel, and the gait's constant in it: the back swing is what falls below it. */
 const FLEX_JOINT = 2
 const GAIT_FLEX_REST = 2 * DEG
