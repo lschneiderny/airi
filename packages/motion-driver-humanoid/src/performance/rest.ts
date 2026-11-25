@@ -5,7 +5,6 @@ import { minJerk } from '../dynamics'
 import { deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
 import { ARM_START, BODY_CHANNELS, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
-import { unloaded } from './posture'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -33,14 +32,13 @@ const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 /**
  * What the stand-life pass adds to 4f, so a rest or a doze reads apart from standing in one still (stand-life audit
  * rank 8). Both round the chest (`mid` and `upper` pitch, degrees) and bring the shoulders forward (`protraction`); the
- * rest drops the free hip a quarter further, as its lateral gain takes the pelvis (`hipRoll`, a share of the
- * posture's 4.5 deg), and lifts the free heel further (`heel`, degrees on the posture's); the doze droops the head
- * between nods (`head`), sinks the pelvis further on softer knees (`pelvis`, leg lengths on 4f's) and its knees give
- * with each sink and catch it (`nodPelvis`, leg lengths at the full sink).
+ * doze droops the head between nods (`head`), sinks the pelvis further on softer knees (`pelvis`, leg lengths on 4f's)
+ * and its knees give with each sink and catch it (`nodPelvis`, leg lengths at the full sink). The rest keeps 4f's
+ * pelvis: a further free-hip drop raised the stance hip past the reach of a narrow-stanced rig's straight stance leg.
  * The sizes are the layer's: the smallest that the default camera tells from a standing one-leg stance.
  */
 const SETTLED = {
-  rest: { mid: 2, upper: 1.5, protraction: 3, hipRoll: 0.25, heel: 3 },
+  rest: { mid: 2, upper: 1.5, protraction: 3 },
   doze: { mid: 2.5, upper: 2, protraction: 4, head: 5, pelvis: 0.002, nodPelvis: 0.006, nodUpper: 0.08 },
 } as const
 /**
@@ -143,16 +141,10 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
         channels[ARM_START[arm]] = REST.clavicle * DEG
         channels[ARM_START[arm] + 1] = settled.protraction * DEG
       }
-      // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter, and its free-hip drop
-      // and free heel with it.
+      // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter.
       const { feet, legLength } = context.traits
-      if (legIk) {
+      if (legIk)
         channels[c('pelvisX')] = -(REST.lateralGain - 1) * 0.38 * Math.abs(feet.left.ankle.x - feet.right.ankle.x) / (2 * legLength) * support
-        channels[c('hipsRoll')] = -settled.hipRoll * 4.5 * DEG * support
-        // Positive support stands her on the right foot, so the left heel lifts, shaped as the posture's free heel.
-        channels[c('leftFootPitch')] = -settled.heel * DEG * unloaded(support)
-        channels[c('rightFootPitch')] = -settled.heel * DEG * unloaded(-support)
-      }
       if (state === 'rest' && free('lowerBody') && free('upperBody'))
         plan.support = side
       if (state === 'rest' && clasped)
