@@ -9,7 +9,7 @@ import { motion3dScenarios, scriptBeats } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4 } as const
+  const counts = { 'idle': 1, 'idle-drive': 1, 'music': 1, 'music-beat': 1, 'gaze-shift': 18, 'speak': 11, 'speak-phrases': 5, 'gesture-under-clip': 9, 'emotions': 13, 'walk': 6, 'walk-mood-arc': 13, 'touch': 10, 'sleepy-no-clip': 4 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -145,6 +145,31 @@ describe('motion3d scenario timelines', () => {
     expect(shown).toHaveLength(1)
     expect(shown[0]).toMatchObject({ unfold: true })
     expect(voices.filter(voice => voice.at > shown[0].at && voice.at - shown[0].at <= 0.5)).toHaveLength(1)
+  })
+
+  it.each([1, 2, 3])('speaks in phrases for seed %i: two to four phrases an utterance, silent pauses between them, and no energy or mood', (seed) => {
+    const scenario = motion3dScenarios.find(scenario => scenario.id === 'speak-phrases')
+    if (!scenario)
+      throw new Error('Missing speak-phrases scenario')
+    const cues = scenario.timeline(seed, 60)
+    expect(cues.every(cue => cue.kind === 'voice')).toBe(true)
+    for (const cue of cues) {
+      if (cue.kind !== 'voice')
+        continue
+      expect(cue.at + cue.seconds).toBeLessThanOrEqual(60)
+      // A phrase is a run of frames on the 0.1 floor or above; a pause is a run of silent frames inside the utterance.
+      const spoken = cue.envelope.map(level => level >= 0.1)
+      const phrases = spoken.filter((on, i) => on && !spoken[i - 1]).length
+      expect(phrases).toBeGreaterThanOrEqual(2)
+      expect(phrases).toBeLessThanOrEqual(4)
+      expect(cue.emphasis.length).toBeGreaterThanOrEqual(2 * phrases)
+      expect(cue.emphasis.every(peak => spoken[Math.round(peak.at * 60)] && peak.strength >= 0.35 && peak.strength <= 0.95)).toBe(true)
+    }
+    cues.slice(1).forEach((cue, i) => {
+      const previous = cues[i]
+      if (cue.kind === 'voice' && previous.kind === 'voice')
+        expect(cue.at - previous.at - previous.seconds).toBeGreaterThanOrEqual(2.5)
+    })
   })
 
   // Version 3 (E/g3/own2/rules-v2.md): every time follows from the timeline's own labelled peaks and utterances, by one

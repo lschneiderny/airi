@@ -101,6 +101,19 @@ function voiceCue(at: number, seconds: number, emphasis: { at: number, strength:
   return { at, kind: 'voice', seconds, envelope, emphasis }
 }
 
+/**
+ * A voice cue that speaks in phrases: the 0.1 floor of `voiceCue` only inside `spans`, silence between them, and one
+ * 80 ms Gaussian per labelled peak whose level is its strength.
+ */
+function phrasedVoiceCue(at: number, seconds: number, spans: readonly { start: number, end: number }[], emphasis: { at: number, strength: number }[]): Motion3dCue {
+  const envelope = Array.from({ length: Math.ceil(seconds * 60) }, (_, frame) => {
+    const t = frame / 60
+    const floor = spans.some(span => t >= span.start && t < span.end) ? 0.1 : 0
+    return floor + Math.max(0, ...emphasis.map(peak => (peak.strength - 0.1) * Math.exp(-(((t - peak.at) / 0.08) ** 2))))
+  })
+  return { at, kind: 'voice', seconds, envelope, emphasis }
+}
+
 /** A chat panel 25 degrees to a seeded side and 10 degrees below the head, in head widths. */
 function chatTarget(random: RandomStream): { x: number, y: number } {
   const side = random() < 0.5 ? -1 : 1
@@ -310,6 +323,49 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
           cues.push({ at: at - 0.5, kind: 'chat', target: chat, unfold: true }, { at: at + 8, kind: 'chat', target: null, unfold: false })
         return at + 8 <= duration ? cues : []
       }).flat().sort(byTime)
+    },
+  },
+  {
+    /**
+     * Version 1, for visual review of speech gestures; no report judges it. Utterances of two to four phrases, each
+     * with two to four labelled peaks 0.55 to 1.0 s apart at strengths 0.35 to 0.95, the phrases 0.5 to 1.1 s of
+     * silence apart, and 2.5 to 5 s of silence between utterances. It sets no energy or mood, so `--energy` and
+     * `--mood` hold for the whole run and a calm and an excited run of one seed say the same words.
+     */
+    version: 1,
+    id: 'speak-phrases',
+    class: 'talk',
+    warmupSeconds: 10,
+    seconds: 60,
+    timeline(seed, seconds) {
+      const random = createRandomStream(seed)
+      const duration = Math.min(seconds, 120)
+      const cues: Motion3dCue[] = []
+      let at = 1 + random()
+      for (;;) {
+        const spans: { start: number, end: number }[] = []
+        const emphasis: { at: number, strength: number }[] = []
+        const phrases = 2 + Math.floor(3 * random())
+        let t = 0
+        for (let p = 0; p < phrases; p++) {
+          if (p > 0)
+            t += 0.5 + 0.6 * random()
+          const start = t
+          let peak = t + 0.35 + 0.25 * random()
+          const count = 2 + Math.floor(3 * random())
+          for (let k = 0; k < count; k++) {
+            if (k > 0)
+              peak += 0.55 + 0.45 * random()
+            emphasis.push({ at: peak, strength: 0.35 + 0.6 * random() })
+          }
+          t = peak + 0.3 + 0.2 * random()
+          spans.push({ start, end: t })
+        }
+        if (at + t > duration)
+          return cues
+        cues.push(phrasedVoiceCue(at, t, spans, emphasis))
+        at += t + 2.5 + 2.5 * random()
+      }
     },
   },
   {
