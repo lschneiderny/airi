@@ -1,3 +1,4 @@
+import type { BodySide } from './channels'
 import type { BodyRest } from './contracts'
 import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformanceModulation, PerformancePlan } from './stack'
 
@@ -30,16 +31,22 @@ const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5, tension: 0.1 } as const
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 /**
- * What the stand-life pass adds to 4f, so a rest or a doze reads apart from standing in one still (stand-life audit
- * rank 8). Both round the chest (`mid` and `upper` pitch, degrees) and bring the shoulders forward (`protraction`); the
- * doze droops the head between nods (`head`), sinks the pelvis further on softer knees (`pelvis`, leg lengths on 4f's)
- * and its knees give with each sink and catch it (`nodPelvis`, leg lengths at the full sink). The rest keeps 4f's
- * pelvis: a further free-hip drop raised the stance hip past the reach of a narrow-stanced rig's straight stance leg.
- * The sizes are the layer's: the smallest that the default camera tells from a standing one-leg stance.
+ * What the stand-life passes add to 4f, so a rest or a doze reads apart from standing in one still, from the front
+ * (stand-life audit ranks 8 and 3). Both round the chest (`mid` and `upper` pitch, degrees), bring the shoulders
+ * forward (`protraction`) and let the hanging arms go heavy: the upper arms roll in (`twist`) and the elbows let go of
+ * their bend (`elbow`), so the backs of the hands come round to the front. The shoulders drop no further than 4f's -2:
+ * below it the clavicle's joint limit softens the drop to a degree and stills the breath the shoulders carry.
+ * The rest tilts the head toward the stance side (`headRoll`) and adds to 4f's head drop (`head`); the doze droops the
+ * head between nods (`head`), sinks the pelvis further on softer knees (`pelvis`, leg lengths on 4f's) and its knees
+ * give with each sink and catch it (`nodPelvis`, leg lengths at the full sink, with `nodUpper` of the nod in the upper
+ * chest and `nodLower` in the lower trunk). The rest keeps 4f's pelvis over the stance foot: a further free-hip drop
+ * raised the stance hip past the reach of a narrow-stanced rig's straight stance leg. The sizes are the layer's: the
+ * first pass's (chest 3.5 degrees, shoulders forward 3, no arm release) still left a front still of the rest reading
+ * as standing.
  */
 const SETTLED = {
-  rest: { mid: 2, upper: 1.5, protraction: 3 },
-  doze: { mid: 2.5, upper: 2, protraction: 4, head: 5, pelvis: 0.002, nodPelvis: 0.006, nodUpper: 0.08 },
+  rest: { mid: 3.5, upper: 2.5, protraction: 6, twist: 6, elbow: -5, head: 2, headRoll: 4 },
+  doze: { mid: 3.5, upper: 2.5, protraction: 6, twist: 8, elbow: -6, head: 5, pelvis: 0.002, nodPelvis: 0.006, nodUpper: 0.08, nodLower: 0.06 },
 } as const
 /**
  * The order of the settling: each part's share of the pose rises over `[delay, seconds]` from the start of a rest or
@@ -52,9 +59,9 @@ type Stage = 'pelvis' | 'chest' | 'head'
 const STAGE_OF: Partial<Record<number, Stage>> = {}
 for (const channel of ['pelvisX', 'pelvisY', 'pelvisZ', 'hipsRoll', 'lowerPitch', 'leftFootPitch', 'rightFootPitch'] as const)
   STAGE_OF[c(channel)] = 'pelvis'
-for (const channel of ['midPitch', 'upperPitch', 'leftClavElev', 'leftClavProt', 'rightClavElev', 'rightClavProt'] as const)
+for (const channel of ['midPitch', 'upperPitch', 'leftClavElev', 'leftClavProt', 'rightClavElev', 'rightClavProt', 'leftTwist', 'rightTwist', 'leftElbow', 'rightElbow'] as const)
   STAGE_OF[c(channel)] = 'chest'
-for (const channel of ['neckPitch', 'headPitch'] as const)
+for (const channel of ['neckPitch', 'headPitch', 'neckRoll', 'headRoll'] as const)
   STAGE_OF[c(channel)] = 'head'
 
 /** The share of `stage` shown `age` seconds into a rest (`STAGES`); 1 for a layer that started settled. */
@@ -96,6 +103,17 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let nods: { at: number, sink: number }[] = []
   let tick = -1
 
+  /** One arm's share of the settled shoulders, and of the heavy hang (`SETTLED`) when the hand hangs. */
+  function settleArm(arm: BodySide, clavicle: number, settled: { protraction: number, twist: number, elbow: number }, hanging: boolean) {
+    const start = ARM_START[arm]
+    channels[start] = clavicle * DEG
+    channels[start + 1] = settled.protraction * DEG
+    if (hanging) {
+      channels[start + 4] = settled.twist * DEG
+      channels[start + 5] = settled.elbow * DEG
+    }
+  }
+
   function update(context: PerformanceContext) {
     if (context.tick === tick)
       return
@@ -135,12 +153,14 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       channels[c('lowerPitch')] = REST.lower * DEG
       channels[c('midPitch')] = settled.mid * DEG
       channels[c('upperPitch')] = settled.upper * DEG
-      channels[c('headPitch')] = 0.65 * REST.head * DEG
-      channels[c('neckPitch')] = 0.35 * REST.head * DEG
-      for (const arm of SIDES) {
-        channels[ARM_START[arm]] = REST.clavicle * DEG
-        channels[ARM_START[arm] + 1] = settled.protraction * DEG
-      }
+      // The head drops and tilts toward the leg she stands on (positive support is the right foot).
+      const toward = Math.sign(support)
+      channels[c('headPitch')] = 0.65 * (REST.head + settled.head) * DEG
+      channels[c('neckPitch')] = 0.35 * (REST.head + settled.head) * DEG
+      channels[c('headRoll')] = 0.65 * toward * settled.headRoll * DEG
+      channels[c('neckRoll')] = 0.35 * toward * settled.headRoll * DEG
+      for (const arm of SIDES)
+        settleArm(arm, REST.clavicle, settled, !clasped)
       // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter.
       const { feet, legLength } = context.traits
       if (legIk)
@@ -177,8 +197,9 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       channels[c('upperPitch')] = (settled.nodUpper * pitch + settled.upper) * DEG
       channels[c('lowerPitch')] = DOZE.lower * DEG
       channels[c('pelvisY')] = -DOZE.pelvis - settled.pelvis - (legIk ? settled.nodPelvis * sunk : 0)
+      channels[c('lowerPitch')] += settled.nodLower * pitch * DEG
       for (const arm of SIDES)
-        channels[ARM_START[arm] + 1] = settled.protraction * DEG
+        settleArm(arm, 0, settled, true)
       modulation.tempo = DOZE.tempo
       modulation.amplitude = DOZE.sway
       modulation.breath = DOZE.breath

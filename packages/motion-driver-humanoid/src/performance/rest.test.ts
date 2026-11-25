@@ -129,4 +129,27 @@ describe('the rest layer', () => {
     expect((parts.chest[at(15)] + delta('upperPitch')[at(15)]) / DEG).toBeGreaterThan(3)
     expect(delta('leftClavProt')[at(15)] / DEG).toBeGreaterThan(2)
   })
+
+  it('rests with the chest dropped, the shoulders forward, the arms hanging heavy and the head tilted over the stance leg', () => {
+    const rig = fixtureRigs[0].traits
+    // A seed whose rest keeps the hands hanging (the other half clasp them).
+    const seed = Array.from({ length: 8 }, (_, k) => k + 1).find(k => run(resting('rest', 2, 30, quietInput), 12, { traits: rig, seed: k })[at(10)].hands === 0)!
+    const rest = run(resting('rest', 2, 30, quietInput), 12, { traits: rig, seed })
+    const k = at(10)
+    const stance = Math.sign(rest[k].support)
+    // Against a still standing on the same leg, so the posture's contrapposto is the same in both.
+    const still = run(t => ({ ...quietInput(t), posture: { amplitude: 0, shiftRate: 0, support: stance } }), 12, { traits: rig, seed })
+    const delta = (channel: Parameters<typeof c>[0]) => (rest[k].channels[c(channel)] - still[k].channels[c(channel)]) / DEG
+    expect(delta('midPitch') + delta('upperPitch')).toBeGreaterThan(5)
+    for (const side of ['left', 'right'] as const) {
+      expect(delta(`${side}ClavProt`), side).toBeGreaterThan(5)
+      // The upper arms roll in, so the backs of the hands come round to the front.
+      expect(delta(`${side}Twist`), side).toBeGreaterThan(4)
+    }
+    // Over the stance leg the contrapposto already has that arm long, near its joint limit; the other elbow lets go.
+    const free = stance > 0 ? 'left' : 'right'
+    expect(delta(`${free}Elbow`)).toBeLessThan(-4)
+    // Positive support stands her on the right foot; a positive roll tilts the head toward her right.
+    expect(stance * (delta('headRoll') + delta('neckRoll'))).toBeGreaterThan(3)
+  })
 })
