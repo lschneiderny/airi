@@ -903,7 +903,10 @@ keys: a key clear of the proxies at the side of the head, with its path from
 rest, is the head clearance 4e's precondition asks for, so the conservative
 `headClearance` probe (a wrist outside a sphere round every head proxy) no
 longer gates it. On the ten test rigs every arm reaches both keys except
-Lucilla's and Sigrika's, so the other eight tuck.
+Lucilla's and Sigrika's, so the other eight tuck. The performer searches the
+clasp's and the tuck's keys when `capabilities.clasp` or `capabilities.hairTouch`
+is first read, once per rig and seeded rest pose, since the rest hang decides
+which keys clear the body.
 Each lead stroke also nods the head (the speech head beat, MMD only): neck
 and head pitch down together by 3 degrees for a major stroke (Graf et al. 2002,
 about 3 to 5 degrees per accent nod), 0.6 of that for a minor stroke, 0.6 more

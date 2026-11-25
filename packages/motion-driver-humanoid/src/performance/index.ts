@@ -1,5 +1,5 @@
 import type { Vec3 } from '../types'
-import type { BodyArmForm, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodyArmForm, BodyCapabilities, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { PerformanceContext, PerformanceLayer } from './stack'
 
 import { createLagChain } from '../dynamics'
@@ -93,11 +93,11 @@ const GAIT_ARM_CHANNELS: readonly (readonly [channel: number, joint: number, sid
 )
 
 /**
- * The arm-form capabilities of each rig, which depend only on its traits, as its rest pose does: the clasp's and the
- * hair tuck's key searches take up to a tenth of a second on a rig that refuses them, so a performer created again for
- * the same rig, on a reset of the stage or for another seed, does not search again.
+ * The arm-form capabilities of each rig, by its seeded rest pose: the clasp's and the hair tuck's key searches read
+ * only the two and take up to a third of a second on a rig that refuses them, so they run when the capabilities are
+ * first read, and a reset of the stage does not search again, while another seed does.
  */
-const reachedForms = new WeakMap<BodyRigTraits, { readonly clasp: boolean, readonly hairTouch: boolean }>()
+const reachedForms = new WeakMap<BodyRigTraits, Map<string, { readonly clasp: boolean, readonly hairTouch: boolean }>>()
 
 /** Pure state owner. Each step advances exactly one tick; the host owns accumulation/interpolation. */
 class BodyPerformer {
@@ -131,15 +131,30 @@ class BodyPerformer {
       rest[c] = limitChannel(c, rest[c])
     this.degrade(rest)
     const collision = new BodyCollision(traits, rest)
-    let reached = reachedForms.get(traits)
-    if (!reached) {
-      const keys = new GestureKeys(traits, rest)
-      const reaches = (form: BodyArmForm) => SIDES.every(side => keys.armForm(side, form, Float64Array.from(rest.subarray(ARM_START[side], ARM_START[side] + 26))))
-      // 4e act 8 requires head clearance: the tuck's own keys, clear of the proxies at the side of the head, are it.
-      reached = { clasp: reaches('clasp'), hairTouch: reaches('hair-sweep') }
-      reachedForms.set(traits, reached)
+    let byRest = reachedForms.get(traits)
+    if (!byRest) {
+      byRest = new Map()
+      reachedForms.set(traits, byRest)
     }
-    const capabilities = { ...collision.capabilities, ...reached }
+    const forms = byRest
+    const restKey = rest.join(',')
+    const formRest = rest.slice()
+    const reached = () => {
+      let found = forms.get(restKey)
+      if (!found) {
+        const keys = new GestureKeys(traits, formRest)
+        const reaches = (form: BodyArmForm) => SIDES.every(side => keys.armForm(side, form, Float64Array.from(formRest.subarray(ARM_START[side], ARM_START[side] + 26))))
+        // 4e act 8 requires head clearance: the tuck's own keys, clear of the proxies at the side of the head, are it.
+        found = { clasp: reaches('clasp'), hairTouch: reaches('hair-sweep') }
+        forms.set(restKey, found)
+      }
+      return found
+    }
+    const capabilities: BodyCapabilities = {
+      ...collision.capabilities,
+      get clasp() { return reached().clasp },
+      get hairTouch() { return reached().hairTouch },
+    }
     const stack = new PerformanceStack(this.options.layers ?? [])
     const frame: MutableFrame = {
       tick: 0,
