@@ -925,7 +925,9 @@ that on a press or chop. Standing, a unit that lowers its hands asks, 0.6 of the
 time, for the weight on the other foot for 1.5 s (`plan.support`), unless an
 earlier layer holds the support. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
 A's amplitude scale (`GESTURE_FORMS`); the chop cuts nearly straight down, so
-it reads apart from a beat's forward fall whatever hand the phrase set. Keys are solved per rig with
+it reads apart from a beat's forward fall whatever hand the phrase set, and the
+palm-up offer goes 1.4 times as far toward the listener as out to the side.
+Keys are solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear;
 a contact on the upper arm swings the elbow out by 5 degrees instead (up to
 the arm forms' 80), since pushing the hand barely moves the upper arm off the
