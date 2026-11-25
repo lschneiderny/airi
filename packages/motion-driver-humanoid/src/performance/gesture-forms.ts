@@ -98,6 +98,11 @@ export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape
   'clasp': { shape: { left: 'relaxed', right: 'wrap' }, pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
 }
 
+/** Whether `form` is a held arm form (`ARM_FORMS`), not a speech gesture's. */
+export function isArmForm(form: SpeechGestureForm | BodyArmForm): form is BodyArmForm {
+  return Object.hasOwn(ARM_FORMS, form)
+}
+
 /** Writes the hand of arm form `form` on `side` into a side's arm block (`writeHandShape`); a form may name a hand per side. */
 export function writeArmFormHand(form: BodyArmForm, side: BodySide, pose: Float64Array): void {
   const { shape } = ARM_FORMS[form]
@@ -182,6 +187,15 @@ const TUCK = { headBreadth: 14.78, tragionTop: 12.65, earBreadth: 3.32 } as cons
  * change alone the tuck chose hands held up beside the head palm forward, a salute rather than a touch.
  */
 const TUCK_PALM_ROLL = 50 * DEG
+/**
+ * Where the hair tuck's reach passes on its way between the rest arm and a tuck key, as each channel's share of the way
+ * from the rest arm: flex, abduct, twist and elbow, then every wrist and hand channel. The elbow and the forward flex
+ * lead while the upper arm stays low, so the hand comes up in front of the chest and then out to the temple. Straight
+ * from rest, every joint at once, the arm swung out to the side with the elbow high and the palm forward, a wave, the
+ * wrist 0.3 to 0.4 arm lengths out beyond where the touch holds it; through this via, 0.15 to 0.24. A stronger lead
+ * asks the elbow for more than the act layer's easing allows (0.25 degrees per tick per tick) in the reach's time.
+ */
+const TUCK_VIA = { flex: 0.75, abduct: 0.2, twist: 0.2, elbow: 0.62, hand: 0.5 } as const
 /** Directions from the fingertips in which the tuck tries the wrist. */
 const WRIST_DIRECTIONS = 600
 /** No joint of an arm form sits within this of its limit. */
@@ -805,6 +819,17 @@ export class GestureKeys {
     this.live.project(side, this.liveChannels)
     for (let j = 2; j <= 5; j++)
       pose[j] = this.liveChannels[start + j]
+  }
+
+  /**
+   * Writes into `via` where the hair tuck's reach passes between `rest`, the rest arm, and `key`, a tuck key
+   * (`TUCK_VIA`); false when either leg's angle path does not clear the proxies, so the reach goes straight.
+   */
+  tuckVia(side: BodySide, rest: ArmPose, key: ArmPose, via: ArmPose): boolean {
+    const shares = [TUCK_VIA.flex, TUCK_VIA.abduct, TUCK_VIA.twist, TUCK_VIA.elbow]
+    for (let j = 0; j < 26; j++)
+      via[j] = rest[j] + (j >= 2 && j <= 5 ? shares[j - 2] : TUCK_VIA.hand) * (key[j] - rest[j])
+    return this.pathDepth(side, rest, via) === 0 && this.pathDepth(side, via, key) === 0
   }
 
   /** Largest margin-inclusive proxy depth along the angle path from `from` to `to`, sampled at 11 points. */

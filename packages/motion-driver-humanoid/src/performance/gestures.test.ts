@@ -1293,6 +1293,21 @@ describe('co-speech gestures', () => {
     expect(capability(ellenTraits).hairTouch).toBe(true)
   })
 
+  it('brings the hair touch\'s hand up in front of the chest to the temple and home again, less swung out to the side', () => {
+    // Straight from rest the arm swung out, elbow high and palm forward, a wave: the wrist 0.30 to 0.40 arm lengths
+    // further out than where the touch holds it. Through the via it stays within 0.24.
+    for (const rig of [chisaTraits, ellenTraits]) {
+      const keys = new GestureKeys(rig, createBodyPerformer({ traits: rig, seed: 1 }).restChannels())
+      for (const side of SIDES) {
+        const run = perform({ utterances: [], armForm: time => time > 0.2 && time < 1.5 ? { side, form: 'hair-touch' } : null }, 2.6, { traits: rig })
+        const out = run.frames.map(frame => (side === 'left' ? 1 : -1) * keys.wrist(side, Float64Array.from(frame.channels.subarray(ARM_START[side], ARM_START[side] + 26)))[0])
+        const held = out[Math.round(1.2 / BODY_TICK)]
+        expect(run.frames[Math.round(1.2 / BODY_TICK)].gesture.activation[side]).toBe(1)
+        expect(Math.max(...out) - held, `${side}`).toBeLessThan(0.27)
+      }
+    }
+  })
+
   it('sweeps a held hair touch on to the sweep without going home, and never starts the sweep on its own', () => {
     const held = perform({ utterances: [], armForm: time => time > 0.2 && time < 2 ? { side: 'right', form: 'hair-touch' } : time >= 2 && time < 4 ? { side: 'right', form: 'hair-sweep' } : null }, 6, { traits: chisaTraits })
     const at = (run: typeof held, time: number) => run.frames[Math.round(time / BODY_TICK) - 1].gesture.activation.right

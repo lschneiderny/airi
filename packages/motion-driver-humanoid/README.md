@@ -1023,7 +1023,14 @@ keys: a key clear of the proxies at the side of the head, with its path from
 rest, is the head clearance 4e's precondition asks for, so the conservative
 `headClearance` probe (a wrist outside a sphere round every head proxy) no
 longer gates it. On the ten test rigs every arm reaches both keys except
-Lucilla's and Sigrika's, so the other eight tuck. The performer searches the
+Lucilla's and Sigrika's, so the other eight tuck. The reach to the touch passes
+a via pose (`GestureKeys.tuckVia`): the elbow and the forward flex lead while
+the upper arm stays low, so the hand comes up in front of the chest before it
+goes out to the temple, and the way home from the touch or the sweep goes back
+through it. The second leg starts while the first still moves and carries its
+velocity and acceleration, so the hand does not stop at the via. Straight from
+rest the arm swung out to the side like a wave. When either leg's path does not
+clear the proxies, the reach goes straight. The performer searches the
 clasp's and the tuck's keys when `capabilities.clasp` or `capabilities.hairTouch`
 is first read, once per rig and seeded rest pose, since the rest hang decides
 which keys clear the body.
