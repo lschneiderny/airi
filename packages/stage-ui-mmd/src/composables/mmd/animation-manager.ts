@@ -7,6 +7,7 @@ import type { LayerFade } from './layer-fade'
 import { AnimationMixer, LoopOnce, LoopRepeat, Vector3 } from 'three'
 
 import { ensureAmmo } from '../../utils/ammo'
+import { prepareMMDSecondaryMotion } from './body/secondary-motion'
 import { MMDFramePipeline } from './frame-pipeline'
 import { LAYER_FADE_SECONDS, stepLayerFade } from './layer-fade'
 import { partitionClipByBones, splitClipByLayer, trackBoneName } from './rig/clip-split'
@@ -181,6 +182,8 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
       if (disposed)
         return
 
+      // The garments must yield to the arms before Ammo builds the bodies from the PMX collision groups.
+      prepareMMDSecondaryMotion(mmd)
       mmd.setPhysics(createPhysics)
       if (gravity !== undefined)
         mmd.physics?.setGravity?.(new Vector3(0, -gravity, 0))

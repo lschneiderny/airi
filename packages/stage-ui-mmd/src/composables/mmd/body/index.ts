@@ -36,6 +36,7 @@ import { buildBodyRigTraits } from './rig-traits'
 export type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 export { writeWalkHand } from './locomotion'
 export type { MMDBodyEvent } from './performer'
+export { prepareMMDSecondaryMotion } from './secondary-motion'
 
 /**
  * The whole-body idle kinds this rig cannot perform, for `NaturalIdleDrive.unreachable`: the clasp without the `clasp`

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 import { MMDLoader } from '@moeru/three-mmd'
 import { initAmmo, MMDAmmoPhysics } from '@moeru/three-mmd-physics-ammo'
+import { prepareMMDSecondaryMotion } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { LoadingManager, Texture, TextureLoader } from 'three'
 
 /**
@@ -58,6 +59,8 @@ export async function loadHeadlessMMD(path: string) {
     }
     try {
       await initAmmo()
+      // The scene's animation manager prepares the same collision groups before it installs physics.
+      prepareMMDSecondaryMotion(mmd)
       mmd.setPhysics(MMDAmmoPhysics)
     }
     catch (error) {
