@@ -72,6 +72,10 @@ Scores prove direction, size relative to the recipe, release, and detectability 
 | Known bugs | The stance half-shift in `performance/acts.ts`, an 18 degree glance foot, and arm pops on seed 5. |
 | Acceptance | `lab:motion3d gate` exits 0 on `gaze-shift` and `speak` only. It refuses `emotions` by design, idle fails one head-smoothness line, and the clip scenario fails one stroke line. Whether the emotion-table and pooled ownership reports may stand in, and whether the accepted head-smoothness gap extends to idle, are Luke's rulings and are still open. There is no rendered-app acceptance run. |
 
+## Natural pep (2026-11-24)
+
+Outside the milestone order, the [Natural pep ADR](../adr/2026-11-24-natural-pep.md) gives each card a `pep` value from 0 to 1. Pep adds an input-driven upper-body sway and livelier eyes to Natural on Live2D and MMD; on MMD the trunk takes a third of the sway's roll and the legs stay planted. Pep 0 is the Natural of before, and `qa:motion3d diff` prints `IDENTICAL` on all 12 scenarios. `pnpm lab:natural` measures the motion against reference bands. Open: the visual review listed in the plan (`.omo/plans/natural-pep.md`, section 6), a livelier groove, and whether any card starts above 0.
+
 ## Open across milestones
 
 - Beat-matched dance playback (D4) is replaced: the [character mind ADR](../adr/2026-11-17-character-mind-direction.md) treats music as a stimulus that the mind answers with a groove episode, and the [character mind roadmap](character-mind-roadmap.md) tracks that step.
