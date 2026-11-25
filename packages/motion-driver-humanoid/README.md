@@ -343,7 +343,9 @@ the head between nods and sinks the pelvis a further 0.002 L, and each nod's
 sink takes the chest, the lower trunk and the knees with it; between nods the
 chest and knees give a little in a slow aperiodic drift. The settling rolls down
 from the pelvis through the chest to a later head dip. On waking, the trunk lets
-go within 0.8 s, before the head and gaze come back.
+go within 0.8 s, before the head and gaze come back, and her weight comes back
+to 0.6 of the leg she rested on, so her legs stand up with her chest and the
+free knee keeps a little softness.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
