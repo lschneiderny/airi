@@ -1022,7 +1022,7 @@ describe('co-speech gestures', () => {
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const script: Script = { utterances: [utterance(0.5, 0.65, [])], tension: 0 }
     const frames: { channels: Float32Array, unitSeq: number, hand: string | null }[] = []
-    // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 0.9 s after they are ready (`RISE`).
+    // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 1.3 s after they are ready (`RISE`).
     for (let tick = 1; tick <= Math.round(1.75 / BODY_TICK); tick++) {
       const frame = performer.step(speechInput(script, tick * BODY_TICK, state))
       frames.push({ channels: frame.channels.slice(), unitSeq: frame.diagnostics.gesture.unitSeq, hand: frame.diagnostics.gesture.hand })
