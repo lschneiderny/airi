@@ -152,4 +152,29 @@ describe('the rest layer', () => {
     // Positive support stands her on the right foot; a positive roll tilts the head toward her right.
     expect(stance * (delta('headRoll') + delta('neckRoll'))).toBeGreaterThan(3)
   })
+
+  it('keeps the dozing knees and chest giving through the long pauses between nods', () => {
+    const still = run(quietInput, 60)
+    const doze = run(resting('doze', 2, 60, quietInput), 60)
+    const delta = (k: number, channel: Parameters<typeof c>[0]) => doze[k].channels[c(channel)] - still[k].channels[c(channel)]
+    // The head rests on its droop between nods: find the longest stretch where it stays within a degree of it.
+    const head = doze.map((_, k) => (delta(k, 'headPitch') + delta(k, 'neckPitch')) / DEG)
+    let best = [0, 0]
+    let from = -1
+    for (let k = at(4); k < head.length; k++) {
+      const resting = Math.abs(head[k] - 5) < 1
+      if (resting && from < 0)
+        from = k
+      if ((!resting || k === head.length - 1) && from >= 0) {
+        if (k - from > best[1] - best[0])
+          best = [from, k]
+        from = -1
+      }
+    }
+    expect((best[1] - best[0]) * BODY_TICK).toBeGreaterThan(6)
+    const pause = doze.slice(best[0], best[1]).map((_, i) => best[0] + i)
+    const range = (values: number[]) => Math.max(...values) - Math.min(...values)
+    expect(range(pause.map(k => delta(k, 'pelvisY')))).toBeGreaterThan(0.0008)
+    expect(range(pause.map(k => delta(k, 'midPitch'))) / DEG).toBeGreaterThan(0.4)
+  })
 })

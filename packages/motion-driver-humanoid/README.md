@@ -340,9 +340,10 @@ standing in one still, both round the chest, drop the shoulders and bring them
 forward, and let the hanging arms go heavy: the upper arms roll in and the
 elbows let go. The rest tilts the head toward the stance leg. The doze droops
 the head between nods and sinks the pelvis a further 0.002 L, and each nod's
-sink takes the chest, the lower trunk and the knees with it. The settling rolls
-down from the pelvis through the chest to a later head dip. On waking, the trunk
-lets go within 0.8 s, before the head and gaze come back.
+sink takes the chest, the lower trunk and the knees with it; between nods the
+chest and knees give a little in a slow aperiodic drift. The settling rolls down
+from the pelvis through the chest to a later head dip. On waking, the trunk lets
+go within 0.8 s, before the head and gaze come back.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,

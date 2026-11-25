@@ -3,9 +3,9 @@ import type { BodyRest } from './contracts'
 import type { LayerOutput, PerformanceContext, PerformanceLayer, PerformanceModulation, PerformancePlan } from './stack'
 
 import { minJerk } from '../dynamics'
-import { deriveSeed, gaussian } from '../noise'
+import { createDriftNoise, deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
-import { ARM_START, BODY_CHANNELS, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -48,6 +48,13 @@ const SETTLED = {
   rest: { mid: 3.5, upper: 2.5, protraction: 6, twist: 6, elbow: -5, head: 2, headRoll: 4 },
   doze: { mid: 3.5, upper: 2.5, protraction: 6, twist: 8, elbow: -6, head: 5, pelvis: 0.002, nodPelvis: 0.006, nodUpper: 0.08, nodLower: 0.06 },
 } as const
+/**
+ * While she dozes her knees and chest are never quite still: a slow, aperiodic give of the pelvis (`pelvis`, leg lengths
+ * at most) and the chest (`chest`, degrees at most) between and through the nods, a drift that a doze's long pauses
+ * between nods (9 to 25 s) otherwise held in one shape (stand-life audit rank 8: the base still varied her support
+ * there). Drift, not breath: a breath-timed sink would make the doze's vertical motion periodic.
+ */
+const DOZE_DRIFT = { pelvis: 0.003, chest: 1.5 } as const
 /**
  * The order of the settling: each part's share of the pose rises over `[delay, seconds]` from the start of a rest or
  * doze, under the stack's 1.5 s ramp, so the pelvis settles first, the chest rolls down after it and the head dips
@@ -102,6 +109,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let staged = true
   let nods: { at: number, sink: number }[] = []
   let tick = -1
+  const drift = createDriftNoise({ seed: deriveSeed(options.seed, 500) })
 
   /** One arm's share of the settled shoulders, and of the heavy hang (`SETTLED`) when the hand hangs. */
   function settleArm(arm: BodySide, clavicle: number, settled: { protraction: number, twist: number, elbow: number }, hanging: boolean) {
@@ -198,6 +206,11 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       channels[c('lowerPitch')] = DOZE.lower * DEG
       channels[c('pelvisY')] = -DOZE.pelvis - settled.pelvis - (legIk ? settled.nodPelvis * sunk : 0)
       channels[c('lowerPitch')] += settled.nodLower * pitch * DEG
+      // The knees and chest give a little through the pauses too (`DOZE_DRIFT`).
+      const give = 0.5 * (1 + Math.tanh(drift.step(BODY_TICK)))
+      channels[c('midPitch')] += DOZE_DRIFT.chest * give * DEG
+      if (legIk)
+        channels[c('pelvisY')] -= DOZE_DRIFT.pelvis * give
       for (const arm of SIDES)
         settleArm(arm, 0, settled, true)
       modulation.tempo = DOZE.tempo
