@@ -944,6 +944,18 @@ the bodies by the same factors and leaves out the same ones.
 `new BodyCollision(traits, rest, false)` keeps every proxy as given, for a
 caller that asks where an arm clears a set of volumes, as the
 [body model](#body-model)'s rest solve does.
+
+The rest hang is a trait of the rig. Each arm rests at `BodyArmTraits.restAbduct`,
+with the default pose's other angles and the seed's offsets: the seeded rest
+pose, `restChannels()`, the reference the proxies are fitted to and the pose
+every arm form's path starts from all carry it. A host that measured the rig
+states where the hanging arm clears its body (the [body model](#body-model)'s
+rest abduction); a rig nobody measured takes `DEFAULT_ARM_REST_POSE.abduct`.
+With a body model's hard volumes as the proxies, the model's rest solve has
+already opened the arm clear of them, so among them the fit shrinks only what
+the seed's own rest pose leans on: the seed draws the hang up to 2 degrees inside the
+solved one, and the fit keeps `KEY_HEADROOM` where the solve keeps 0.03 of the
+segment.
 Corrections persist and decay. When gradient steps leave more than half the
 margin (0.015 of a segment), a continuous guard weight moves the arm toward
 the guard pose: it follows the smallest clearing weight (16 samples, because
@@ -985,7 +997,8 @@ assert signs, ordering, bounds, clearance, replay and response shape.
 import { buildBodyModel } from '@proj-airi/motion-driver-humanoid/body-model'
 
 const model = buildBodyModel(source)
-const traits: BodyRigTraits = { ...skeleton, colliders: [...model.volumes, ...headBodies] }
+const arm = (side: BodySide) => ({ ...skeleton.arms[side], restAbduct: model.rest[side].abduct })
+const traits: BodyRigTraits = { ...skeleton, arms: { left: arm('left'), right: arm('right') }, colliders: [...model.volumes, ...headBodies] }
 ```
 
 `buildBodyModel` tells every part of the character where her body is. An adapter fills a `BodyMeshSource` once at
@@ -1056,9 +1069,13 @@ The rules, in the order the build applies them:
    left out of the test, because the simulator drapes its cloth around the arm; the arm can still open to clear the
    others. An arm that no abduction up to 30 degrees clears of all of them stays where rule 7 left it.
 
-A host hands `volumes` to the performer as the first entries of `BodyRigTraits.colliders`, before the bodies it has
-for the head and the neck, so the corrector keeps the arms clear of them. The rest solve measures the volumes unfitted.
-The head, the neck, hair, sleeves, what hangs from a leg, the shins and the feet are not fitted.
+The model reaches the performer as two rig traits: `volumes` as the first entries of `BodyRigTraits.colliders`, before
+the host's head and neck bodies, and `rest[side].abduct` as each arm's `BodyArmTraits.restAbduct`. The performer then
+rests the arm where the model says, fits its proxies to that rest (`BodyCollision.fit`, which by rule 6 finds among
+the model's volumes only what the seed's own rest pose leans on), and starts every arm form from it. The rest solve
+measures the volumes unfitted. The MMD adapter of `@proj-airi/stage-ui-mmd` builds both traits, with the author's
+kinematic head and neck bodies after the volumes. The head, the neck, hair, sleeves, what hangs from a leg, the shins
+and the feet are not fitted.
 
 ## Checks
 

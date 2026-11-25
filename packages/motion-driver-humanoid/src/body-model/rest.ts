@@ -83,6 +83,8 @@ export function restTraits(source: BodyMeshSource): Omit<BodyRigTraits, 'collide
       handLength: 0.65 * Math.hypot(forearm.x, forearm.y, forearm.z),
       fingers: 'none' as const,
       twist: false,
+      // The solve poses each abduction it asks about; the default is where it starts.
+      restAbduct: DEFAULT_ARM_REST_POSE.abduct,
     }
   }
   let underHips = false

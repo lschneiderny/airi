@@ -5,6 +5,7 @@ import type { MMDRigProfile, MMDRigSource } from '../rig'
 import type { MMDTouchCollider } from '../touch/colliders'
 
 import { PmxObject } from '@moeru/three-mmd'
+import { DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 
 import { toRigTraits } from '../rig'
@@ -92,6 +93,8 @@ export function buildBodyRigTraits(
       handLength: reach > 0 ? reach : 0.65 * Math.hypot(forearm.x, forearm.y, forearm.z),
       fingers: present.length === fingerNames.length ? 'full' : present.length > 0 ? 'partial' : 'none',
       twist: rig.twist[side].arm !== null && rig.twist[side].wrist !== null,
+      // The author's bodies say nothing of where the arm rests; the hang solver lifts it while frames run.
+      restAbduct: DEFAULT_ARM_REST_POSE.abduct,
     }
   }
   const left = arm('left')

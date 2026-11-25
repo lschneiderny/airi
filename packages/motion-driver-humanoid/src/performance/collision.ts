@@ -125,6 +125,10 @@ export class BodyCollision {
    * hang clears it: the rig's own hang is where its arm rests against the body, so no proxy may hold the arm away from
    * it, and an arm that cannot reach its rest freezes or stands out. The host scales its own copies of the bodies by it.
    * A proxy whose scale reaches 0 is left out of every query, here and in the host's copies.
+   *
+   * The rest hang is the rig's (`BodyArmTraits.restAbduct`). A rig with a body model's hard volumes among its proxies
+   * rests where that model's rest solve cleared them, so among them the fit finds only what the seed's own rest pose
+   * leans on: the seed draws the hang up to 2 degrees inside the solved one, and a settled key keeps `KEY_HEADROOM`.
    */
   readonly fit: number[]
   private readonly posed: ReturnType<typeof identityTransform>[]

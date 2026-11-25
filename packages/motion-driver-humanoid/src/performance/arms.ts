@@ -36,7 +36,8 @@ const relaxedHand = HAND_SHAPES.relaxed
  * The hanging arm. The wrist rests 10 degrees extended: every reference walk, authored and captured, carries the hand
  * extended and none carries it flexed (authored MMD walks hold 10 in normal walks and 15 to 30 in feminine ones; acted
  * mocap walks 7 to 51; arm-hand plan, section 1). The hand is the `relaxed` shape, so a gesture's ready key and a hand
- * coming home meet the rest hand without moving a finger.
+ * coming home meet the rest hand without moving a finger. `abduct` is the hang of a rig nobody measured: a rig rests at
+ * its own `BodyArmTraits.restAbduct`.
  */
 export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
   clavElev: -5 * DEG,
@@ -166,9 +167,10 @@ export class BodyArms {
 
   private drawRest(): void {
     const p = DEFAULT_ARM_REST_POSE
-    const base = [p.clavElev, p.clavProt, p.flex, p.abduct, p.twist, p.elbow, p.pron, p.wflex, p.wdev]
     for (const side of SIDES) {
       const start = ARM_START[side]
+      // The abduction is the rig's own (`BodyArmTraits.restAbduct`); every other angle is the default pose's.
+      const base = [p.clavElev, p.clavProt, p.flex, this.traits.arms[side].restAbduct, p.twist, p.elbow, p.pron, p.wflex, p.wdev]
       for (let j = 0; j < 9; j++)
         this.desired[start + j] = base[j] + (2 * this.random() - 1) * offsetDegrees[j] * DEG
       const scale = 1 + (2 * this.random() - 1) * 0.12
