@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 
 import { STROLL_URGENCY, WALK_URGENCY } from '../types'
-import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS, urgencySpeedShare } from './index'
+import { brakingDistance, createLocomotion, NEUTRAL_GAIT_STYLE, SIDESTEP_MAX_LEGS, urgencySpeedShare, walkStyleFrom } from './index'
 
 // L = 10 fixture from design notes B.2: the bind hip sits 10 units above each ankle.
 const legLength = 10
@@ -1168,6 +1168,28 @@ describe('procedural gait', () => {
       expect(run.frames.at(-1)!.mode).toBe('walking')
       expect(run.frames.at(-1)!.root.yaw).toBeCloseTo(-Math.PI / 2, 6)
     }
+  })
+
+  it('reversal: the outgoing step leads off at most 0.35 L ahead of the standing root, in any mood', () => {
+    // An angry walk stopped with its planted foot well ahead of the root, and the lead past that foot overreached:
+    // the swinging leg lost its IK target on the reference rig.
+    const angry = walkStyleFrom({ mood: { valence: -0.5, arousal: 0.8, tension: 1 }, energy: 0.5 })
+    let furthest = 0
+    for (const style of [NEUTRAL_GAIT_STYLE, angry]) {
+      for (let k = 0; k < 8; k++) {
+        const run = createRun({ x: 0, yaw: Math.PI / 2 })
+        run.advance(4 + k * 0.1, () => ({ goalX: 100, arriveFacing: 0, style }))
+        const from = run.frames.length
+        run.advance(4, () => ({ goalX: -60, arriveFacing: 0, style }))
+        for (const strike of eventsOf(run.frames.slice(from), 'heelStrike')) {
+          const ahead = (strike.frame.root.position.x - strike.frame.feet[strike.foot].target.position.x) / legLength
+          if (strike.frame.speed < 0.05 * legLength)
+            furthest = Math.max(furthest, ahead)
+        }
+      }
+    }
+    // Uncapped, one angry timing landed 0.38 L ahead.
+    expect(furthest).toBeLessThan(0.351)
   })
 
   it('arrival: a goal that comes while she settles sets off at once', () => {
