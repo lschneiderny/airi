@@ -80,6 +80,8 @@ export function place(value: number | null, band: readonly [number, number] | nu
 export function compareToReference(print: Fingerprint, reference: NaturalReference): { measure: Measure, value: number | null, band: readonly [number, number] | null, placement: Placement }[] {
   return MEASURES.map((measure) => {
     const band = reference.measures[measure].band
-    return { measure, value: print[measure], band, placement: place(print[measure], band) }
+    const value = print[measure]
+    // Bands are stored rounded, so the value is placed at the same precision.
+    return { measure, value, band, placement: place(value === null ? null : round(value), band) }
   })
 }

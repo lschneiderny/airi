@@ -11,11 +11,6 @@ const commands = {
   compare: compareCommand,
 }
 
-const interrupt = new AbortController()
-const stop = () => interrupt.abort(new Error('interrupted'))
-process.on('SIGINT', stop)
-process.on('SIGTERM', stop)
-
 async function main(): Promise<number> {
   const [command, ...args] = process.argv.slice(2)
   if (command === '--help' || command === '-h') {
@@ -38,8 +33,5 @@ async function main(): Promise<number> {
 }
 
 void main().then((code) => {
-  process.exitCode = interrupt.signal.aborted ? 130 : code
-}).finally(() => {
-  process.off('SIGINT', stop)
-  process.off('SIGTERM', stop)
+  process.exitCode = code
 })
