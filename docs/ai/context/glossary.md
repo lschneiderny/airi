@@ -89,6 +89,14 @@ The pure function that decides what an MMD character's body does next: stance (s
 **Not to be confused with:** the performer, which turns the director's intent into bone channels and decides nothing.
 **Avoid:** "body brain", "stance machine".
 
+### Body model
+
+What the character knows of her own body, built once at load from the mesh and its skin weights: [hard volumes](#hard-volume), [garments](#garment), measured limb radii, and each arm's [rest clearance](#rest-clearance). It is renderer-neutral. An adapter fills a `BodyMeshSource`. It covers her from the hips to the shoulders and her thighs; the head and the neck are not in it yet. No rigid body's shape enters it; of the author's physics rig it takes which bones are simulated, the joints, the collision groups and masks, and each simulated body's centre.
+
+**Code:** `packages/motion-driver-humanoid/src/body-model/index.ts` `buildBodyModel`, `BodyMeshSource`, `BodyModel`; the MMD adapter is `packages/stage-ui-mmd/src/composables/mmd/body/body-model.ts` `readMMDBodyModel`.
+**Not to be confused with:** the rig profile, which maps the skeleton and holds no surface; the author's rigid bodies, which drive the cloth simulation and still stand for her head and neck; and the avatar model, which is the asset.
+**Avoid:** "collision mesh", "proxy bodies".
+
 ### Character-behavior settings
 
 One user-wide synced settings document for idle activities, touch reactions, cursor and chat attention, emotion behavior, and speaking rules. Settings > Behavior edits it. The mind receives the idle, touch, and chat permissions as fast state; renderer realisation and sensor consent keep their own settings documents.
@@ -227,6 +235,13 @@ The system that decides and plays expressions in response to affect: the express
 **Not to be confused with:** the performance state (the stage's current mode) and the whole-body performer for MMD.
 **Avoid:** "emotion system", "expression engine".
 
+### Garment
+
+One piece of simulated geometry of the [body model](#body-model) that hangs from the hips or the spine: a skirt, a coat, a cape, a bow. Simulated chains that hang from the same bone are one garment when a triangle of the mesh ties them, or when that bone is not the hips or a spine bone. The model keeps its bones, the canonical bone it hangs from, and its rest shape. The arm guard does not treat a garment as an obstacle; the resting arm keeps clear of it within bounds, and the simulator moves it. A free-swinging garment that still holds the resting arm within those bounds is pinched.
+
+**Code:** `packages/motion-driver-humanoid/src/body-model/contracts.ts` `BodyGarment`.
+**Not to be confused with:** a [hard volume](#hard-volume), which includes rigid clothing, and flesh on short simulated chains.
+
 ### Gate
 
 A pure check that decides whether the character may speak unprompted now. The hard gate (`hardReason`) holds for suppressors such as do-not-disturb, a hidden stage, an away or unknown presence, stale signals, the user speaking or typing, generation in progress, or a quiet app. The urge gate integrates a hazard over elapsed time, fires when the urge crosses a drawn threshold, picks a reason, and tracks social memory: unanswered messages, damping, double texts, the ritual day, and the last own-day turn. Its memory splits by owner: the user's slice (`UserGateMemory`: the floor's last fire, the hourly cap's fires, and the ritual day) is per user, and her pacing (`CharacterPacingMemory`: last-spoke time, unanswered openings, the reply wait, the damping, the own-day mark) is per character. The reaction policy is a separate gate for spoken touch reactions. The character mind runs both the urge gate and the reaction policy as its [voice policy](#voice-policy), and the situation store ticks it. "Reach-out gate" in comments means the urge gate together with the hard gate.
@@ -258,6 +273,13 @@ The character's response to music: an episode of Natural's `sway` idle act, whic
 **Code:** `packages/stage-shared/src/music/index.ts` `advanceMusic`, `nextMusicDeadline`, `MUSIC_SETTLE_MS`, `MUSIC_RELEASE_MS`; `packages/stage-ui/src/composables/performance/mind-music.ts` `MindMusic`; `packages/character-mind/src/music.ts` `answerMusic`, `MindState.music`; `packages/motion-driver-natural/src/idle-schedule.ts` `IdleContext`, `idleActivityWeights`; `packages/motion-driver-natural/src/idle-activities.ts` `NaturalIdleActivities` `grooveLock`, `groovePhase`.
 **Not to be confused with:** beat sync, which moves the Live2D head on each beat under Universal and MAGIC; and the sway emotion gesture.
 **Avoid:** "dance" (an MMD clip kind), "music mode". The act kind keeps the name `sway`.
+
+### Hard volume
+
+An obstacle of the [body model](#body-model) on the hips or a spine bone, from the hips to the shoulders, or on a thigh: her body, her rigid clothing, and flesh on simulated bones. The performer's corrector keeps the arms out of the hard volumes, and the resting arm always clears them. The head and the neck have no hard volume: there the corrector clears the author's kinematic rigid bodies.
+
+**Code:** `packages/motion-driver-humanoid/src/body-model/contracts.ts` `BodyModel.volumes`; `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyCollider`.
+**Not to be confused with:** a touch collider, which is an authored rigid body used as a hit target; and the author's head and neck bodies, which the arms clear beside the hard volumes and which no mesh fit made.
 
 ### Hide list
 
@@ -515,6 +537,13 @@ The stage-contract rules for what a reply looks like: spoken and short unless th
 **Code:** `packages/stage-shared/src/stage-contract/index.ts` `STAGE_CONTRACT_KEYS` (key `response`, the locale string `base.prompt.response`), `REPLY_MAX_TOKENS`.
 **Not to be confused with:** the register section of the character prompt, which decides whether she talks or texts.
 **Avoid:** "response format", "output style".
+
+### Rest clearance
+
+The abduction at which a resting arm clears the [hard volumes](#hard-volume) and, within bounds, the [garments](#garment) of the [body model](#body-model). It is solved once at load, per arm, and reported with what limited it. It reaches the performer as a trait of the rig, so the arm rests there, the corrector fits its proxies to that rest, and every arm form starts from it.
+
+**Code:** `packages/motion-driver-humanoid/src/body-model/rest.ts` `solveRest`; `BodyModel.rest`; `packages/motion-driver-humanoid/src/performance/contracts.ts` `BodyArmTraits.restAbduct`.
+**Avoid:** "hang solver", which named the removed runtime solver.
 
 ### Return
 
