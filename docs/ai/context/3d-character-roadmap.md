@@ -55,7 +55,7 @@ Since PR 32, Natural's idle draw is the only idle scheduler. It also starts the 
 
 Outside the milestone order, PR 32 (`luke/feat/natural-mmd-motion`) replaced the MMD body's separate rest pose and weight shift with the [whole-body performer](../adr/2026-11-11-whole-body-performer.md) in `motion-driver-humanoid/performance`. One layer stack poses the body for speech gestures, emotions, cues, reactions, idle acts, and the clip-free rest and doze. The walk drives the arms from the trunk's twist, each arm with its own drifting lag, and varies each stride by a sourced amount. Since the [natural walk refit](../adr/2026-11-23-natural-walk-refit.md) a walk turns while it steps off and while it brakes, and its arm swing reaches the arm followers through their inverse.
 
-The idle acts include a two-hand clasp, a heel raise on a toe-down foot pitch, an arm-swing finger flick, and a hair tuck sized from ANSUR II. A capability gate keeps Natural from drawing an act that a rig cannot perform. On the ten test rigs every pair of arms reaches the clasp, one hand over the other, and all but Lucilla's and Sigrika's reach the hair tuck.
+The idle acts include a two-hand clasp, a heel raise on a toe-down foot pitch, an arm-swing finger flick, and a hair tuck sized from ANSUR II. A capability gate keeps Natural from drawing an act that a rig cannot perform. On the 32 library rigs, measured over six seeds on 2026-11-25 against the body model's volumes and the author's head and neck bodies, every pair of arms reaches the clasp, one hand over the other, except Bronya's and that of Chisa in her swimsuit, and 27 rigs reach the hair tuck: all but both Lucilla forms, Sigrika and two Remielle variants. The [body model ADR](../adr/2026-11-25-body-model.md) has the comparison with the author's bodies alone.
 
 Headless QA runs the real MMD adapter in Node: `pnpm qa:motion3d` makes seeded runs and run diffs, and `pnpm lab:motion3d` holds the [body motion quality gate](../adr/2026-11-11-body-motion-quality-gate.md), topic reports, clips, a run matrix, and sealed fault injection. Status: feature-complete; motion feel is not tuned yet. The decisions taken during the work are recorded in the amendments of the idle agency and whole-body performer ADRs.
 
@@ -76,6 +76,12 @@ Scores prove direction, size relative to the recipe, release, and detectability 
 ## Natural pep (2026-11-24)
 
 Outside the milestone order, the [Natural pep ADR](../adr/2026-11-24-natural-pep.md) gives each card a `pep` value from 0 to 1. Pep adds an input-driven upper-body sway and livelier eyes to Natural on Live2D and MMD; on MMD the trunk takes a third of the sway's roll and the legs stay planted. Pep 0 is the Natural of before, and `qa:motion3d diff` prints `IDENTICAL` on all 12 scenarios. `pnpm lab:natural` measures the motion against reference bands. Open: the visual review listed in the plan (`.omo/plans/natural-pep.md`, section 6), a livelier groove, and whether any card starts above 0.
+
+## Body model (2026-11-25)
+
+Outside the milestone order, the [body model ADR](../adr/2026-11-25-body-model.md) replaced the author's rigid bodies as the description of her body from the hips to the shoulders and on the thighs. `motion-driver-humanoid` builds a renderer-neutral body model from the mesh and its skin weights: hard volumes, garments, limb radii and each arm's rest clearance. The MMD arm guard reads its volumes, and each arm's rest clearance is a trait of the rig that the performer rests at. On the 32 library rigs, 11 of the 14 that rested an arm inside a coat or skirt on `main` no longer do. Aria's two forms and Nicole stay pierced, and gesture paths still cross garments. The head and the neck keep the author's bodies, so the face-touch gestures reach what they reach on `main`. The resting arm carriage is not visually reviewed.
+
+Later readers of the model wait for their milestones: the VRM adapter (M5) fills the same `BodyMeshSource`, and props and terrain contact (M4) read the hard volumes as her surface. A head fitted to the mesh, with a skull, a jaw and a face, is a reader of its own: one sphere on the head lost the hair tuck on 8 rigs. The [body model plan](../../../.omo/plans/body-model.md) lists them.
 
 ## Open across milestones
 
