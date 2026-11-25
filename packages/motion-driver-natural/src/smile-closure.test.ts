@@ -30,6 +30,13 @@ describe('natural closed-eye smile', () => {
     }
   })
 
+  it('starts nothing at pep 0 when the drawn threshold is exactly 0', () => {
+    const closure = new NaturalSmileClosure(() => 0, dt)
+    for (let i = 0; i < 120; i++)
+      expect(closure.step({ pep: 0, valence: 1, blocked: false })).toEqual({ eyeSmile: 0, lidClose: 0 })
+    expect(closure.startCount + closure.dropCount).toBe(0)
+  })
+
   it('closes about six times a minute at pep 1 and full valence', () => {
     const { closure, maxLid, maxSmile } = run(2, 1200, () => ({ pep: 1, valence: 0.8, blocked: false }))
     const duePerMinute = (closure.startCount + closure.dropCount) / 20

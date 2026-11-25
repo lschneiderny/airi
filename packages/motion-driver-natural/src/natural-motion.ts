@@ -211,6 +211,8 @@ export class NaturalMotion {
   private pep = 0
   private readonly sway: NaturalSwayLayer
   private readonly smile: NaturalSmileClosure
+  /** The closed-eye smile's lid closure at the latest grid step, for `idleLidFactor`. */
+  private smileLidClose = 0
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
@@ -548,12 +550,13 @@ export class NaturalMotion {
   }
 
   /**
-   * The part of the frame's `blinkFactor` that idle behaviour closes on purpose (sleep, a stretch, a yawn, a nod-off),
-   * at the latest grid step: 1 open, 0 closed. A renderer whose blinks are switched off applies it in place of the
-   * blink factor. It stays outside the frame so recorded frames keep their shape.
+   * The part of the frame's `blinkFactor` that she closes on purpose (sleep, a stretch, a yawn, a nod-off, and pep's
+   * closed-eye smile), at the latest grid step: 1 open, 0 closed. A renderer whose blinks are switched off applies it
+   * in place of the blink factor. It stays outside the frame so recorded frames keep their shape.
    */
   get idleLidFactor(): number {
-    return this.idleLayer.contributing ? 1 - this.idleLayer.output.lidClose : 1
+    const idle = this.idleLayer.contributing ? 1 - this.idleLayer.output.lidClose : 1
+    return this.smileLidClose !== 0 ? idle * (1 - this.smileLidClose) : idle
   }
 
   /**
@@ -1199,6 +1202,7 @@ export class NaturalMotion {
     })
     if (smile.eyeSmile !== 0)
       face.eyeSmile += smile.eyeSmile
+    this.smileLidClose = smile.lidClose
     return {
       head,
       compensationHead,

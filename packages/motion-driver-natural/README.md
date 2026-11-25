@@ -227,7 +227,7 @@ const { seq, behaviour } = motion.idleState
   replaces the running act when a drawn activity could start too. A requested
   sleep ends after 24 s.
 - `motion.idleLidFactor` is the part of the frame's `blinkFactor` that a
-  behaviour closes on purpose. A renderer whose blinks are switched off applies
+  behaviour or pep's closed-eye smile closes on purpose. A renderer whose blinks are switched off applies
   it alone. It is not a frame field, so recorded frames keep their shape.
 - `idleState.seq` increments at every start. `IdleBehaviourReports` turns
   per-frame reads of it into start and end reports; both renderer adapters use

@@ -122,6 +122,25 @@ describe('natural pep', () => {
     expect(error).toBeLessThan(1e-10)
   }, 30_000)
 
+  it('carries the closed-eye smile in the idle lid factor, for a renderer whose blinks are switched off', () => {
+    const lowest = (pep: number) => {
+      const motion = new NaturalMotion({ seed: 7 })
+      motion.setPep(pep, 0)
+      motion.setPerformance(idle, 0.5, 0)
+      let min = 1
+      for (let i = 0; i <= 120 * 60; i++) {
+        const time = i / 60
+        if (time % 20 === 0)
+          motion.addMood({ id: `dose-${time}`, valence: 0.6, arousal: 0.3, tension: 0 }, time)
+        motion.advance(time)
+        min = Math.min(min, motion.idleLidFactor)
+      }
+      return min
+    }
+    expect(lowest(0)).toBe(1)
+    expect(lowest(1)).toBeLessThan(0.3)
+  })
+
   it('raises the blink rate at pep 1', () => {
     const calm = blinksPerMinute(0)
     const peppy = blinksPerMinute(1)
