@@ -56,6 +56,8 @@ export class Motion3dCueDriver {
     private readonly legLength: number,
     private readonly event: (event: MotionTraceEvent) => void,
     private readonly clip: Motion3dClipControl | null = null,
+    /** Asks the run's character mind to play an idle act by name, as the motion lab's buttons do in the app. */
+    private readonly idlePlay: ((act: Extract<Motion3dCue, { kind: 'idle-play' }>['act']) => void) | null = null,
   ) {}
 
   get voice(): NaturalMotionVoice { return this.currentVoice }
@@ -151,6 +153,12 @@ export class Motion3dCueDriver {
         this.event({ t, kind: 'marker', label: cue.target ? `chat:show${cue.unfold ? ':unfold' : ''}` : 'chat:hide' })
         return
       }
+      case 'idle-play':
+        if (!this.idlePlay)
+          throw new TypeError('idle-play needs the runner\'s character mind')
+        this.idlePlay(cue.act)
+        this.event({ t, kind: 'marker', label: `play:${cue.act}` })
+        return
       case 'clip-claim':
       case 'clip-release':
         if (!this.clip)
