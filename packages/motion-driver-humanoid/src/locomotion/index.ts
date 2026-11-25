@@ -297,8 +297,8 @@ const brakeTurnSteps = 1.6
  * rigs. Judged on the reference rig's walk scenario (2026-11-24): before, she stood 0.7 s and faced the viewer 2.2 s
  * between the two directions; now 0.2 s and 0.2 s. Over 2.0 steps in one minimum-jerk sweep the brake foot's stance saw
  * her turn 147 degrees, so it stood up to 97 degrees off her facing and read as a swivel (independent visual audit,
- * 2026-11-25). Over 2.8 steps with ramps of `reverseRampShare` she turns at most 110 degrees over any stance of 1.2
- * steps, so a foot set at its middle stays within 55 degrees of her facing (`plantedYawLimit`).
+ * 2026-11-25). Over 2.8 steps with the ramps of `reverseRampUp` and `reverseRampDown` she turns at most 110 degrees
+ * over any stance of 1.2 steps, so a foot set at its middle stays within 55 degrees of her facing (`plantedYawLimit`).
  */
 const reverseTurnSteps = 2.8
 /**
@@ -309,8 +309,14 @@ const reverseTurnSteps = 2.8
  */
 const reverseLookLead = 0.8
 const reverseLookShare = 1
-/** Share of a reversal's turn over which its rate ramps up, and again down (`cruise`); its peak rate is 1.43 times its mean. */
-const reverseRampShare = 0.3
+/**
+ * Shares of a reversal's turn over which its rate ramps up, and down (`cruise`); its peak rate is 1.43 times its mean.
+ * The turn sets in with the brake and eases out over the new heading, so it is half done at 40 percent of its span,
+ * 0.28 step sooner than with ramps of 0.3 each. Those put the half turn at the stop, and `walk-form` `turns-under-way`
+ * found her under 0.05 L/s there on the reference rig and two others (2026-11-25); now on one of the three.
+ */
+const reverseRampUp = 0.1
+const reverseRampDown = 0.5
 /**
  * A reversal's outgoing step lands at least this many leg lengths ahead of the planted foot along the new heading. At the
  * stop it landed beside the brake foot, 0.05 to 0.07 L away along the new heading, so the ankles stacked; 0.2 L, a third
@@ -549,20 +555,20 @@ function cycloid(progress: number) {
 }
 
 /**
- * Share of a move at progress `u` that ramps its rate up over the first `ramp` of the move along a smoothstep, holds it
- * and ramps it down over the last `ramp`: a minimum-jerk move's rate peaks at 1.875 times its mean, this one's at
- * 1 / (1 - ramp) times.
+ * Share of a move at progress `u` that ramps its rate up over the first `up` of the move along a smoothstep, holds it
+ * and ramps it down over the last `down`: a minimum-jerk move's rate peaks at 1.875 times its mean, this one's at
+ * 1 / (1 - (up + down) / 2) times.
  */
-function cruise(u: number, ramp: number) {
-  const rate = 1 / (1 - ramp)
+function cruise(u: number, up: number, down: number) {
+  const rate = 1 / (1 - (up + down) / 2)
   // The integral of a smoothstep from 0 to x, per unit of ramp: x^3 - x^4 / 2.
   const rise = (x: number) => x ** 3 - x ** 4 / 2
   const t = clamp(u, 0, 1)
-  if (t < ramp)
-    return rate * ramp * rise(t / ramp)
-  if (t > 1 - ramp)
-    return 1 - rate * ramp * rise((1 - t) / ramp)
-  return rate * (ramp / 2 + t - ramp)
+  if (t < up)
+    return rate * up * rise(t / up)
+  if (t > 1 - down)
+    return 1 - rate * down * rise((1 - t) / down)
+  return rate * (up / 2 + t - up)
 }
 
 /** Share of a swing's travel at progress `u`: the speed rises at once, peaks at two thirds and stops at touchdown. */
@@ -1391,7 +1397,7 @@ class Locomotion {
     const share = stance
       ? stance.share * minJerk(clamp((phase - plan.fromPhase) / (stance.endPhase - plan.fromPhase), 0, 1))
       + (1 - stance.share) * minJerk(clamp((phase - stance.secondFrom) / (plan.toPhase - stance.secondFrom), 0, 1))
-      : plan.reversal ? cruise(u, reverseRampShare) : minJerk(u)
+      : plan.reversal ? cruise(u, reverseRampUp, reverseRampDown) : minJerk(u)
     // Minimum jerk between the facings, plus the rate the turn starts at, which dies out as (1 - u)^2.
     return plan.from + (plan.to - plan.from) * share + plan.startRate * span * u * (1 - u) ** 2
   }
@@ -1421,10 +1427,44 @@ class Locomotion {
 
   /**
    * A reversal's turn to `facing`, the heading behind her, through the viewer and unwrapped, over `reverseTurnSteps`;
-   * its gaze runs `reverseLookLead` steps ahead.
+   * its gaze runs `reverseLookLead` steps ahead. A foot planted before the goal came, or a swing too far on to plan
+   * again (`replanUntil`), cannot be set for the turn, so the turn waits, if it must, until it would reach
+   * `plantedYawLimit` off that foot no sooner than the foot lifts.
    */
-  private planReverse(facing: number, rate: number): YawPlan {
-    return { from: this.yaw, to: facing, fromPhase: this.phase, toPhase: this.phase + reverseTurnSteps, startRate: this.yawRate / rate, lookLead: reverseLookLead, lookShare: reverseLookShare, reversal: true }
+  private planReverse(facing: number, rate: number, dt: number): YawPlan {
+    const walk = this.walk
+    const turn = facing - this.yaw
+    let fromPhase = this.phase
+    if (walk && Math.abs(turn) > 0) {
+      const swinging = walk.step % 2 === 0 ? walk.firstFoot : opposite(walk.firstFoot)
+      // Each foot's yaw and the phase it lifts at: this step's foot lifts at its double support's end, or, in a swing
+      // past planning, lands and lifts a stance later; the other foot lifts a step after this one.
+      const feet: (readonly [number, number])[] = [[this.feet[opposite(swinging)].yaw, walk.step + 1 + doubleSupport]]
+      if (!this.swing)
+        feet.push([this.feet[swinging].yaw, walk.step + doubleSupport])
+      // The swing's progress when the feet next advance, after this tick's phase step.
+      else if ((this.phase + rate * dt - walk.step - doubleSupport) / (1 - doubleSupport) >= replanUntil)
+        feet.push([this.swing.land.yaw, walk.step + 2 + doubleSupport])
+      for (const [yaw, lift] of feet) {
+        if (lift <= this.phase)
+          continue
+        // The share of the turn she may make before this foot lifts, and the progress at which the turn reaches it.
+        const share = (plantedYawLimit - wrap(this.yaw - yaw) * Math.sign(turn)) / Math.abs(turn)
+        if (share >= 1)
+          continue
+        let low = 0
+        let high = 1
+        for (let i = 0; i < 30; i++) {
+          const middle = (low + high) / 2
+          if (cruise(middle, reverseRampUp, reverseRampDown) < share)
+            low = middle
+          else
+            high = middle
+        }
+        fromPhase = Math.max(fromPhase, lift - low * reverseTurnSteps)
+      }
+    }
+    return { from: this.yaw, to: facing, fromPhase, toPhase: fromPhase + reverseTurnSteps, startRate: this.yawRate / rate, lookLead: reverseLookLead, lookShare: reverseLookShare, reversal: true }
   }
 
   /** A start's share of the acceleration limit at `speed` toward `command`: the speed leaves rest gently. */
@@ -1473,7 +1513,7 @@ class Locomotion {
     // A goal moved behind her during the lead brakes at once, so the turn is planned again over the braking's steps.
     if (!walk.settle && (arriving !== wasArriving || (braking && !wasStopping) || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
       this.yawPlan = reversing
-        ? this.planReverse(facing, rate)
+        ? this.planReverse(facing, rate, dt)
         : this.planYaw(facing, arriving ? braking ? brakeTurnSteps : arriveTurnSteps : departTurnSteps, rate)
       walk.arrivalFacing = arriving ? facing : null
     }

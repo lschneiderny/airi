@@ -196,8 +196,9 @@ describe('sidestep', () => {
     // to turn about each stance hip in turn and a walking foot to finish its turn by 0.7 of the swing. Re-pinned when a
     // reversal came to turn over 2.8 steps at a steady rate, its feet to land within 55 degrees of the facings their
     // stance sweeps, and its outgoing step to lead off 0.2 L ahead. Re-pinned when the chest came to nod 2.5 degrees 0.12
-    // step after the spine, the head 2.5 degrees 0.2 step after it, and the elbow to trail by 0.17 s.
-    expect(hash.digest('hex')).toBe('fbc8c129948c6704fe4744415852c05ade91293f121eeb908c7a1a95704a4f7e')
+    // step after the spine, the head 2.5 degrees 0.2 step after it, and the elbow to trail by 0.17 s. Re-pinned when a
+    // reversal's turn came to ramp up over 0.1 of its span and down over 0.5, and to wait for a foot set before the goal.
+    expect(hash.digest('hex')).toBe('ebe2c0a50e4be8f8a6445a249d40f940c77d35aab95f567d9769c24873684a89')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -1149,6 +1150,24 @@ describe('procedural gait', () => {
     expect(after[setOff]!.root.yaw).toBeLessThan(-10 * rad)
     expect(after.at(-1)!.mode).toBe('walking')
     expect(run.locomotion.leashClamps).toBe(0)
+  })
+
+  it('reversal: wherever in the stride the goal comes, no planted foot stands more than 60 degrees off her facing', () => {
+    // A foot planted before the goal came, or a swing too far on to plan again, keeps the old heading's yaw, so the turn
+    // waits for it; one quick sweep turned 97 degrees over such a foot. The goal comes at eight points of a stride.
+    for (let k = 0; k < 8; k++) {
+      const run = createRun({ x: 0, yaw: Math.PI / 2 })
+      run.advance(4 + k * 0.1, () => ({ goalX: 100, arriveFacing: 0 }))
+      run.advance(4, () => ({ goalX: -60, arriveFacing: 0 }))
+      for (const frame of run.frames) {
+        for (const side of sides) {
+          if (frame.feet[side].planted)
+            expect(Math.abs(wrap(frame.feet[side].target.yaw - frame.root.yaw))).toBeLessThan(60 * rad)
+        }
+      }
+      expect(run.frames.at(-1)!.mode).toBe('walking')
+      expect(run.frames.at(-1)!.root.yaw).toBeCloseTo(-Math.PI / 2, 6)
+    }
   })
 
   it('arrival: a goal that comes while she settles sets off at once', () => {
