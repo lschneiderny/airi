@@ -10,7 +10,7 @@ import { jointPositions } from '../metrics/gait'
 import { runs } from '../metrics/segments'
 import { fixed, ReportUsageError } from './report'
 
-export const WALK_STYLE_VERSION = 2
+export const WALK_STYLE_VERSION = 3
 
 /** How steady straight walking is found; the measures are those of the walk style plan, section 1. */
 const S = {
