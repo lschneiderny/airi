@@ -151,6 +151,22 @@ describe('posture performance', () => {
     }
   })
 
+  it('sets the free heel down in time of its own, so no pitch is left moving when the foot goes flat', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 8, t => ({
+      ...quietInput(t),
+      posture: { amplitude: 0, shiftRate: 0, support: t < 4 ? 1 : -1 },
+    }))
+    // The left heel was up while she stood on the right foot; the swap sets it down.
+    const pitch = trace[c('leftFootPitch')].map(value => -value / DEG)
+    const from = pitch.findIndex((value, i) => i > 480 && value < 0.5)
+    const flat = pitch.findIndex((value, i) => i > from && value < 0.01)
+    // About ln(50) of the follower's 2 Hz: the heel's tail spans several frames instead of ending in one.
+    expect((flat - from) / 120).toBeGreaterThan(0.2)
+    // And it lands on flat, so the foot leaves its ball pivot instead of resting on it with a vanishing pitch.
+    expect(Math.abs(trace[c('leftFootPitch')].at(-1) ?? 1)).toBe(0)
+  })
+
   it('re-settles each hanging arm by a few degrees at a weight shift, and holds it between shifts', () => {
     const shifted = new BodyArms(traits, 3)
     const held = new BodyArms(traits, 3)
