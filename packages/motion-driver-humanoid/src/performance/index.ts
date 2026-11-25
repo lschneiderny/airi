@@ -262,6 +262,8 @@ class BodyPerformer {
     }
     targets.fill(0)
     state.posture.gazeShifting = state.gaze.shifting
+    // The frame still holds the last tick's turn.
+    state.posture.turning = frame.turning
     // The cue layer plays the head cue itself (4b). The emotion modulation (4c) is the previous tick's: the stack runs
     // after the generators, so its tempo, sway, breath depth and sighs reach them one tick later.
     state.posture.suppressHeadCue = stack.plan.suppressHeadCue
@@ -276,7 +278,7 @@ class BodyPerformer {
     state.posture.step(effective, targets)
     state.breath.step(effective, targets)
     this.steadyHead(targets)
-    state.arms.generate(effective, targets, state.posture.shoulderSupport)
+    state.arms.generate(effective, targets, state.posture.shoulderSupport, state.posture.shifts)
     state.gaze.step(effective, targets)
     const gait = input.gait
     if (gait) {
