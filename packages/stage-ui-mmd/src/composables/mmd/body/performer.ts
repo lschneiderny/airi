@@ -202,7 +202,8 @@ function handWrite(calibration: MMDHandCalibration, sigma: 1 | -1, forearm: { x:
  * `MMDBodyPose.bone`; every scratch object is allocated once.
  */
 export class MMDBodyPerformer {
-  readonly capabilities: BodyCapabilities
+  private readonly coreCapabilities: BodyCapabilities
+  private capabilitiesSnapshot: BodyCapabilities | null = null
   /** Turn steps the performer issued since `beginFrame`, for the foot stage. */
   readonly turnSteps: TurnStep[] = []
   /** Foot re-plants the performer issued since `beginFrame`, for the foot stage. */
@@ -309,7 +310,7 @@ export class MMDBodyPerformer {
       }
     }
     this.arms = { left: arm('left'), right: arm('right') }
-    this.capabilities = this.core.step(this.restInput()).capabilities
+    this.coreCapabilities = this.core.step(this.restInput()).capabilities
     this.core.reset()
   }
 
@@ -684,6 +685,15 @@ export class MMDBodyPerformer {
   private carried(local: Quaternion, target: Target, clean: MMDCleanPose): Quaternion {
     const source = this.q2.copy(clean.quaternions[target.index]).normalize()
     return local.premultiply(source).premultiply(this.carry).premultiply(source.invert())
+  }
+
+  /**
+   * The rig's capabilities as plain values, read once. The core searches the clasp and hair-tuck forms the first time
+   * either is read (about a third of a second), so the scene reads this when it loads the rig, and what the diagnostics
+   * broadcast clones in a frame is never the core's lazy object.
+   */
+  get capabilities(): BodyCapabilities {
+    return this.capabilitiesSnapshot ??= { ...this.coreCapabilities }
   }
 
   restChannels(): Float32Array {
