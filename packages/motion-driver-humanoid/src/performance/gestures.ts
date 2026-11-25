@@ -297,6 +297,8 @@ class ArmTrack {
   beatPath = -1
   /** Seconds of speech the arm has waited at its ready key with no stroke leaving; too long, and it lets go (`RISE`). */
   waited = 0
+  /** Whether the arm has risen from rest and not stroked since: a two-hand phrase's beat takes it along (`perform`). */
+  silent = false
   readonly key = pose()
   /** Where the hair tuck's reach passes between the rest arm and its key (`GestureKeys.tuckVia`). */
   readonly tuckVia = pose()
@@ -640,6 +642,7 @@ class ArmTrack {
     this.floatSign = 1
     this.beatPath = -1
     this.waited = 0
+    this.silent = false
   }
 }
 
@@ -1040,7 +1043,8 @@ class GesturePerformer {
     const { input } = context
     const unit = this.unit
     const current = this.phrase
-    if (!current || this.phrases() < retractShare(unit.drive)) {
+    // A unit that has played its last stroke lowers its hands: a new phrase would raise a hand with nothing to stroke (`RISE`).
+    if (!current || unit.strokes >= TIMING.unitStrokes || this.phrases() < retractShare(unit.drive)) {
       this.retract(context, now, false)
       return
     }
@@ -1222,8 +1226,9 @@ class GesturePerformer {
     const size = gestureGain(drive) * GESTURE_FORMS[form].scale * amplitude
     const lagging = this.tracks[lead === 'left' ? 'right' : 'left']
     // A hand that joined at a phrase change may still be on its way from rest: it joins the strokes once prepared, so
-    // a two-hand stroke keeps its second hand's lag.
-    const both = unit.twoHand && GESTURE_FORMS[form].hands !== 'one' && this.strokeReady(lagging, now, seconds)
+    // a two-hand stroke keeps its second hand's lag. A hand that has not stroked since it rose also takes a beat (`RISE`).
+    const takes = GESTURE_FORMS[form].hands !== 'one' || (form === 'beat' && lagging.silent)
+    const both = unit.twoHand && takes && this.strokeReady(lagging, now, seconds)
     const performed = this.strokeTrack(leadTrack, context, now, form, size)
     if (!performed)
       return
@@ -1303,6 +1308,7 @@ class GesturePerformer {
       }
       if (candidate === 'beat')
         track.beatPath = beatPath
+      track.silent = false
       track.key.set(track.drift)
       for (let j = 2; j <= 5; j++)
         track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
@@ -1554,6 +1560,7 @@ class GesturePerformer {
     track.weight = 1
     track.exitSeconds = TIMING.exit
     track.dropAt = Infinity
+    track.silent = true
     // A hand joining at a phrase change may have written its last tick already; its target starts from home this tick.
     track.write()
   }
