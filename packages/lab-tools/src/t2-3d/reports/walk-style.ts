@@ -1,10 +1,10 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import type { Vec3 } from '../metrics'
+import type { Quat, Vec3 } from '../metrics'
 import type { LoadedRun } from './report'
 
 import { MOTION_TRACE_CHANNELS } from '@proj-airi/motion-driver-humanoid/motion-trace'
-import { DEG, HZ, mean, median, norm, sub } from '@proj-airi/qa-tools/t2-3d/metrics/math'
+import { add, conjugate, DEG, dot, HZ, mean, median, multiply, norm, scale, sub } from '@proj-airi/qa-tools/t2-3d/metrics/math'
 
 import { jointPositions } from '../metrics/gait'
 import { runs } from '../metrics/segments'
@@ -30,11 +30,13 @@ const S = {
   stance: [0.3, 1.2],
 } as const
 
-export const WALK_STYLE_KEYS = ['speed', 'cadence', 'step', 'bounce', 'pelvisTwist', 'shoulderTwist', 'pelvisList', 'width', 'armSwing', 'elbow', 'trunk', 'head', 'lift', 'kneeSwing'] as const
+export const WALK_STYLE_KEYS = ['speed', 'cadence', 'step', 'bounce', 'pelvisTwist', 'shoulderTwist', 'pelvisList', 'width', 'armSwing', 'elbow', 'trunk', 'head', 'lift', 'kneeSwing', 'wrist', 'wristMove', 'roll', 'index', 'little'] as const
 export type WalkStyleKey = typeof WALK_STYLE_KEYS[number]
 export type WalkStyleMeasures = Readonly<Record<WalkStyleKey, number | null>>
 
 const SET1 = 'Bandai Namco Research Motiondataset 1, walk styles (CC BY-NC 4.0), plan walk-style.md section 1'
+const ACTED_HANDS = 'Bandai Namco Research Motiondataset 1 and 2, one straight walk clip per style (CC BY-NC 4.0), plan arm-hand-motion.md section 1.2'
+const AUTHORED_HANDS = '73 authored MMD walk and run VMD files from five packs of the VPVP wiki motion list, plan arm-hand-motion.md section 1.3'
 
 /**
  * Each measure, its unit and the human range it is printed beside: the smallest and largest style value over acted
@@ -55,6 +57,11 @@ export const WALK_STYLE_MEASURES: Readonly<Record<WalkStyleKey, { readonly label
   head: { label: 'head carriage', unit: 'deg', digits: 1, range: [-17, 37], measure: 'mean pitch of the neck-to-head line along the travel heading, positive forward; compare within one source only', source: `${SET1}: proud -17 to tired 37` },
   lift: { label: 'foot lift', unit: 'L', digits: 3, range: [0.13, 0.20], measure: 'P97 - P3 of the ankle height, mean of both feet', source: `${SET1}: sad 0.13 to active 0.20` },
   kneeSwing: { label: 'knee swing', unit: 'deg', digits: 1, range: [70, 79], measure: 'median peak knee flexion from toe-off to the same foot\'s next heel strike', source: 'Bandai Namco Research Motiondataset 2, seven walk styles, plan walk-style.md section 1: 70 to 79' },
+  wrist: { label: 'wrist carriage', unit: 'deg', digits: 1, range: [0, 51], measure: 'mean wrist extension, mean of both arms: the wrist-to-middle-knuckle line\'s angle from the forearm line about the knuckle line (index to little knuckle) taken across the hand, positive toward the back of the hand', source: `${ACTED_HANDS}: masculine 0 to feminine 51; authored walks hold 0 (runs with fists) to 30 (feminine and skip walks), ${AUTHORED_HANDS}` },
+  wristMove: { label: 'wrist in stride', unit: 'deg', digits: 1, range: [5, 30], measure: 'median over strides (one heel strike to the same foot\'s next) of the wrist extension\'s range, mean of both arms', source: `${ACTED_HANDS}: 8 to 15 in normal walks, up to 30 in happy and feminine walks; animated authored walks move it 5 to 13, ${AUTHORED_HANDS}` },
+  roll: { label: 'forearm roll', unit: 'deg', digits: 1, range: [3, 36], measure: 'median over strides of the range of upper-arm twist plus pronation, mean of both arms: the posed forearm\'s turn about the upper arm\'s rest axis plus the hand\'s about the forearm\'s, which is where a rig\'s twist bones put them', source: `${ACTED_HANDS}: sad 3 to youthful 36, 7 to 19 in most styles` },
+  index: { label: 'index curl', unit: 'deg', digits: 1, range: [14, 294], measure: 'mean summed curl of the index finger\'s three joints, mean of both hands, each joint\'s turn about the rest knuckle line from its rest pose, as authored VMD keys are', source: `${AUTHORED_HANDS}: 14 to 17 in model and feminine walks (an open hand), 43 in normal walks, 266 to 294 in fists` },
+  little: { label: 'little curl', unit: 'deg', digits: 1, range: [14, 294], measure: 'as the index curl, for the little finger', source: `${AUTHORED_HANDS}: most walks curl every finger alike, 14 (an open hand) to 294 (a fist); one pack curls the little finger past the index (183 to 248 against 117 to 159)` },
 }
 
 /** Linear-interpolated percentile of sorted samples, as `metrics/gait.ts` reads P5 and P95. */
@@ -69,6 +76,22 @@ const spread = (x: readonly number[], low: number) => x.length ? percentile(x, 1
 const angle = (a: Vec3, b: Vec3) => Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (norm(a) * norm(b) + 1e-12)))) * DEG
 const wrap = (deg: number) => ((deg + 180) % 360 + 360) % 360 - 180
 const mid = (a: Vec3, b: Vec3): Vec3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+const unit = (v: Vec3): Vec3 => scale(v, 1 / (norm(v) + 1e-12))
+const across = (v: Vec3, axis: Vec3): Vec3 => sub(v, scale(axis, dot(v, axis)))
+
+/** Signed angle from `a` to `b` about `axis`, degrees, both projected onto the plane across it. */
+function angleAbout(a: Vec3, b: Vec3, axis: Vec3): number {
+  const n = unit(axis)
+  const pa = across(a, n)
+  const pb = across(b, n)
+  return Math.atan2(dot(cross(pa, pb), n), dot(pa, pb)) * DEG
+}
+
+/** The twist of rotation `q` about `axis` (its swing-twist decomposition), degrees. */
+function twistAbout(q: Quat, axis: Vec3): number {
+  return 2 * Math.atan2(dot([q[0], q[1], q[2]], unit(axis)), q[3]) * DEG
+}
 
 function unwrapDeg(x: readonly number[]): number[] {
   const out: number[] = []
@@ -94,6 +117,82 @@ function extremes(x: readonly number[], half: number, sign: 1 | -1): number[] {
       found.push(i)
   }
   return found
+}
+
+/** One hand's per-frame series, degrees; a series is null when the rig lacks a bone it reads. */
+interface HandReading {
+  /** Wrist extension, positive toward the back of the hand. */
+  readonly extension: ((f: number) => number) | null
+  /** Upper-arm twist plus pronation, positive inward. */
+  readonly roll: ((f: number) => number) | null
+  /** Summed curl of the index finger's three joints, positive toward the palm. */
+  readonly index: ((f: number) => number) | null
+  readonly little: ((f: number) => number) | null
+}
+
+/**
+ * One hand's carriage from the posed trace. The trace records every bone's rotation from its rest pose relative to its
+ * parent column, so the rest pose reads 0 throughout: a finger's curl is its turn from the rig's own rest bend, as an
+ * authored VMD key is, and a rig with twist bones shows its twist on the forearm and hand columns, since the twist bones
+ * sit between them. Signs are mirrored on the right so both sides read alike.
+ */
+function handReading(run: LoadedRun, positions: Readonly<Partial<Record<MotionTraceBone, readonly Vec3[]>>>, side: 'left' | 'right'): HandReading {
+  const rig = run.input.trace.rig
+  const orientations = run.p.orientations
+  const sigma = side === 'left' ? 1 : -1
+  const rest: Partial<Record<MotionTraceBone, Vec3>> = {}
+  rig.bones.forEach((bone, i) => {
+    const parent = rig.parents[i]
+    rest[bone] = parent < 0 ? [0, 0, 0] : add(rest[rig.bones[parent]] ?? [0, 0, 0], rig.restOffsets[i])
+  })
+  /** A bone's rotation relative to its parent column at frame `f`, null when either is missing. */
+  const local = (bone: MotionTraceBone) => {
+    const i = rig.bones.indexOf(bone)
+    const own = orientations[bone]
+    const parent = i < 0 ? undefined : orientations[rig.bones[rig.parents[i]]]
+    return own && parent && rig.parents[i] >= 0 ? (f: number): Quat => multiply(conjugate(parent[f]), own[f]) : null
+  }
+  const offset = (bone: MotionTraceBone) => {
+    const i = rig.bones.indexOf(bone)
+    return i < 0 ? null : rig.restOffsets[i]
+  }
+  const forearm = local(`${side}LowerArm`)
+  const hand = local(`${side}Hand`)
+  const upperAxis = offset(`${side}LowerArm`)
+  const forearmAxis = offset(`${side}Hand`)
+  const wrist = positions[`${side}Hand`]
+  const elbow = positions[`${side}LowerArm`]
+  const middle = positions[`${side}MiddleProximal`]
+  const index = positions[`${side}IndexProximal`]
+  const little = positions[`${side}LittleProximal`]
+  const restIndex = rest[`${side}IndexProximal`]
+  const restLittle = rest[`${side}LittleProximal`]
+  const restMiddle = rest[`${side}MiddleProximal`]
+  const restWrist = rest[`${side}Hand`]
+  // A finger curls about the rest knuckle line's part across the rest hand, as the wrist flexes.
+  const knuckles = restIndex && restLittle && restMiddle && restWrist ? across(sub(restIndex, restLittle), unit(sub(restMiddle, restWrist))) : null
+  const curl = (finger: 'Index' | 'Little') => {
+    const joints = (['Proximal', 'Intermediate', 'Distal'] as const).flatMap((joint) => {
+      const rotation = local(`${side}${finger}${joint}`)
+      return rotation ? [rotation] : []
+    })
+    if (!knuckles || joints.length < 3)
+      return null
+    return (f: number) => joints.reduce((sum, joint) => sum - sigma * twistAbout(joint(f), knuckles), 0)
+  }
+  return {
+    // The wrist flexes about the knuckle line's part across the hand: the little knuckle sits nearer the wrist than the
+    // index's on most hands, which tilts the line itself.
+    extension: wrist && elbow && middle && index && little
+      ? (f) => {
+          const along = sub(middle[f], wrist[f])
+          return sigma * angleAbout(sub(wrist[f], elbow[f]), along, across(sub(index[f], little[f]), unit(along)))
+        }
+      : null,
+    roll: forearm && hand && upperAxis && forearmAxis ? f => sigma * (twistAbout(forearm(f), upperAxis) + twistAbout(hand(f), forearmAxis)) : null,
+    index: curl('Index'),
+    little: curl('Little'),
+  }
 }
 
 export interface WalkStyleReading {
@@ -192,6 +291,8 @@ export function walkStyleReading(run: LoadedRun): WalkStyleReading {
   const bounces: number[] = []
   const widths: number[] = []
   const kneeSwings: number[] = []
+  /** Each foot's strides: one heel strike to the same foot's next, frames, within one span. */
+  const strides: Record<'l' | 'r', { from: number, to: number }[]> = { l: [], r: [] }
   let strikes = 0
   for (const { start, end } of spans) {
     for (let f = start; f < end; f++)
@@ -214,6 +315,8 @@ export function walkStyleReading(run: LoadedRun): WalkStyleReading {
     }
     for (const side of ['l', 'r'] as const) {
       const { strikes: own, toeOffs } = events[side]
+      for (let i = 1; i < own.length; i++)
+        strides[side].push({ from: own[i - 1], to: own[i] })
       for (const a of own) {
         const b = toeOffs.find(x => x > a)
         if (b === undefined || b - a < S.stance[0] * HZ || b - a > S.stance[1] * HZ)
@@ -231,6 +334,22 @@ export function walkStyleReading(run: LoadedRun): WalkStyleReading {
     const r = value('r')
     return l === null || r === null ? null : (l + r) / 2
   }
+  const hands = { l: handReading(run, positions, 'left'), r: handReading(run, positions, 'right') }
+  const handMean = (key: keyof HandReading) => frames.length
+    ? sides((side) => {
+        const series = hands[side][key]
+        return series ? mean(over(series)) : null
+      })
+    : null
+  const inStride = (key: 'extension' | 'roll') => sides((side) => {
+    const series = hands[side][key]
+    if (!series || !strides[side].length)
+      return null
+    return median(strides[side].map(({ from, to }) => {
+      const values = Array.from({ length: to - from + 1 }, (_, k) => series(from + k))
+      return Math.max(...values) - Math.min(...values)
+    }))
+  })
   const speedMean = frames.length ? mean(over(f => speed[f])) : null
   const cadence = stepIntervals.length >= 3 ? 1 / mean(stepIntervals) : null
   const sagittal = (from: readonly Vec3[], to: readonly Vec3[], f: number) => {
@@ -265,6 +384,11 @@ export function walkStyleReading(run: LoadedRun): WalkStyleReading {
       : null,
     lift: sides(side => spread(over(f => J[`${side}ankle`][f][1] / L), 0.03)),
     kneeSwing: kneeSwings.length ? median(kneeSwings) : null,
+    wrist: handMean('extension'),
+    wristMove: inStride('extension'),
+    roll: inStride('roll'),
+    index: handMean('index'),
+    little: handMean('little'),
   }
   const detail = input.trace.source.detail
   const overrides = ['walkStyle', 'mood', 'energy'].flatMap(key => detail[key] === undefined ? [] : [`${key} ${String(detail[key])}`]).join('; ') || 'none'
@@ -304,7 +428,7 @@ export function formatWalkStyle(reading: WalkStyleReading): string {
     ...rows,
     'how each is measured, and the human range\'s source:',
     ...WALK_STYLE_KEYS.map(key => `  ${WALK_STYLE_MEASURES[key].label}: ${WALK_STYLE_MEASURES[key].measure} (${WALK_STYLE_MEASURES[key].source})`),
-    'limits: ranges are the spread of acted styles, one actor per set, not targets; head carriage differs between sources by its rest pose, so compare it within one rig. Measures read the posed trace, not the style\'s inputs.',
+    'limits: ranges are the spread of acted styles, one actor per set, not targets; head carriage differs between sources by its rest pose, so compare it within one rig. Finger curl counts from the rig\'s own rest bend, which differs by rig as an authored file\'s does, so compare it within one rig too. Measures read the posed trace, not the style\'s inputs.',
   ].join('\n')}\n`
 }
 
