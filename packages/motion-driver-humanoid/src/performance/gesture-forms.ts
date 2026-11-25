@@ -586,7 +586,9 @@ export class GestureKeys {
     }
     pairs.sort((a, b) => Number(b.facing) - Number(a.facing) || a.change - b.change)
     for (const { touch, sweep } of pairs) {
-      if (this.deepest(side, sweep, touch, KEY_HEADROOM) !== null)
+      // The arm travels from touch to sweep while still settling on the touch and swings past the sweep as it lands,
+      // so the path keeps the key's headroom and the sweep keeps twice it.
+      if (this.deepest(side, sweep, touch, 2 * KEY_HEADROOM, KEY_HEADROOM) !== null)
         continue
       this.tucked.set(`${side}:hair-touch`, touch.slice(2, 9))
       this.tucked.set(`${side}:hair-sweep`, sweep.slice(2, 9))
@@ -843,11 +845,11 @@ export class GestureKeys {
    * The outward normal at the deepest contact of `pose` or of the path to it from `from`, and whether that sample is on
    * the forearm and hand, or null when all is clear.
    */
-  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0): { nx: number, ny: number, nz: number, forearm: boolean } | null {
+  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0, pathHeadroom = 0): { nx: number, ny: number, nz: number, forearm: boolean } | null {
     let best: { depth: number, nx: number, ny: number, nz: number, forearm: boolean } | null = null
     for (let sample = from ? 0 : PATH_SAMPLES; sample <= PATH_SAMPLES; sample++) {
       this.load(side, from ?? pose, pose, sample / PATH_SAMPLES)
-      const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : 0)
+      const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : pathHeadroom)
       if (d.depth > 0 && (!best || d.depth > best.depth))
         best = { depth: d.depth, nx: d.nx, ny: d.ny, nz: d.nz, forearm: d.forearm }
     }
