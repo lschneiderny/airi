@@ -312,6 +312,19 @@ const reverseLookShare = 1
  * comfortable neck turn.
  */
 const lookLeadMax = 40 * radians
+/**
+ * A start from standing turns over this many steps instead of `departTurnSteps`, and its gaze runs `standingLookLead`
+ * steps ahead of the turn, ramped in over the preparation. Over 2.4 steps her hips had turned 23 degrees of a quarter
+ * turn when the first foot struck and her head 30, so the first step read as a foot reaching sideways from a body still
+ * square to the viewer (reference rig, walk scenario, 2026-11-24). The head starts the turn before the feet do: walking
+ * adults turn the head toward a new direction of travel before the body follows (Grasso, Glasauer, Takei and Berthoz
+ * 1996, NeuroReport 7:1170). Now the hips stand 35 degrees round at the first strike and the head 74 on three rigs. Over
+ * 1.8 steps the standing foot stood 61 degrees off her facing before it lifted, past the 60 a planted foot may. The
+ * quarter-turn capture of the walk refit turns while already walking and holds no start from standing, so these two
+ * are judged on the stills.
+ */
+const standingTurnSteps = 2.0
+const standingLookLead = 0.5
 /** A start that must turn further than this first turns the excess on the spot, so she never sets off backwards. */
 const mergedTurnMax = 100 * radians
 const mergedTurn = 90 * radians
@@ -1250,8 +1263,11 @@ class Locomotion {
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
     this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, startRoll: 0.5, arrived: false, settle: null, arrivalFacing: null, stopping: false }
+    // From standing the turn is quicker and the gaze leads it; a start that carries an on-spot turn's yaw rate keeps
+    // the walking turn's pace.
+    const standing = Math.abs(this.yawRate) <= turnTolerance
     this.yawPlan = Math.abs(turn) > turnTolerance
-      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate, lookLead: 0, lookShare: lookLeadShare }
+      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + (standing ? standingTurnSteps : departTurnSteps), startRate: this.yawRate / minRate, lookLead: standing ? standingLookLead : 0, lookShare: lookLeadShare }
       : null
     if (sidestep) {
       this.walk.sidestep = {
@@ -1650,7 +1666,9 @@ class Locomotion {
    * `lookLead` steps early, and at most `lookLeadMax` ahead of her facing.
    */
   private planLookAhead(plan: YawPlan): number {
-    const u = clamp((this.phase + plan.lookLead - plan.fromPhase) / (plan.toPhase - plan.fromPhase), 0, 1)
+    // A start's lead ramps in over the preparation, so the gaze leaves her facing at rest.
+    const ready = this.walk ? smoothstep(this.walk.preparation / preparationDuration) : 1
+    const u = clamp((this.phase + plan.lookLead * ready - plan.fromPhase) / (plan.toPhase - plan.fromPhase), 0, 1)
     const look = plan.from + (plan.to - plan.from) * minJerk(Math.min(1, u / plan.lookShare))
     return this.yaw + clamp(look - this.yaw, -lookLeadMax, lookLeadMax)
   }

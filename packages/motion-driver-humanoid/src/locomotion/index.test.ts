@@ -190,8 +190,9 @@ describe('sidestep', () => {
     // gained `armSwing.wristFlex` and `handCurl` (hand carriage) and then the arm's `twist` and `pronation` (forearm
     // roll): without those keys the frames hash as before. Re-pinned again when a goal behind her became a reversal
     // through the stop, a goal during the settle started her at once, the turn lean came to scale with speed, and the gaze
-    // came to lead her facing by at most 40 degrees.
-    expect(hash.digest('hex')).toBe('db320969017c0ddbfb93f4217661a7e83b70df13334ebf6244e9ab89fcc63424')
+    // came to lead her facing by at most 40 degrees. Re-pinned when a start from standing came to turn over 2 steps with its
+    // gaze half a step ahead.
+    expect(hash.digest('hex')).toBe('1eac0f4c36c4e6d96b998bbc5bc9c41fc72f537d54de30c0c05b8e145f8758bf')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -804,12 +805,27 @@ describe('procedural gait', () => {
     }
     expect(lead).toBeGreaterThan(25 * rad)
     expect(lead).toBeLessThan(45 * rad)
+    // Re-pinned from 3 degrees a tick when a start from standing came to turn over 2 steps with its gaze half a step ahead,
+    // ramped in over the 0.22 s preparation: the sweep stays a pursuit, under the 4 degrees a tick that the gaze reads as
+    // a new shift.
     const rates = run.frames.slice(1, done).map((frame, tick) => Math.abs(frame.lookAhead - (run.frames[tick]?.lookAhead ?? 0)))
-    expect(Math.max(...rates)).toBeLessThan(3 * rad)
+    expect(Math.max(...rates)).toBeLessThan(3.5 * rad)
     const walking = run.frames.slice(done).filter(frame => frame.mode === 'walking')
     expect(walking.length).toBeGreaterThan(50)
     for (const frame of walking)
       expect(frame.lookAhead - frame.root.yaw).toBeCloseTo(0, 12)
+  })
+
+  it('start: from standing the gaze leaves before the first foot, which lands with her body turned toward travel', () => {
+    const run = createRun({ x: 0, yaw: 0 })
+    run.advance(2, () => ({ goalX: -60, arriveFacing: 0 }))
+    const lift = run.frames.find(frame => frame.events.some(event => event.kind === 'liftOff'))!
+    const strike = run.frames.find(frame => frame.events.some(event => event.kind === 'heelStrike'))!
+    // The body still faces the viewer as the first foot lifts, and the gaze is already well on its way.
+    expect(Math.abs(lift.root.yaw)).toBeLessThan(2 * rad)
+    expect(lift.root.yaw - lift.lookAhead).toBeGreaterThan(30 * rad)
+    // Over 2.4 steps the body had turned 25 degrees of the quarter turn at the first strike; now more than 35.
+    expect(strike.root.yaw).toBeLessThan(-35 * rad)
   })
 
   it('look ahead: a turn-around sweeps to its final facing over every step but the last', () => {
