@@ -180,7 +180,7 @@ A new arrival facing during braking changes the target from the current yaw and 
 a walk is a reversal instead: from the first braking tick the body turns toward the new heading through the viewer over
 2.8 steps at a steady rate, half done at 40 percent of them, without turning sooner than a foot set before the goal can
 bear; its first step past the viewer lands at least 0.2 L ahead of the planted foot along the new
-heading, and once that step lands the same walk sets off the other way with the turn still under way, without a
+heading, but no more than 0.35 L ahead of the standing root, and once that step lands the same walk sets off the other way with the turn still under way, without a
 settle or a turn on the spot. Its gaze runs 0.8 step ahead of the turn, so the eyes and head leave first. A goal that
 comes during the settle starts a new walk at once. The look-ahead of every turn stays within 40 degrees of her facing,
 and the trunk's lean into a turn scales with the speed. Each foot lands

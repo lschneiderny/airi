@@ -324,6 +324,13 @@ const reverseRampDown = 0.5
  */
 const outgoingLead = 0.2
 /**
+ * The furthest, in leg lengths, the outgoing step leads off ahead of the standing root. An angry walk stopped with the
+ * planted foot 0.27 L ahead of the root along the new heading, and a step 0.2 L past it lost its IK target from 0.44 L
+ * ahead of the root on the reference rig (feet error 0.135, 2026-11-25). 0.35 L keeps 0.09 L from that and leaves the
+ * unit fixture's step, whose planted foot stands 0.13 L ahead of the root, its full lead.
+ */
+const outgoingReach = 0.35
+/**
  * The look-ahead leads her facing by at most this much: walking adults turning a quarter turn carry the head up to 39
  * degrees ahead of the body (natural walk refit ADR). A reversal's lead would otherwise reach 80 degrees, past a
  * comfortable neck turn.
@@ -1766,12 +1773,15 @@ class Locomotion {
       yaw,
     }
     // A reversal's first step past the viewer leads off the other way: it lands at least `outgoingLead` ahead of the
-    // planted foot along the new heading, so the weight visibly moves onto it.
+    // planted foot along the new heading, so the weight visibly moves onto it, but no more than `outgoingReach` ahead of
+    // the root, which still stands.
     const plan = this.yawPlan
     if (plan?.reversal && Math.cos(plan.to - walk.heading) < 0 && (facing - (plan.from + plan.to) / 2) * Math.sign(plan.to - plan.from) > 0) {
       const other = this.feet[opposite(foot)].position
-      const ahead = (land.position.x - other.x) * Math.sin(plan.to) + (land.position.z - other.z) * Math.cos(plan.to)
-      const short = Math.max(0, outgoingLead * this.traits.legLength - ahead)
+      const along = (point: { x: number, z: number }) => point.x * Math.sin(plan.to) + point.z * Math.cos(plan.to)
+      const ahead = along(land.position) - along(other)
+      const room = outgoingReach * this.traits.legLength - (along(land.position) - along({ x: rootX, z: this.z }))
+      const short = Math.max(0, Math.min(outgoingLead * this.traits.legLength - ahead, room))
       land.position.x += Math.sin(plan.to) * short
       land.position.z += Math.cos(plan.to) * short
     }
