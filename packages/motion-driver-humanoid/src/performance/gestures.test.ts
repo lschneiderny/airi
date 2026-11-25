@@ -825,8 +825,9 @@ describe('co-speech gestures', () => {
     for (const hand of hands) {
       expect(Math.abs(hand.wrist.y - height) / length).toBeLessThan(0.02)
       expect(hand.wrist.z).toBeGreaterThan(rig.hips.z)
-      // The palm faces the body.
-      expect(hand.palm).toBeLessThan(-0.99)
+      // The palm faces the body, rolled toward the other hand by at most the clasp's 30 degrees (re-pinned from flat
+      // to the body: a hand held flat met the other in a V on six rigs).
+      expect(hand.palm).toBeLessThan(-Math.cos(30 * DEG) + 1e-6)
     }
     expect(Math.abs((left.wrist.x + right.wrist.x) / 2 - rig.hips.x) / length).toBeLessThan(0.02)
     // The hands cross the midline, each past the other's wrist side, and the right one lies a hand's thickness in front.

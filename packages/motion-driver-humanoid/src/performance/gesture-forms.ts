@@ -139,9 +139,12 @@ const HAND_RADIUS = 0.15
  * The clasp's wrists, hand lengths out from the hips' midline: from half a hand (the hands overlap whole) out to
  * `out` (the fingers still overlap by a fifth of a hand) in `outStep` steps. The right hand lies `layer` of the forearm
  * in front of the left one: a hand's thickness, the corrector's hand capsule radius less its margin (`HAND_RADIUS`).
- * Both hands point across the body, tilted down from level by as little as the wrists allow, up to `tilt`.
+ * Both hands point across the body, tilted down from level by as little as the wrists allow, up to `tilt`, the palms
+ * rolled from facing the body by as little as the wrists allow, up to `roll`: with the palms held flat to the body the
+ * wrists ran out of deviation on most rigs, which then clasped at the widest spacing, the hands meeting tip to tip in a
+ * V.
  */
-const CLASP = { out: 0.9, outStep: 0.1, layer: 0.12, tilt: 60 * DEG, tiltStep: 15 * DEG } as const
+const CLASP = { out: 0.9, outStep: 0.1, layer: 0.12, tilt: 60 * DEG, tiltStep: 15 * DEG, roll: 30 * DEG } as const
 /**
  * A rig without forearm twist bones holds pronation inside 60 degrees (the performer clamps it there); keys stay 5
  * degrees inside, the active forearm follower's overshoot (zeta 0.7, about 5 % of a 90 degree turn).
@@ -301,9 +304,10 @@ export class GestureKeys {
   /**
    * The clasp (6.3's two-hand contact at the front-low anchor), solved for both arms together so the hands meet: each
    * wrist stands `out` hand lengths to its own side of the hips' midline, from half a hand length (the hands overlap
-   * whole) out to `CLASP.out`, and each hand points across the body past the midline, palm toward the body, turned at
-   * the wrist and tilted down from level by the least of 0, 15, 30, 45 and 60 degrees that both wrists reach. The left hand lies on a plane at the body's surface (the hand point marched in
-   * at each wrist, the outer of the two) and the right one a hand's thickness (`CLASP.layer`) in front of it, so it lies
+   * whole) out to `CLASP.out`, times the tilt's cosine, and each hand points across the body past the midline, palm
+   * toward the body (rolled up to `CLASP.roll`), turned at the wrist and tilted down from level by the least of 0, 15,
+   * 30, 45 and 60 degrees that both wrists reach. The left hand lies on a plane at the body's surface (the hand point
+   * marched in at each wrist, the outer of the two) and the right one a hand's thickness (`CLASP.layer`) in front of it, so it lies
    * over the left; both planes back off together. The first spacing, then back-off step, at which both arms have a key
    * clear of the margin with its path from rest, inside the limits, wins, each by limit margin among swivels; both keys
    * are kept. False without leg joints or without such a pair.
@@ -329,14 +333,19 @@ export class GestureKeys {
     const keys = { left: pose.slice(), right: pose.slice() }
     for (const s of SIDES)
       keys[s].set(this.restArms[s].subarray(0, 2))
+    const tilts = Array.from({ length: Math.round(CLASP.tilt / CLASP.tiltStep) + 1 }, (_, k) => k * CLASP.tiltStep)
     for (let out = 0.5; out <= CLASP.out + 1e-9; out += CLASP.outStep) {
-      const plane = Math.max(surfaceAt(traits.hips.x + out * hand), surfaceAt(traits.hips.x - out * hand))
+      // A tilted pair stands its wrists closer by the tilt's cosine, so the hands overlap across the midline by the same
+      // share of their length as level ones do, rather than meeting tip to tip in a V.
+      const asides = tilts.map(tilt => out * hand * Math.cos(tilt))
+      const planes = asides.map(aside => Math.max(surfaceAt(traits.hips.x + aside), surfaceAt(traits.hips.x - aside)))
       for (let back = 0; back <= ANCHOR.backOff + 1e-9; back += ANCHOR.backOffStep) {
         let solved = false
-        for (let tilt = 0; tilt <= CLASP.tilt + 1e-9 && !solved; tilt += CLASP.tiltStep) {
+        for (let k = 0; k < tilts.length && !solved; k++) {
+          const [tilt, aside, plane] = [tilts[k], asides[k], planes[k]]
           solved = SIDES.every((s) => {
             const sigma = s === 'left' ? 1 : -1
-            const wrist = { x: traits.hips.x + sigma * out * hand, y, z: plane + back * length + (s === 'right' ? CLASP.layer * forearm : 0) }
+            const wrist = { x: traits.hips.x + sigma * aside, y, z: plane + back * length + (s === 'right' ? CLASP.layer * forearm : 0) }
             return this.claspKey(s, wrist, { x: -sigma * Math.cos(tilt), y: -Math.sin(tilt), z: 0 }, palm, keys[s])
           })
         }
@@ -362,7 +371,7 @@ export class GestureKeys {
     let best: Float64Array | null = null
     let margin = LIMIT_MARGIN
     for (let swivel = spec.swivel; swivel <= ANCHOR.swivel + 1e-9; swivel += ANCHOR.swivelStep) {
-      if (!this.solveOnce(side, { ...key, swivel }, pose) || !this.orientHand(side, pose, direction, palm))
+      if (!this.solveOnce(side, { ...key, swivel }, pose) || !this.orientHand(side, pose, direction, palm, CLASP.roll))
         continue
       const inside = this.limitMargin(side, pose)
       if (inside >= margin && this.deepest(side, pose, this.restArms[side]) === null) {
