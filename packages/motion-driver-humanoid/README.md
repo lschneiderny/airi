@@ -693,8 +693,8 @@ The stack supplies smooth entry/exit and inertializes sequence changes.
 Mixed override/additive output supports arm gestures with additive torso
 motion. The context exposes full intent, capabilities, initial rest, the
 previous frame, the merged plan, tick and time. Besides support and gaze, a
-plan may request an emotion arm form (`armForm`, hand to chest or the thinking
-hand, for the gesture layer to hold), `suppressHeadCue`, which hands the
+plan may request an arm form (`armForm`: hand to chest, the thinking hand or
+the hair touch, for the gesture layer to hold), `suppressHeadCue`, which hands the
 head cue to the cue layer, and `suppressHeadEmphasis`, which hands the speech
 emphasis nod to the gesture layers' head beat. A step may also return its `gesture`, `cue`,
 `emotion` or `reaction` report; the frame's diagnostics carry the latest one
@@ -785,16 +785,21 @@ head's shake, 90 ms late. Every term is additive and starts and ends at rest wit
 owned groups receive none.
 
 `createReactionLayer()` (`src/performance/reactions.ts`) adds
-architecture 4d's touch reactions. A body poke flinches the mid torso, pelvis and
-the poked side's shoulder and elbow away from the point (and bends the belly in
-on a low poke) through a 3.5 Hz, 0.45-damped step released after 0.25 s, which
-peaks at 0.16 s and rings once. A poke within Natural's 2 s dedupe window
-flinches at 0.6. A head poke lifts both shoulders and lets the upper torso
-follow 30 % of Natural's head pulse, 90 ms late. A pet drops the shoulders and
-bends the trunk with its level, rolls the trunk toward the hand, pulls the
-support to the hand's side above half level, eases the finger curl, and lets the
-trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). Arm terms yield to an
-arm a gesture layer moves; owned groups receive none. Drag is not realised yet.
+architecture 4d's touch reactions. The stage reports touch `x` from the
+viewer's side, so `+x` is her left. A body poke turns, rolls and shifts the
+trunk away from the point (and bends the belly in on a low poke) through a
+3.5 Hz, 0.45-damped step released after 0.25 s, which peaks at 0.16 s and rings
+once. The poked side's arm guards first (3 Hz, released after 0.6 s) and the far
+arm follows 0.12 s later through a softer response, at 0.35 of the guard for a
+poke fully to one side and equal to it for a central one. A poke within
+Natural's 2 s dedupe window flinches at 0.6. A head poke raises the poked side's
+guard, requests the hair touch on that side for 1.4 s where the rig reaches it,
+and lets the upper torso follow 30 % of Natural's head pulse, 90 ms late. A pet
+drops the shoulders and bends the trunk with its level, rolls the trunk toward
+the hand, pulls the support to the hand's side above half level, eases the
+finger curl, and lets the trunk follow Natural's stroke rock (0.35 upper, 0.18
+mid). Arm terms yield to an arm a gesture layer moves; owned groups receive
+none. Drag is not realised yet.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
 by gait weight, and torso/arm terms add. `armLift` is a host's per-side override
