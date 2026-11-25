@@ -741,9 +741,14 @@ clip-free rest (0.2) and doze (0.1) set it.
 
 `createEmotionLayer()` (`src/performance/emotions.ts`) is the additive emotion
 posture layer of architecture 4c. Each emotion
-in `BODY_EMOTIONS` adds a trunk, shoulder, elbow, pelvis and hand posture at the
-weight `held.level x held.strength`, or at an unheld pulse's intensity, through
-its own second-order response (so happy sinks before it lifts and surprise rings).
+in `BODY_EMOTIONS` is a whole pose with its own silhouette, so that with the face
+hidden no two emotions share one (the [emotion silhouettes ADR](../../docs/ai/adr/2026-11-24-emotion-silhouettes.md)
+lists each). A posture writes the trunk's pitch, roll and yaw per segment, the
+pelvis height and depth, and three arm blocks (`arms` on both sides, `sideArm`
+on the emotion's side, `farArm` on the other), at the weight
+`held.level x held.strength`, or at an unheld pulse's intensity, through its own
+second-order response (so happy bounces once, surprise rings and sad and sleepy
+arrive slowly). A weaker band is the same pose scaled by its weight.
 An unheld pulse holds its body pose as long as the held face of the same
 episode: it rises with Natural's impulse attack, keeps its full intensity for
 the band's `faceHold` (the face hint), and keeps the emotion's `heldShare` of it
@@ -755,19 +760,19 @@ hold continues from the current pose; a pulse of another emotion releases the
 earlier one from where it stands, as the held face switches. A slight pulse
 moves no body. A held emotion releases with Natural's held `releaseTau`, so a
 hold that switches emotion at full level crossfades instead of dropping the old
-posture in one step. Each posture's `scale` is its size against architecture
-4c's table; the sources and the emotions that do not reach the separation bar
-are in the goal-3 evidence `g3/b/amplitude-sources.md`. Question (1.5 times its
-sourced size) and surprised (1.6 times) are larger than that source, by the
-owner's decision for expressive held poses; surprised keeps its held share, so
-its startle settles as before. Neutral writes nothing,
-nor does any emotion term reach a group owned above 0.5. Think requests the
-thinking hand, and sad, love and flustered the hand to chest, through
-`plan.armForm` while their weight exceeds 0.5; angry and think force the
-support. The layer's `modulation` exposes 4c's tempo, amplitude, tension and
-breath depth for the generators, and `sighSeq` counts sighing onsets. The
-posture's `tempo` and `amplitude` and the breath's `depth` and `sigh()` are the
-hooks the performer feeds from that modulation; each is exact at its neutral
+posture in one step. A surprised pulse that starts within 0.25 s of a poke
+moves its arms and hands at a quarter of their size, so the touch reaction's
+guard leads. Neutral writes nothing, nor does any emotion term reach a group
+owned above 0.5. Think requests the thinking hand, love the hand to chest and
+awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches
+it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a
+held form comes in smoothly between weights 0.3 and 0.6. `support` is a
+multiple of the emotion's side: happy, sad, angry and surprised centre the
+weight, think and sleepy stand on the side foot and curious half on it, and
+awkward, question, love and flustered retreat onto the far one. The layer's
+`modulation` exposes 4c's tempo, amplitude, tension and breath depth for the
+generators, and `sighSeq` counts sighing onsets. The posture's `tempo` and
+`amplitude` and the breath's `depth` and `sigh()` are the hooks the performer feeds from that modulation; each is exact at its neutral
 value.
 
 `createCueLayer()` (`src/performance/cues.ts`) realises

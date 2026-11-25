@@ -7,7 +7,7 @@ import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@pro
 import { describe, expect, it } from 'vitest'
 
 import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
-import { createEmotionLayer } from './emotions'
+import { BODY_EMOTIONS, createEmotionLayer } from './emotions'
 import { HAND_SHAPES, writeHandShape } from './hand-shapes'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
@@ -62,6 +62,31 @@ function layerEffect(script: Script, seconds: number) {
 }
 
 const largest = (traces: number[][], tick: number) => Math.max(...traces.map(trace => Math.abs(trace[tick])))
+const fixtureReachesTuck = createBodyPerformer({ traits, seed: 1 }).step(quietInput(0)).capabilities.hairTouch
+
+/** The emotion layer's own output channels and plan on the last tick of a script, through the whole performer. */
+function emotionOutput(script: Script, seconds: number) {
+  const layer = createEmotionLayer()
+  let channels = new Float64Array(BODY_CHANNELS.length)
+  let plan: MergedPerformancePlan | null = null
+  const recorder: PerformanceLayer = {
+    ...layer,
+    step: (context) => {
+      const output = layer.step(context)
+      channels = Float64Array.from(output.channels)
+      plan = { ...context.plan }
+      return output
+    },
+  }
+  const performer = createBodyPerformer({ traits, seed: 1, layers: [recorder] })
+  let support = 0
+  for (let tick = 0; tick < seconds * 120; tick++)
+    support = performer.step(script(tick / 120)).diagnostics.shiftTarget
+  return { channels, plan: plan as MergedPerformancePlan | null, support }
+}
+
+const TRUNK = ['hipsYaw', 'hipsPitch', 'lowerYaw', 'lowerPitch', 'lowerRoll', 'midYaw', 'midPitch', 'midRoll', 'upperYaw', 'upperPitch', 'upperRoll'] as const
+const ARM = [0, 1, 2, 3, 4, 5, 6, 7] as const
 
 describe('emotion posture layer', () => {
   it('changes nothing while no emotion is held or pulsed', () => {
@@ -102,8 +127,11 @@ describe('emotion posture layer', () => {
     const lift = happy[c('lowerPitch')].map((v, i) => v + happy[c('midPitch')][i])
     const settled = lift[599]
     expect(settled).toBeLessThan(0)
-    const first = lift.find(v => Math.abs(v) > 1e-4) ?? 0
+    // The anticipation is a few thousandths of a degree against a held lift of several degrees.
+    const first = lift.find(v => Math.abs(v) > 1e-6) ?? 0
     expect(Math.sign(first)).toBe(-Math.sign(settled))
+    // Joy bounces: the lift passes its held size before it settles.
+    expect(Math.min(...lift)).toBeLessThan(1.05 * settled)
 
     const surprised = layerEffect(held('surprised', t => ramp(t, 0.5, 0.05)), 5)[c('leftClavElev')]
     expect(Math.max(...surprised)).toBeGreaterThan(1.05 * surprised[599])
@@ -128,27 +156,29 @@ describe('emotion posture layer', () => {
 
   // A slump curls through the thoracic spine while the lumbar spine flexes only mid-range and the pelvis rolls back
   // (Nairn et al. 2013, Manual Therapy 18(6)); E/g3/b2/expectations.md sizes the split and the cap.
-  it('curls the sad, sleepy and curious slump through the mid and upper trunk and caps it at 20 degrees', () => {
+  it('curls the sad slump through the mid and upper trunk and caps it at 20 degrees', () => {
     const end = 12 * 120 - 1
-    for (const emotion of ['sad', 'sleepy', 'curious'] as const) {
-      const d = layerEffect(held(emotion, t => ramp(t, 0.5)), 12)
-      const [lower, mid, upper] = [d[c('lowerPitch')][end], d[c('midPitch')][end], d[c('upperPitch')][end]]
-      const total = lower + mid + upper
-      expect(lower / total, emotion).toBeLessThan(0.25)
-      expect(upper / total, emotion).toBeGreaterThan(0.15)
-      expect(mid, emotion).toBeGreaterThan(lower + upper)
-      expect(total, emotion).toBeLessThan(20 * DEG)
-    }
+    const d = layerEffect(held('sad', t => ramp(t, 0.5)), 12)
+    const [lower, mid, upper] = [d[c('lowerPitch')][end], d[c('midPitch')][end], d[c('upperPitch')][end]]
+    const total = lower + mid + upper
+    expect(lower / total).toBeLessThan(0.25)
+    expect(upper / total).toBeGreaterThan(0.15)
+    expect(mid).toBeGreaterThan(lower + upper)
+    expect(total).toBeLessThan(20 * DEG)
+    // A clear-weight sad curls 0.6 of its 18 degrees.
+    const clear = layerEffect(t => ({ ...quietInput(t), held: { emotion: 'sad', strength: 0.6, level: ramp(t, 0.5), side: 1 } }), 8)
+    const lean = clear[c('lowerPitch')][959] + clear[c('midPitch')][959] + clear[c('upperPitch')][959]
+    expect(lean / DEG).toBeCloseTo(0.6 * 18, 0)
   })
 
-  it('keeps the total trunk lean of a clear-weight slump', () => {
-    const end = 8 * 120 - 1
-    // Weight 0.6 times each scale times 4c's lower plus mid pitch: sad 2.1 x 9, sleepy 3.5 x 7, curious 3.6 x 5.5.
-    for (const [emotion, lean] of [['sad', 11.34], ['sleepy', 14.7], ['curious', 11.88]] as const) {
-      const d = layerEffect(t => ({ ...quietInput(t), held: { emotion, strength: 0.6, level: ramp(t, 0.5), side: 1 } }), 8)
-      const total = d[c('lowerPitch')][end] + d[c('midPitch')][end] + d[c('upperPitch')][end]
-      expect(total / DEG, emotion).toBeCloseTo(lean, 0)
-    }
+  it('sags sleepy back from the hips and lists it to its side, where sad curls forward', () => {
+    const end = 12 * 120 - 1
+    const sleepy = layerEffect(held('sleepy', t => ramp(t, 0.5)), 12)
+    const sad = layerEffect(held('sad', t => ramp(t, 0.5)), 12)
+    expect(sleepy[c('lowerPitch')][end]).toBeLessThan(0)
+    expect(sleepy[c('pelvisZ')][end]).toBeGreaterThan(sad[c('pelvisZ')][end])
+    expect(sleepy[c('lowerRoll')][end]).toBeGreaterThan(4 * DEG)
+    expect(sad[c('rightClavProt')][end]).toBeGreaterThan(sleepy[c('rightClavProt')][end] + 4 * DEG)
   })
 
   it('returns to rest after a held emotion releases', () => {
@@ -180,17 +210,24 @@ describe('emotion posture layer', () => {
     expect(d[c('leftClavElev')][tick] / heldAtIntensity[c('leftClavElev')][tick]).toBeCloseTo(1, 1)
   })
 
-  // Owner decision of 2026-11-12 ("Small poses: Enlarge both"): question's posture at 6 times 4c's row, surprised's at
-  // 1.52 times with its startle still settling to its held share of 0.35 (E/g3/e/notes.md).
-  it('holds a clear question pulse at its enlarged size to the end of the hold', () => {
-    const endOfHold = Math.round((0.5 + defaultExpressionPerformanceSettings.held.turnlessSeconds - 0.05) * 120)
-    const question = layerEffect(pulse('question', 0.5), 5)
-    expect(question[c('lowerPitch')][endOfHold] / DEG).toBeCloseTo(0.6 * 6 * 2, 1)
+  it('settles a clear surprised startle to its held share of the pose', () => {
+    const surprised = layerEffect(pulse('surprised', 0.5), 5)
+    // The elbow's 75 degrees at the clear weight 0.6, held at 0.35 of it, behind the arm followers. Re-pinned from 55:
+    // the startle now brings both hands up in front, palms out, instead of a half lift.
+    expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 75, 0)
   })
 
-  it('settles a clear surprised startle to its held share of the enlarged pose', () => {
-    const surprised = layerEffect(pulse('surprised', 0.5), 5)
-    expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 1.52 * 15, 1)
+  it('leaves the arms of a startle from a poke to the touch reaction, and keeps its trunk recoil', () => {
+    const poked = (at: number): Script => (t) => {
+      const input = pulse('surprised', 0.5)(t)
+      return { ...input, events: { ...input.events, poke: t < at ? null : { seq: 1, at, region: 'body', x: 0.7, y: 0 } } }
+    }
+    const alone = emotionOutput(pulse('surprised', 0.5), 0.8).channels
+    const touched = emotionOutput(poked(0.5), 0.8).channels
+    const earlier = emotionOutput(poked(0.1), 0.8).channels
+    expect(touched[c('leftElbow')] / alone[c('leftElbow')]).toBeCloseTo(0.25, 6)
+    expect(touched[c('midPitch')]).toBeCloseTo(alone[c('midPitch')], 9)
+    expect(earlier[c('leftElbow')]).toBeCloseTo(alone[c('leftElbow')], 9)
   })
 
   it('continues from the current pose when the same emotion pulses again during its hold', () => {
@@ -209,9 +246,16 @@ describe('emotion posture layer', () => {
   })
 
   it('keeps a pulse\'s arm form for the hold, and never on an arm a clip owns', () => {
-    const sad = (owned: number) => armForms(t => ({ ...pulse('sad', 0.5)(t), owned: { ...quietInput(t).owned, rightArm: t > 2 ? owned : 0 } }), 4)
-    expect(sad(0).at(-1)).toEqual({ side: 'right', form: 'hand-to-chest' })
-    expect(sad(1).at(-1)).toBeNull()
+    const love = (owned: number) => armForms(t => ({ ...pulse('love', 0.5)(t), owned: { ...quietInput(t).owned, rightArm: t > 2 ? owned : 0 } }), 4)
+    expect(love(0).at(-1)).toEqual({ side: 'right', form: 'hand-to-chest' })
+    expect(love(1).at(-1)).toBeNull()
+  })
+
+  it('gives the hand to chest to love alone, and the hair touch to awkward only on a rig that reaches it', () => {
+    const forms = PERFORMANCE_EMOTIONS.filter(emotion => BODY_EMOTIONS[emotion].armForm === 'hand-to-chest')
+    expect(forms).toEqual(['love'])
+    const awkward = armForms(t => ({ ...quietInput(t), held: { emotion: 'awkward', strength: 0.8, level: ramp(t, 0.5), side: -1 } }), 3).at(-1)
+    expect(awkward).toEqual(fixtureReachesTuck ? { side: 'left', form: 'hair-touch' } : null)
   })
 
   it('writes no term to an owned group', () => {
@@ -230,6 +274,49 @@ describe('emotion posture layer', () => {
     expect(forms('think', 0.4, -1)).toBeNull()
     expect(forms('love', 0.6, 1)).toEqual({ side: 'right', form: 'hand-to-chest' })
     expect(forms('love', 0.4, 1)).toBeNull()
+  })
+
+  // With the face hidden no two emotions share a pose: the trunk and weight differ by 3 degrees (3 thousandths of a leg
+  // length, a quarter of the support) somewhere, and the arms by 5 degrees or by a held form.
+  it('gives every emotion a trunk, weight and arm pose of its own', () => {
+    const emotions = PERFORMANCE_EMOTIONS.filter(emotion => emotion !== 'neutral')
+    const poses = emotions.map((emotion) => {
+      const { channels, plan, support } = emotionOutput(held(emotion, () => 1), 10)
+      return {
+        emotion,
+        body: [...TRUNK.map(name => channels[c(name)] / DEG), channels[c('pelvisY')] * 1000, channels[c('pelvisZ')] * 1000, support * 12],
+        arms: [...ARM.map(j => channels[ARM_START.left + j] / DEG), ...ARM.map(j => channels[ARM_START.right + j] / DEG)],
+        form: plan?.armForm?.form ?? null,
+      }
+    })
+    const apart = (a: readonly number[], b: readonly number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i])))
+    for (const [i, a] of poses.entries()) {
+      for (const b of poses.slice(i + 1)) {
+        expect(apart(a.body, b.body), `${a.emotion} and ${b.emotion} trunk and weight`).toBeGreaterThan(3)
+        if (a.form === b.form)
+          expect(apart(a.arms, b.arms), `${a.emotion} and ${b.emotion} arms`).toBeGreaterThan(5)
+      }
+    }
+  })
+
+  it('poses a weaker emotion as the same pose smaller, except the far arm that completes a held form', () => {
+    for (const emotion of PERFORMANCE_EMOTIONS.filter(emotion => emotion !== 'neutral')) {
+      const at = (strength: number) => emotionOutput(t => ({ ...quietInput(t), held: { emotion, strength, level: 1, side: 1 } }), 10)
+      const clear = at(0.6)
+      const strong = at(0.9)
+      expect(strong.plan?.armForm ?? null, emotion).toEqual(clear.plan?.armForm ?? null)
+      expect(strong.support, emotion).toBeCloseTo(clear.support, 6)
+      const channels = [...TRUNK.map(name => c(name)), c('pelvisY'), c('pelvisZ'), ...ARM.map(j => ARM_START.right + j)]
+      if (!BODY_EMOTIONS[emotion].armForm)
+        channels.push(...ARM.map(j => ARM_START.left + j))
+      for (const channel of channels) {
+        const pelvis = channel === c('pelvisY') || channel === c('pelvisZ')
+        if (Math.abs(clear.channels[channel]) < (pelvis ? 0.001 : 0.2 * DEG))
+          continue
+        // The trunk's slump passes its soft cap above 16 degrees, a few percent under the proportion.
+        expect(strong.channels[channel] / clear.channels[channel], `${emotion} ${BODY_CHANNELS[channel]}`).toBeCloseTo(1.5, 1)
+      }
+    }
   })
 
   it('reports an onset when an emotion starts and a release when it ends', () => {
