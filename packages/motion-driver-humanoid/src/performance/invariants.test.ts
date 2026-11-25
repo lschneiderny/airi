@@ -6,7 +6,7 @@ import { createRandomStream } from '../random'
 import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG, JOINT_LIMITS } from './channels'
 import { BodyCollision, proxyColliders } from './collision'
 import { createBodyPerformer } from './index'
-import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
+import { channelTrace, chisaTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 import { BodySkeleton } from './skeleton'
 
 const traits = fixtureRigs[0].traits
@@ -51,6 +51,17 @@ describe('performer invariants', () => {
     for (const side of ['left', 'right'] as const)
       expect(collision.measure(side, rest).depth).toBe(0)
     expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBe(plain.distance(elbow.x, elbow.y, elbow.z))
+  })
+
+  it('searches the arm forms again for another seed of the same rig, whose rest hang differs', () => {
+    // Bodies beside the thighs, near the rest hands: whether the hair tuck is reachable depends on the seed's rest hang.
+    const ball: BodyCollider = { bone: 'hips', shape: 'sphere', radius: 0.8, centre: { x: 2.4, y: -2, z: 1.4 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
+    const rig = { ...chisaTraits, colliders: [...chisaTraits.colliders, ball, { ...ball, centre: { ...ball.centre, x: -2.4 } }] }
+    const hairTouch = (traits: typeof rig, seed: number) => createBodyPerformer({ traits, seed }).step(quietInput(0)).capabilities.hairTouch
+    expect(hairTouch({ ...rig }, 3)).toBe(true)
+    expect(hairTouch({ ...rig }, 1)).toBe(false)
+    // One traits object: the second seed must not reuse the first seed's answer.
+    expect([hairTouch(rig, 1), hairTouch(rig, 3)]).toEqual([false, true])
   })
 
   it('counts no corrector fallback while the arms clear the proxies on their own', () => {
