@@ -59,11 +59,13 @@ deterministic motion algorithms for reusable character motion drivers.
   stretch's elbows fold to bring each hand along the straight line from where
   it hangs to where it reaches (Morasso 1981), the far arm 120 ms behind, fed
   through the relaxed arm followers' inverse (`followerInverse` with `used` 0);
-  an arm swing pushes at the relaxed upper-arm follower's period, and each
-  hand flicks open (`open` for 0.15 s) at its arm's forward peaks (4e act 7).
-  A shoulder roll (4e act 2) circles one clavicle forward, up, back and down
-  over 1.8 s, carries the upper arm round after it and turns the chest a
-  little; the head rides along with a small tilt.
+  an arm swing pushes both arms forward together at the relaxed upper-arm
+  follower's period, the forearm swinging on through the elbow and the hand
+  trailing it through the wrist, and each hand flicks open (`open` for 0.15 s)
+  at its arm's forward peaks (4e act 7). A shoulder roll (4e act 2) circles one
+  clavicle forward, up, back and down over 1.8 s, carries the upper arm round
+  after it and turns the chest a little; the head rides along with a small
+  tilt.
 - `./motion-trace`: `MotionTraceV1`, little-endian float32 block codec, canonical
   humanoid parents, and `MotionTraceRecorder`. The recorder accepts plain vectors
   and rest-normalised world quaternions in +Y up, +Z forward axes, removes hips

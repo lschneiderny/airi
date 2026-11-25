@@ -398,6 +398,28 @@ describe('the act layer', () => {
     expect(Math.max(...diff(c('pelvisY')))).toBeCloseTo(0.012, 4)
   })
 
+  it('carries an arm swing on through the elbow and the wrist, each after the joint above it', () => {
+    const entry = record('arm-swing', 3, { count: 2 })
+    const still = run(chisaTraits, quietInput, START + 4)
+    const acted = run(chisaTraits, playing(entry), START + 4)
+    const period = 1 / armResponse(2, 0, quietInput(0).mood.tension)[0]
+    const half = Math.round(period / 2 / BODY_TICK)
+    for (const side of ['left', 'right'] as const) {
+      const diff = (channel: Parameters<typeof c>[0]) => acted.channels.map((frame, k) => (frame[c(channel)] - still.channels[k][c(channel)]) / DEG)
+      const flex = diff(`${side}Flex`)
+      const elbow = diff(`${side}Elbow`)
+      const wrist = diff(`${side}Wdev`)
+      const top = flex.indexOf(Math.max(...flex))
+      // The forearm swings up through the elbow and peaks after the upper arm.
+      const bend = elbow.indexOf(Math.max(...elbow.slice(top - half, top + half)), top - half)
+      expect(elbow[bend], side).toBeGreaterThan(6)
+      expect(bend, side).toBeGreaterThan(top)
+      // The hand is dragged back (ulnar) on the way forward and whips on past the forearm after the peak.
+      expect(Math.max(...wrist.slice(top - half, top)), side).toBeGreaterThan(3)
+      expect(Math.min(...wrist.slice(top, top + half)), side).toBeLessThan(-3)
+    }
+  })
+
   it('flicks each hand open at its arm\'s forward peaks of an arm swing (4e act 7)', () => {
     const entry = record('arm-swing', 3, { count: 2 })
     const still = run(chisaTraits, quietInput, START + 4)

@@ -103,6 +103,18 @@ const TUCK = { reach: 0.1, sweep: 0.8, off: 0.9 } as const
 /** Architecture 4e act 7's finger flick: `open` for 0.15 s at each forward peak of the swing. */
 const FLICK = 0.15
 const SWING_PEAK = Math.atan(Math.SQRT2) / Math.PI
+/** The push `sin(2 pi u) sin(pi u)` at its forward peak (`SWING_PEAK`), to scale the push to its peak. */
+const SWING_PUSH_PEAK = Math.sin(2 * Math.PI * SWING_PEAK) * Math.sin(Math.PI * SWING_PEAK)
+/**
+ * The arm swing's pendulum, degrees at its forward peak: both arms push forward together, `flex` forward and `back` of
+ * it behind, and the forearm swings on through the elbow (`elbow`, trailing the push by `trail` of a period) while the
+ * hands come in front of the thighs (`adduct`), so the hands rise and meet a little at each forward peak. The hand
+ * trails the forearm by another `trail`: it drags back through the wrist's ulnar side as the arm goes forward and
+ * whips on past it at the peak (`wrist`, degrees per unit of the lag). 4e's swing (8 degrees of flexion, the arms in
+ * opposition, as in a walk) moved the hands fore and aft only, which the front view foreshortens, and the stand-life
+ * audit could not tell it from the arms' drift. The sizes are the layer's.
+ */
+const SWING = { flex: 12, back: 0.4, elbow: 14, adduct: 4, wrist: 12, trail: 0.06 } as const
 
 /** A side's arm block with 4a's `open` hand shape in its finger channels (9 to 25). */
 function openHand(): Float64Array {
@@ -639,22 +651,30 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'arm-swing': {
-        // 4e act 7: an 8 deg push into each arm pendulum, opposite signs, two or three times at the pendulum's own
-        // period: the relaxed upper-arm follower's at her tension when the swing began (3f, `armResponse`), as many as
-        // fit the behaviour. At each forward peak the hand flicks open (`open` for 0.15 s, centred on the peak).
+        // 4e act 7: pushes into the arm pendulums, two or three times at the pendulum's own period: the relaxed
+        // upper-arm follower's at her tension when the swing began (3f, `armResponse`), as many as fit the behaviour.
+        // Both arms swing together (`SWING`), and at each forward peak the hands flick open (`open` for 0.15 s,
+        // centred on the peak).
         const period = 1 / armResponse(2, 0, a.tension)[0]
         const pushes = Math.max(1, Math.min(a.record.count, Math.floor(D / period)))
-        const u = age < pushes * period ? (age % period) / period : 0
-        const swing = 8 * Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u)
-        add('leftFlex', swing)
-        add('rightFlex', -swing)
+        const push = (at: number) => {
+          const u = at >= 0 && at < pushes * period ? (at % period) / period : 0
+          const value = Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u) / SWING_PUSH_PEAK
+          return value > 0 ? value : SWING.back * value
+        }
+        const forward = push(age)
+        const carried = Math.max(0, push(age - SWING.trail * period))
+        // A hanging hand faces the thigh, so its lag behind the forearm is a deviation: ulnar (back) while it is dragged.
+        const dragged = carried - Math.max(0, push(age - 2 * SWING.trail * period))
         flicks ??= openHand()
+        let flick = 0
+        for (let p = 0; p < pushes; p++)
+          flick += raisedCosine((age - (p + SWING_PEAK) * period) / FLICK + 0.5)
         for (const side of SIDES) {
-          // The push `sin(2 pi u) sin(pi u)` peaks forward at u = atan(sqrt 2) / pi; the right arm's opposite push at 1 - u.
-          const peak = side === 'left' ? SWING_PEAK : 1 - SWING_PEAK
-          let flick = 0
-          for (let push = 0; push < pushes; push++)
-            flick += raisedCosine((age - (push + peak) * period) / FLICK + 0.5)
+          add(`${side}Flex`, SWING.flex * forward)
+          add(`${side}Elbow`, SWING.elbow * carried)
+          add(`${side}Abduct`, -SWING.adduct * carried)
+          add(`${side}Wdev`, SWING.wrist * dragged)
           const start = ARM_START[side]
           for (let j = 9; j < 26; j++)
             channels[start + j] += w * flick * (flicks[j] - context.rest[start + j])
