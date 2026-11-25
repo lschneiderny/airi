@@ -17,3 +17,12 @@ A start from standing turned the body over 2.4 steps, and the gaze swept with th
 - On three rigs (seed 1), her hips stand 33 to 35 degrees round at the first strike and her head 74 to 75. The head is only 13 degrees round as the first foot lifts, because it trails the gaze by its own response.
 - The first step's angle off the travel line is unchanged on two rigs (25 to 29 degrees) and falls from 9 to 4 on the reference rig. The angle comes from the stance line: the foot moves from beside the other foot to its side of the travel line.
 - `walk-form` keeps every verdict, and `pops` passes.
+
+## Amendment, 2026-11-25: the hips turn about each stance hip, the foot turns early
+
+An independent visual audit of 2026-11-25 found that the first foot still swept out sideways before her lower body pointed down the path. One minimum-jerk turn over 2.0 steps left her hips 10 degrees round at the first foot's mid-swing, and the foot turned with the swing, so at mid-swing it pointed 71 degrees off its own path.
+
+1. **A start from standing turns in two parts.** 55 percent of the quarter turn is made about the loaded hip, from the weight shift of the preparation to the first strike; the rest about the new stance hip from 0.8 steps to the end of the 2.0 steps. Turning gait pivots on the stance limb step by step (Hase and Stein 1999, J Neurophysiol 81:2914). At a 58 percent share the standing foot stood 60.1 degrees off her facing before it lifted, past the 60 a planted foot may. Decision 1's 2.0 steps and decision 2's half-step gaze lead stand; the gaze keeps the walk's own clock, so its rate stays within the look-ahead's limit, and it never trails her facing.
+2. **A walking foot makes its turn in the first 0.7 of its swing** and comes in already pointing where it lands; it turned over the whole swing before. The share was chosen on the stills.
+
+Consequences on two rigs (seed 1): at the first foot's mid-swing her hips stand 37 degrees round (10 before) and the foot points 38 to 41 degrees off its path (71 before); at the first strike the hips stand 48 degrees round (35 before) and the head 87 (74). The standing foot lifts 32 degrees off her facing. `walk` exits 0 and `pops` passes on both rigs.
