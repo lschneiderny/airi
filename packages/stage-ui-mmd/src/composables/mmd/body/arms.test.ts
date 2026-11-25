@@ -3,7 +3,7 @@ import type { IdleBehaviourKind, IdleBehaviourRecord } from '@proj-airi/motion-d
 import type { ExtraBody } from './fixture'
 
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
-import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, VectorKeyframeTrack } from 'three'
+import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { buildMMDArmTestColliders } from '../touch/colliders'
@@ -97,9 +97,13 @@ describe('mmd arm measurement and hang solver', () => {
   })
 
   it('counts a kinematic body on the arm path whatever its collision mask, and skips a shell wider than the shoulder span', () => {
+    // On the upper arm of a clip that hangs it 50 degrees below horizontal, clear of the rest hang: a body the rest hang
+    // lies in is fitted to nothing and left out (`BodyCollision.fit`).
+    const shoulder = bodyFixture(0, Math.PI, { arms: true }).bone('左腕').getWorldPosition(new Vector3())
+    const onPath = shoulder.add(new Vector3(Math.cos(50 * degrees), -Math.sin(50 * degrees), 0).multiplyScalar(2.3)).toArray()
     const path = (collisionMask: number, radius: number) => {
-      const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0], radius, collisionMask }] })
-      play(fixture, hangClip('rest-hang', 78))
+      const fixture = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: onPath, radius, collisionMask }] })
+      play(fixture, hangClip('lifted-hang', 50))
       for (let frame = 0; frame < 60; frame++)
         fixture.pipeline.step(1 / 60)
       return fixture.body.diagnostics.arms?.penetration.left ?? Number.NaN
@@ -109,6 +113,19 @@ describe('mmd arm measurement and hang solver', () => {
     expect(path(0xFF02, 0.6)).toBeGreaterThan(0.1)
     // Wider than 0.65 of the 3-unit shoulder span: a coat shell, ignored.
     expect(path(65535, 2.1)).toBe(0)
+  })
+
+  it('leaves out a body the performer fitted to nothing, one round the rest elbow', () => {
+    const plain = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    for (let frame = 0; frame < 60; frame++)
+      plain.pipeline.step(1 / 60)
+    plain.mesh.updateMatrixWorld(true)
+    const elbow = plain.bone('左ひじ').getWorldPosition(new Vector3())
+    const { pipeline, body, bone } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'round-the-elbow', bone: '上半身2', position: elbow.toArray(), radius: 0.5, collisionMask: 65535 }] })
+    for (let frame = 0; frame < 60; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.penetration.left).toBe(0)
+    expect(bone('左ひじ').getWorldPosition(new Vector3()).distanceTo(elbow)).toBeLessThan(1e-3)
   })
 
   it('reports a dynamic cloth body on the arm path as clothContact and never as penetration', () => {

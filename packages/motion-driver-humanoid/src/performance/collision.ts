@@ -124,6 +124,7 @@ export class BodyCollision {
    * (a hair-collision body wider than the shoulders, a chest body round the shoulder joint) is shrunk until the rest
    * hang clears it: the rig's own hang is where its arm rests against the body, so no proxy may hold the arm away from
    * it, and an arm that cannot reach its rest freezes or stands out. The host scales its own copies of the bodies by it.
+   * A proxy whose scale reaches 0 is left out of every query, here and in the host's copies.
    */
   readonly fit: number[]
   private readonly posed: ReturnType<typeof identityTransform>[]
@@ -177,6 +178,14 @@ export class BodyCollision {
     this.keep = new Float64Array(slots)
     this.prepare(rest)
     this.fit = this.colliders.map((_, i) => this.fitToRest(i, rest))
+    // A proxy fitted to nothing would still repel an arm sample within the arm's own radius of its centre: leave it
+    // out of every query. `fit` keeps one entry per rig proxy, so the host's copies stay aligned with it.
+    for (let i = this.colliders.length - 1; i >= 0; i--) {
+      if (this.fit[i] === 0) {
+        this.colliders.splice(i, 1)
+        this.posed.splice(i, 1)
+      }
+    }
     const gestures = { left: false, right: false }
     const headClearance = { left: false, right: false }
     const guard = rest.slice()

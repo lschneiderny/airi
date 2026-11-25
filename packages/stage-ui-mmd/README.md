@@ -473,8 +473,9 @@ simulation resolves. The test skips the first half of the upper arm, because the
 bodies by construction. It ignores collision masks, because a rig's own torso, hip and leg bodies turn off collision
 with their group, and skips only a body wider than 0.65 of the shoulder span (a coat shell such as Chisa's radius-2
 body). The gate and the hang solver measure each kinematic and head body at the scale the performer's corrector fits it
-to the rest hang (`BodyCollision.fit`, `scaleMMDTouchCollider`), so a hair or bust body that reaches past the shoulders or
-thighs neither holds the arms away from their rest nor counts their rest hang as penetration. While both arms are free, no gesture layer, idle behaviour form or clip-free rest moves either arm (the performer's
+to the rest hang (`BodyCollision.fit`, `scaleMMDTouchCollider`), and leave out a body fitted to nothing, so a hair or
+bust body that reaches past the shoulders or thighs neither holds the arms away from their rest nor counts their rest
+hang as penetration. While both arms are free, no gesture layer, idle behaviour form or clip-free rest moves either arm (the performer's
 `diagnostics.gesture.activation` and `diagnostics.actActivation` are 0), and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
 60-frame warm-up, at the default 78 degree hang gets a
 per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60, until the overlap is 0 (the hang is the
