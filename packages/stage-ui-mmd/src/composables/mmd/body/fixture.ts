@@ -2,7 +2,7 @@ import type { MMDBodyInput } from './index'
 
 import { MMD, PmxObject } from '@moeru/three-mmd'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
-import { AnimationMixer, Bone, BufferGeometry, MeshBasicMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three'
+import { AnimationMixer, Bone, BufferGeometry, Float32BufferAttribute, MeshBasicMaterial, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three'
 
 import { createModel } from '../__fixtures__/model'
 import { MMDFramePipeline } from '../frame-pipeline'
@@ -13,14 +13,16 @@ import { MMDBody } from './index'
  * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
  * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` (default true) adds
  * A-pose arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
- * `hand` replaces those chains with a whole hand (`FixtureHand`), `twist` adds twist bones (`FixtureTwist`), and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
+ * `hand` replaces those chains with a whole hand (`FixtureHand`), `twist` adds twist bones (`FixtureTwist`), and `bodies` adds a torso capsule, a hip box
+ * and a physics skirt sphere, the author's rigid bodies. `skin` gives the mesh a surface for the body model: hips 1.3 to each side, a trunk 1.1
+ * to each side, a head, and each `FixtureShell` given.
  */
 /** Natural fixates the cursor at `point`; the camera sits ahead of the fixture's head. */
 export function cursorAt(intent: MMDBodyInput['intent'], point: Vector3): Pick<MMDBodyInput, 'intent' | 'points'> {
   return { intent: { ...intent, gaze: { ...intent.gaze, on: 'cursor' } }, points: { cursor: point, chat: null, camera: new Vector3(0, 21, 40) } }
 }
 
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, hand?: FixtureHand, twist?: FixtureTwist, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, hand?: FixtureHand, twist?: FixtureTwist, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4, toes?: boolean, skin?: boolean | FixtureShell[] } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number], axisLimit?: [number, number, number], append?: { parent: string, ratio: number } }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -85,6 +87,31 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     bones[index].quaternion.setFromAxisAngle(new Vector3(0, 1, 0), eyeBindYaw)
   mesh.updateMatrixWorld(true)
   mesh.bind(new Skeleton(bones))
+  if (options.skin) {
+    const shells: FixtureShell[] = [
+      { bone: '下半身', fromY: 9.6, toY: 11.4, halfWidth: 1.3, halfDepth: 0.9 },
+      { bone: '上半身', fromY: 11.6, toY: 14.8, halfWidth: 1.1, halfDepth: 0.8 },
+      { bone: '上半身2', fromY: 15, toY: 16.4, halfWidth: 1.1, halfDepth: 0.8 },
+      { bone: '頭', fromY: 18, toY: 19.6, halfWidth: 0.7, halfDepth: 0.7 },
+      ...Array.isArray(options.skin) ? options.skin : [],
+    ]
+    const positions: number[] = []
+    const skinIndices: number[] = []
+    const skinWeights: number[] = []
+    for (const part of shells) {
+      const bone = definitions.findIndex(definition => definition.name === part.bone)
+      for (let y = part.fromY; y <= part.toY + 1e-9; y += 0.1) {
+        for (let k = 0; k < 24; k++) {
+          positions.push((part.x ?? 0) + part.halfWidth * Math.cos(Math.PI * k / 12), y, part.halfDepth * Math.sin(Math.PI * k / 12))
+          skinIndices.push(bone, 0, 0, 0)
+          skinWeights.push(1, 0, 0, 0)
+        }
+      }
+    }
+    mesh.geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+    mesh.geometry.setAttribute('skinIndex', new Uint16BufferAttribute(skinIndices, 4))
+    mesh.geometry.setAttribute('skinWeight', new Float32BufferAttribute(skinWeights, 4))
+  }
   const shell = createModel()
   const isIk = (index: number) => index === 16 || index === 17
   const pmx: PmxObject = {
@@ -276,7 +303,17 @@ function armDefinitions(hand?: FixtureHand, twist?: FixtureTwist): ArmDefinition
   })
 }
 
-/** A sphere on a fixture bone, for the arm penetration tests: kinematic unless `dynamic`. */
+/** A tube of mesh surface skinned to one fixture bone: rings 0.1 apart between two heights, centred on `x`. */
+export interface FixtureShell {
+  bone: string
+  fromY: number
+  toY: number
+  halfWidth: number
+  halfDepth: number
+  x?: number
+}
+
+/** A sphere on a fixture bone, an author's rigid body: kinematic unless `dynamic`. */
 export interface ExtraBody {
   name: string
   bone: string
