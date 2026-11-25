@@ -194,9 +194,10 @@ export class MMDBody {
     this.performer = this.traits
       ? new MMDBodyPerformer(this.pose, this.traits, { seed, layers: createPerformanceLayers({ traits: this.traits, seed }), onEvent: event => this.listeners.forEach(listener => listener(event)) })
       : null
-    // The arm gate and the hang solver measure the bodies the performer's corrector clears: each fitted to the rest hang.
+    // The arm gate and the hang solver measure the bodies the performer's corrector clears: each fitted to the rest hang,
+    // and none fitted to nothing, which the corrector leaves out.
     const fit = this.traits && this.performer ? new BodyCollision(this.traits, this.performer.restChannels()).fit : null
-    const fitted = (bodies: MMDTouchCollider[], offset: number) => fit ? bodies.map((body, i) => scaleMMDTouchCollider(body, fit[offset + i])) : bodies
+    const fitted = (bodies: MMDTouchCollider[], offset: number) => fit ? bodies.flatMap((body, i) => fit[offset + i] > 0 ? [scaleMMDTouchCollider(body, fit[offset + i])] : []) : bodies
     this.arms = new MMDArms(this.pose, { kinematic: fitted(colliders.kinematic, 0), dynamic: colliders.dynamic }, fitted(head, colliders.kinematic.length))
     this.poseStages = [
       // Root motion lands before every bone write and before physics, so the pose and Ammo both see this frame's root.

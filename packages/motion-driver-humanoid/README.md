@@ -932,8 +932,10 @@ against the body, so no proxy holds an arm away from it: a rig's hair or bust
 collision bodies often reach past its shoulders or thighs (Robin's chest body is
 a horizontal capsule wider than her shoulders, which no pose of a hanging arm
 cleared, so both arms froze). The headroom keeps a resting arm clear while the
-trunk sways, so the gesture layer's path from that arm starts clear. The MMD
-adapter scales its own copies of the bodies by the same factors.
+trunk sways, so the gesture layer's path from that arm starts clear. A proxy
+whose scale reaches 0 is left out, since the arm's own sampling radius round
+its centre would still repel the arm. The MMD adapter scales its own copies of
+the bodies by the same factors and leaves out the same ones.
 Corrections persist and decay. When gradient steps leave more than half the
 margin (0.015 of a segment), a continuous guard weight moves the arm toward
 the guard pose: it follows the smallest clearing weight (16 samples, because

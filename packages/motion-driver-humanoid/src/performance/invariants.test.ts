@@ -7,6 +7,7 @@ import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG, JOINT_LIMITS } from './cha
 import { BodyCollision, proxyColliders } from './collision'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
+import { BodySkeleton } from './skeleton'
 
 const traits = fixtureRigs[0].traits
 const c = channelIndex
@@ -32,6 +33,24 @@ describe('performer invariants', () => {
     const flex = channelTrace(performer, 4)[c('leftFlex')]
     expect(Math.max(...flex) - Math.min(...flex)).toBeGreaterThan(0.2 * DEG)
     expect(performer.step(idleInput(4)).diagnostics.collisions.count).toBe(0)
+  })
+
+  it('leaves out a proxy fitted to nothing, so it no longer repels the arm', () => {
+    // A body round the rest elbow: no scale clears the hang, so its fit reaches 0.
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(rest)
+    const elbow = { ...skeleton.arm('left', rest).elbow }
+    const chest = traits.spineChain[traits.spineChain.length - 1]
+    const ball: BodyCollider = { bone: 'spine2', shape: 'sphere', radius: 0.5, centre: { x: elbow.x - chest.x, y: elbow.y - chest.y, z: elbow.z - chest.z }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
+    const proxies = proxyColliders(traits)
+    const plain = new BodyCollision({ ...traits, colliders: proxies }, rest.slice())
+    const collision = new BodyCollision({ ...traits, colliders: [...proxies, ball] }, rest.slice())
+    expect(collision.fit.length).toBe(proxies.length + 1)
+    expect(collision.fit.at(-1)).toBe(0)
+    for (const side of ['left', 'right'] as const)
+      expect(collision.measure(side, rest).depth).toBe(0)
+    expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBe(plain.distance(elbow.x, elbow.y, elbow.z))
   })
 
   it('counts no corrector fallback while the arms clear the proxies on their own', () => {
