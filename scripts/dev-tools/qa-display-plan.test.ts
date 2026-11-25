@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clientEnv, freeX11Display, isQaDisplayRunScope, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayRunScopeUnit, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
+import { clientEnv, freeX11Display, isQaDisplayRunScope, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayGuard, qaDisplayHostPlan, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayRunScopeUnit, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
 
 describe('qa display arguments', () => {
   it('defaults to a 1920x1080 headless session named qa without portals or audio', () => {
@@ -469,6 +469,24 @@ describe('qa display session environment', () => {
       'unset PIPEWIRE_REMOTE',
       'unset PIPEWIRE_RUNTIME_DIR',
     ].join('\n'))
+  })
+})
+
+describe('qa display on macOS', () => {
+  it('runs the command on the desktop with the display and the Mac kept awake', () => {
+    expect(qaDisplayHostPlan('darwin', { command: 'run', argv: ['pnpm', 'qa:bench', '--runs', '3'] })).toEqual({ kind: 'spawn', command: 'caffeinate', args: ['-di', 'pnpm', 'qa:bench', '--runs', '3'] })
+  })
+
+  it('has nothing to stop on down', () => {
+    expect(qaDisplayHostPlan('darwin', { command: 'down', argv: [] })).toMatchObject({ kind: 'done' })
+  })
+
+  it.each(['up', 'status', 'env', 'shot', 'pointer'] as const)('refuses %s, which needs a Linux session', (command) => {
+    expect(qaDisplayHostPlan('darwin', { command, argv: [] })).toMatchObject({ kind: 'refuse' })
+  })
+
+  it('refuses Windows', () => {
+    expect(qaDisplayHostPlan('win32', { command: 'run', argv: ['pnpm', 'qa:bench'] })).toMatchObject({ kind: 'refuse' })
   })
 })
 

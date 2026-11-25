@@ -676,6 +676,27 @@ export function sessionMountTargets(mountinfo: string, sessionDir: string): stri
     .sort((a, b) => b.length - a.length)
 }
 
+export type QaDisplayHostPlan
+  = | { kind: 'spawn', command: string, args: string[] }
+    | { kind: 'done', message: string }
+    | { kind: 'refuse', message: string }
+
+/**
+ * What `qa:display` does on a platform without a headless session, so one command line works on Linux and macOS.
+ * macOS has no virtual display: `run` runs the command on the user's desktop under `caffeinate -di`, which keeps the
+ * display and the Mac awake so a sleeping screen cannot hide or throttle the app's windows, and ignores the `up` flags.
+ * `down` has nothing to stop. Other commands, and other platforms, are refused.
+ */
+export function qaDisplayHostPlan(platform: NodeJS.Platform, args: Pick<QaDisplayArgs, 'command' | 'argv'>): QaDisplayHostPlan {
+  if (platform !== 'darwin')
+    return { kind: 'refuse', message: 'the headless QA display needs Linux. On Windows, T3 runs use the real desktop.' }
+  if (args.command === 'run')
+    return { kind: 'spawn', command: 'caffeinate', args: ['-di', ...args.argv] }
+  if (args.command === 'down')
+    return { kind: 'done', message: 'macOS runs on the desktop; there is no session to stop.' }
+  return { kind: 'refuse', message: `${args.command} needs a Linux session; on macOS only run and down work.` }
+}
+
 const allowHostSessionFlag = '--allow-host-session'
 
 /** Removes every `--allow-host-session` from a command's arguments and reports whether one was there. */
