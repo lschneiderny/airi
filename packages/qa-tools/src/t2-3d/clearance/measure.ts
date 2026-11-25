@@ -86,8 +86,11 @@ export class ClearanceMeasure {
     this.world = new Float64Array(analysis.bind.length)
     const cloth = new Set<number>()
     for (let t = 0; t < analysis.classes.length; t++) {
-      if (CLEARANCE_CLASSES[analysis.classes[t]].endsWith('-cloth'))
-        cloth.add(analysis.triangles[t * 3])
+      if (!CLEARANCE_CLASSES[analysis.classes[t]].endsWith('-cloth'))
+        continue
+      // Every corner, so the sample does not depend on the order a triangle lists them in.
+      for (let corner = 0; corner < 3; corner++)
+        cloth.add(analysis.triangles[t * 3 + corner])
     }
     const stride = Math.max(1, Math.floor(cloth.size / CLOTH_SAMPLE_LIMIT))
     this.clothVertices = [...cloth].filter((_, i) => i % stride === 0)
@@ -189,14 +192,14 @@ export class ClearanceMeasure {
   finish(): Motion3dClearance {
     const share = (count: number) => count / Math.max(1, this.sampled)
     const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
-    const episodes: number[] = []
-    let previous = Number.NEGATIVE_INFINITY
+    // An episode lasts from its first pierced sample to the end of its last, the clear sample it joins across included.
+    const episodes: { first: number, last: number }[] = []
     for (const { frame } of this.pierced) {
-      if (episodes.length && frame - previous <= this.sampleStep * 2)
-        episodes[episodes.length - 1]++
+      const current = episodes.at(-1)
+      if (current && frame - current.last <= this.sampleStep * 2)
+        current.last = frame
       else
-        episodes.push(1)
-      previous = frame
+        episodes.push({ first: frame, last: frame })
     }
     const depths = this.pierced.map(entry => entry.depth)
     const { analysis } = this
@@ -210,7 +213,7 @@ export class ClearanceMeasure {
       bySegment: { upperArm: share(this.bySegment[0]), forearm: share(this.bySegment[1]), hand: share(this.bySegment[2]) },
       topMaterials: [...this.byMaterial].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 5).map(([material, count]) => ({ material: analysis.materialNames[material] ?? `material-${material}`, share: share(count) })),
       depth: { median: quantile(depths, 0.5), p90: quantile(depths, 0.9), deepShare: share(depths.filter(depth => depth > DEEP_SHARE).length) },
-      episodes: { count: episodes.length, longestSeconds: Math.max(0, ...episodes) * this.sampleStep / 60 },
+      episodes: { count: episodes.length, longestSeconds: Math.max(0, ...episodes.map(episode => episode.last - episode.first + this.sampleStep)) / 60 },
       upperArmDeg: { mean: mean(this.armDeg), p10: quantile(this.armDeg, 0.1), p90: quantile(this.armDeg, 0.9) },
       cloth: { travelMedian: quantile(this.clothTravel, 0.5), travelP99: quantile(this.clothTravel, 0.99), reversalMean: mean(this.clothReversal) },
     }

@@ -28,7 +28,8 @@ describe('clearanceMeasure', () => {
     expect(summary.byClass['upper-rigid']).toBe(5 / 8)
     expect(summary.bySegment).toEqual({ upperArm: 0, forearm: 5 / 8, hand: 0 })
     expect(summary.topMaterials).toEqual([{ material: 'coat', share: 5 / 8 }])
-    expect(summary.episodes).toEqual({ count: 2, longestSeconds: 4 * 2 / 60 })
+    // Frames 0 to 8 join across the clear sample at 6; the episode ends with its last sample, at frame 10.
+    expect(summary.episodes).toEqual({ count: 2, longestSeconds: 10 / 60 })
     expect(summary.depth.median).toBeCloseTo(2.9 / 6.9, 12)
     expect(summary.depth.deepShare).toBe(5 / 8)
     expect(summary.upperArmDeg.mean).toBeCloseTo(3 / 8 * 90, 9)
