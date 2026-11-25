@@ -22,3 +22,13 @@ The shares and lags are judged on the stills; the sources give directions, not t
 - On ten rigs (walk, 40 s, seed 1) the arms hang 14 to 19 degrees out on the left and 17.5 to 22 on the right, 1.4 to 4.6 degrees closer than before. No rig has a collision, a cap hit, a guard scan or a hold, and `pops` passes on all ten. A clearance of 3 degrees was also clean; 1.5 brought the arms about a degree closer again. The rest of the width is each rig's own rest hang.
 - The shoulder line now rolls 5.6 to 6.2 degrees a step against the hips' 8.2 to 9.1. `walk-form` `wrist-lags` reads 100 to 117 ms, up from 67 to 83, and keeps every verdict on the three rigs it was compared on.
 - The reference rig's left arm comes within 4 degrees of its chest at the back of the swing. That is the rig's own rest hang, not a collision.
+
+## Amendment, 2026-11-25: the ribs catch the step, the forearm carries on
+
+An independent visual audit of 2026-11-25 found that the profile at 17 to 19 s still repeated almost the same upper silhouette step after step: the ribs did not visibly catch the pelvis and the free arm did not carry on after the trunk turned back. A happy walk's wide swing also held the wrist forward at the swing's high point.
+
+1. **The chest nods 2.5 degrees of its own, 0.12 step after the spine** (decision 2): it took 0.4 of the trunk's 2-degree nod, 0.8 degrees, 0.06 step after it. Spine and chest together nod about 4.5 degrees, within the few degrees of Thorstensson et al.
+2. **The head nods 2.5 degrees, 0.2 step after the spine** (decision 3: 1.5 degrees, 0.12 step), after the chest, so each link of the trunk answers the one below.
+3. **The elbow trails the shoulder by 0.17 s** (decision 4: 0.1 s), toward the human walk reference's 201 ms. The arm's roll keeps the 0.1 s timing, so the forearm still turns inward while the arm is forward.
+
+The values are judged on stills. Consequences on three rigs (walk, 40 s, seed 1): `walk-form` `wrist-lags` reads 150 to 183 ms, up from 100 to 117, with r 0.914 to 0.928 against 0.959 to 0.979; `arm-opposition` reads -0.72 to -0.80 against -0.77 to -0.83. Every verdict holds, `walk` exits 0 and `pops` passes. On the sheets the change is small: the chest pitches a little more through the step and the forearm reaches further at the front.
