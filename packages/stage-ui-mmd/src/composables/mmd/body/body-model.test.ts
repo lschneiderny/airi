@@ -108,6 +108,21 @@ describe('buildMMDBodyMeshSource', () => {
     expect(source?.bones.at(-1)?.parent).toBe(hips)
   })
 
+  it('keeps the skinned torso without leg bones and refuses a rig missing only one arm', () => {
+    const { mmd, rig } = bodyFixture(0, Math.PI, { arms: true, skin: true })
+    const legless = {
+      ...rig,
+      bones: { ...rig.bones, leftUpperLeg: undefined, leftLowerLeg: undefined, leftFoot: undefined, rightUpperLeg: undefined, rightLowerLeg: undefined, rightFoot: undefined },
+    }
+    const source = buildMMDBodyMeshSource(mmd.pmx, mmd.mesh, legless)
+    expect(source?.canonical.legs).toBeNull()
+    expect(source?.simulated).toEqual([])
+    expect(readMMDBodyModel({ pmx: mmd.pmx, mesh: mmd.mesh }, legless)?.model.volumes.some(volume => volume.bone === 'spine0')).toBe(true)
+
+    const oneArm = { ...rig, bones: { ...rig.bones, rightUpperArm: undefined } }
+    expect(buildMMDBodyMeshSource(mmd.pmx, mmd.mesh, oneArm)).toBeNull()
+  })
+
   it('returns null for a rig without arms, and a source without vertices for a mesh without skin', () => {
     const armless = bodyFixture(0, Math.PI, { arms: false })
     expect(buildMMDBodyMeshSource(armless.mmd.pmx, armless.mmd.mesh, armless.rig)).toBeNull()

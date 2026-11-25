@@ -18,7 +18,7 @@ import {
   Vector3,
   VectorKeyframeTrack,
 } from 'three'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createMMDAnimationManager } from './animation-manager'
 import { bodyFixture } from './body/fixture'
@@ -124,6 +124,39 @@ describe('createMMDAnimationManager', () => {
 
     expect(mmd.disposed).toBe(true)
     expect(mmd.updates).toHaveLength(2)
+  })
+
+  it('gives Ammo the prepared garment collision masks when it builds physics', async () => {
+    const { mmd: fixture } = bodyFixture(0, Math.PI, {
+      arms: true,
+      bodies: true,
+      skin: true,
+      extraBodies: [
+        { name: 'upper-arm', bone: '左腕', position: [2, 15, 0], radius: 0.3, collisionMask: 0xFFFF },
+        { name: 'forearm', bone: '左ひじ', position: [3, 14, 0], radius: 0.3, collisionMask: 0xFFFB },
+      ],
+    })
+    const rigidBodies = fixture.pmx.rigidBodies.map(body => body.name === 'skirt' ? { ...body, collisionGroup: 2 } : body)
+    const mmd = new MMD({ ...fixture.pmx, rigidBodies }, fixture.mesh)
+    const skirt = mmd.pmx.rigidBodies.find(body => body.name === 'skirt')!
+    const forearm = mmd.pmx.rigidBodies.find(body => body.name === 'forearm')!
+    const groupsAtInstall: boolean[] = []
+    const setPhysics = mmd.setPhysics.bind(mmd)
+    vi.spyOn(mmd, 'setPhysics').mockImplementation((createPhysics) => {
+      groupsAtInstall.push(
+        (forearm.collisionMask & (1 << skirt.collisionGroup)) !== 0
+        && (skirt.collisionMask & (1 << forearm.collisionGroup)) !== 0,
+      )
+      setPhysics(createPhysics)
+    })
+    const manager = createMMDAnimationManager(mmd)
+    try {
+      await manager.init()
+      expect(groupsAtInstall).toEqual([true])
+    }
+    finally {
+      manager.dispose()
+    }
   })
 
   it('returns a completed one-shot action to the configured idle motion', async () => {
