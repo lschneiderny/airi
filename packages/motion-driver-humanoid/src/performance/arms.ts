@@ -66,6 +66,11 @@ const SPREAD_NOISE = 1
  * fist's; and the clamp, degrees.
  */
 const FINGER_DRAG = { gains: [0.025, 0.035, 0.045], looseness: 1.4, closed: 220 * DEG, clamp: 12 } as const
+/**
+ * The hand's trail behind the forearm's swing: drag gain (seconds) at the neutral tension, loosening with it as the
+ * fingers do (`FINGER_DRAG.looseness`), and the clamp, degrees.
+ */
+const WRIST_TRAIL = { gain: 0.03, clamp: 25 } as const
 const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.min(degrees * DEG, x))
 // The forearm hangs from the upper arm, so the weight reaches the elbow one upper-arm response later: the relaxed
 // upper-arm follower's ramp lag, zeta / (pi f) (architecture 3a), after the shoulder link of the weight chain.
@@ -319,6 +324,22 @@ export class BodyArms {
     return clampDrag(-FINGER_DRAG.gains[j - first] * loose * open * parent, FINGER_DRAG.clamp)
   }
 
+  /**
+   * The hand's passive trail (3a drag) on wrist channel `j`: it lags the forearm's swing in the world, the upper arm's
+   * flexion rate plus the elbow's less the trunk's pitch rate, so it bends back while the forearm swings forward and
+   * flops through as the swing turns. The swing turns about the elbow's axis, which is the wrist's deviation axis while
+   * the palm faces the thigh; pronation turns the hand about the forearm, so `sin(pron)` of the trail goes to flexion.
+   * A loose hand trails most; tension stiffens it as it does the fingers. The drag once followed the elbow alone with
+   * the opposite sign, which bent the hand forward and up at the front of a fast swing: a wave at every stride.
+   */
+  private wristTrail(start: number, j: number): number {
+    const swing = this.states[start + 2].v + this.states[start + 5].v - this.trunkPitchRate
+    const loose = Math.max(0, FINGER_DRAG.looseness - this.tension)
+    const trail = clampDrag(WRIST_TRAIL.gain * loose * swing, WRIST_TRAIL.clamp)
+    const pron = this.states[start + 6].y
+    return j === 8 ? trail * Math.cos(pron) : trail * Math.sin(pron)
+  }
+
   private followSide(side: BodySide, targets: Float64Array, activation: Float64Array, fed: Float64Array): void {
     const start = ARM_START[side]
     for (let j = 2; j < 26; j++) {
@@ -329,7 +350,7 @@ export class BodyArms {
       if (j === 5)
         drag = clampDrag(-0.045 * (this.states[start + 2].v - this.trunkPitchRate), 8)
       else if (j === 7 || j === 8)
-        drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
+        drag = this.wristTrail(start, j)
       else if (j >= 9 && j < 24)
         drag = this.fingerDrag(start, j, targets)
       // An actively driven joint does not flop: like the upper arm's plumb line and pendulum, the passive trail yields

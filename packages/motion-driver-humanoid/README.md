@@ -622,7 +622,11 @@ unreachable key returns null. Check its limits and clearance before playback.
 Each arm follower trails its parent through a drag term (architecture 3a).
 The elbow trails the upper arm's swing in the world, its flex rate minus the
 trunk pitch rate, so the plumb line's counter-rotation of the upper arm against
-a pitching trunk (stillness in the world) never swings the forearm. Each finger
+a pitching trunk (stillness in the world) never swings the forearm. The hand
+trails the forearm's swing in the world (upper-arm flex rate plus elbow rate
+minus the trunk pitch rate) about the elbow's axis, split between deviation and
+flexion by pronation: it bends back as the forearm swings forward and flops
+through as the swing turns, loosening as the fingers do. Each finger
 joint trails the curl-plane velocity of the segment it hangs from (the wrist's
 flexion plus the same digit's joints nearer the palm), with gains that grow
 toward the tip, so a swung hand's fingers lag by a few degrees, more and later

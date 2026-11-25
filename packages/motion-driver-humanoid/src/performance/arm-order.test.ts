@@ -145,3 +145,70 @@ describe('finger follow-through', () => {
       expect(Math.abs(peak)).toBeLessThan(0.05)
   })
 })
+
+describe('wrist follow-through', () => {
+  const { traits } = fixtureRigs[0]
+  /** An additive layer that swings the left arm as a walk does, 0.9 Hz, the elbow bending as the arm swings forward. */
+  function walkSwing(size: number): PerformanceLayer {
+    const mask = new Float64Array(BODY_CHANNELS.length)
+    mask.fill(1, ARM_START.left, ARM_START.left + 9)
+    const out = new Float64Array(BODY_CHANNELS.length)
+    return {
+      id: 'walk-swing',
+      order: 'emotion',
+      mode: 'additive',
+      enterSeconds: 0,
+      mask,
+      step: (context) => {
+        const phase = Math.sin(2 * Math.PI * 0.9 * context.time)
+        out[ARM_START.left + 2] = size * 20 * DEG * phase
+        out[ARM_START.left + 5] = size * 10 * DEG * (1 + phase)
+        return { channels: out, weight: 1, sequence: 1 }
+      },
+      reset: () => {},
+    }
+  }
+  /** The hand's deviation from the still arm's (degrees) and the forearm's swing rate, over the settled seconds. */
+  function trail(tension: number) {
+    const input = (time: number) => ({ ...quietInput(time), mood: { valence: 0, arousal: 0, tension } })
+    const swung = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [walkSwing(1)] }), 6, input)
+    const held = channelTrace(createBodyPerformer({ traits, seed: 1, layers: [walkSwing(0)] }), 6, input)
+    const from = Math.round(2 / BODY_TICK)
+    const flex = swung[channelIndex('leftFlex')]
+    const elbow = swung[channelIndex('leftElbow')]
+    const wdev = channelIndex('leftWdev')
+    const bend: number[] = []
+    const rate: number[] = []
+    for (let i = from; i < flex.length; i++) {
+      bend.push((swung[wdev][i] - held[wdev][i]) / DEG)
+      rate.push((flex[i] + elbow[i] - flex[i - 1] - elbow[i - 1]) / BODY_TICK)
+    }
+    return { bend, rate }
+  }
+  const correlation = (a: readonly number[], b: readonly number[]) => {
+    const mean = (x: readonly number[]) => x.reduce((s, v) => s + v, 0) / x.length
+    const ma = mean(a)
+    const mb = mean(b)
+    let ab = 0
+    let aa = 0
+    let bb = 0
+    for (let i = 0; i < a.length; i++) {
+      ab += (a[i] - ma) * (b[i] - mb)
+      aa += (a[i] - ma) ** 2
+      bb += (b[i] - mb) ** 2
+    }
+    return ab / Math.sqrt(aa * bb)
+  }
+
+  it('bends the hand back while the forearm swings forward and forward while it swings back', () => {
+    // A positive deviation bends the hand back on the forearm: the hand lags the swing instead of leading it in a wave.
+    const { bend, rate } = trail(0.4)
+    expect(correlation(bend, rate)).toBeGreaterThan(0.7)
+    expect(Math.max(...bend)).toBeGreaterThan(3)
+  })
+
+  it('trails less on a tense hand', () => {
+    const span = (x: readonly number[]) => Math.max(...x) - Math.min(...x)
+    expect(span(trail(0.9).bend)).toBeLessThan(0.7 * span(trail(0.4).bend))
+  })
+})
