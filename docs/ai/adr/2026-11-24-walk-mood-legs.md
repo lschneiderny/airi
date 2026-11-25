@@ -25,7 +25,7 @@ On the reference rig (walk, 40 s, seed 1; `lab:motion3d report walk-style`):
 | --- | --- | --- |
 | Happy | knee swing 66.9 deg, foot lift 0.185 L | knee swing 73.0 deg, foot lift 0.191 L, trunk opened 1.2 deg |
 | Sad | 0.77 L/s at 1.41 steps/s, step 0.55 L, width 0.139 L, trunk lean 1.1 deg | 0.70 L/s at 1.40 steps/s, step 0.50 L, width 0.108 L, trunk lean 4.1 deg |
-| Angry | elbow carry 64 deg, bob 0.027 L, knee swing 55.7 deg | elbow carry 53 deg, bob 0.033 L, knee swing 57.8 deg; 2.03 steps/s against 1.92 |
+| Angry | 1.02 L/s at 1.92 steps/s, elbow carry 64 deg, bob 0.027 L, knee swing 55.7 deg | 0.97 L/s at 1.92 steps/s, elbow carry 53 deg, bob 0.033 L, knee swing 57.9 deg |
 | Tired | trunk lean 5.0 deg, knee swing 57.7 deg | trunk lean 6.2 deg, knee swing 56.4 deg, swing start at 0.70 of the gait's |
 
 - The tired walk changes least: its slower swing start shows in no report line.
