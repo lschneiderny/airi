@@ -7,6 +7,7 @@ import type { HandShape } from './hand-shapes'
 import { solveArmKey } from './arm-key'
 import { ARM_START, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision, KEY_HEADROOM } from './collision'
+import { writeHandShape } from './hand-shapes'
 import { BodySkeleton } from './skeleton'
 
 export type SpeechGestureForm = Exclude<BodyGestureForm, BodyArmForm>
@@ -76,13 +77,19 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  * at the wrist so that they reach it with the palm toward the head (`bentHand`), in place of the forms' fixed
  * pronation and flexion.
  */
-export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
+export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape | Readonly<Record<BodySide, HandShape>>, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
   'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
   'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
   'hair-touch': { shape: 'open', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
   'hair-sweep': { shape: 'open', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one', sweep: 1, after: 'hair-touch' },
   'clasp': { shape: 'relaxed', pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
+}
+
+/** Writes the hand of arm form `form` on `side` into a side's arm block (`writeHandShape`); a form may name a hand per side. */
+export function writeArmFormHand(form: BodyArmForm, side: BodySide, pose: Float64Array): void {
+  const { shape } = ARM_FORMS[form]
+  writeHandShape(typeof shape === 'string' ? shape : shape[side], pose)
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */
