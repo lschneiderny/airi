@@ -142,6 +142,15 @@ const AMPLITUDE = {
 const CALM = { drive: 0.4, floor: 0.5 } as const
 
 /**
+ * A hand rises only to say something. A unit opens on an utterance's speaking edge or on an onset that strokes, never
+ * on a weak one; an onset that finds the lead hand still rising strokes as soon as the preparation lets it, when that
+ * is within `defer` seconds of the onset, so the rise leads into its stroke; and the unit lowers its hands only after
+ * that stroke. Before, an onset that opened a unit passed while the hands rose, and a pause or the end of speech
+ * lowered them again with no stroke at all.
+ */
+const RISE = { defer: 0.6 } as const
+
+/**
  * A phrase's theme stroke sets its hand: the ready key turns `share` of the way to the theme's forearm and wrist and
  * the hand takes `hand` of the theme's shape, so the beats that follow keep the palm the theme showed. A set phrase's
  * beat keeps that turn and flexes the wrist `beatFlex` further, and lands with the theme's full hand.
@@ -670,6 +679,8 @@ class GesturePerformer {
   private quiet = 0
   private lastStroke = -Infinity
   private refractoryEnd = -Infinity
+  /** An onset that strokes once the lead hand's preparation lets it (`RISE`): when it came, its form and whether it was major. */
+  private deferred: { readonly at: number, readonly form: SpeechGestureForm, readonly major: boolean } | null = null
   private readonly majors: number[] = []
   private readonly formTimes = new Map<SpeechGestureForm, number>()
   private armForm: { side: BodyGestureHand, form: BodyArmForm } | null = null
@@ -708,6 +719,7 @@ class GesturePerformer {
     this.speechEnded = -Infinity
     this.quiet = 0
     this.lastStroke = this.refractoryEnd = -Infinity
+    this.deferred = null
     this.majors.length = 0
     this.formTimes.clear()
     this.armForm = null
@@ -741,20 +753,27 @@ class GesturePerformer {
     this.performArmForm(context, now)
 
     const unit = this.unit
+    if (this.deferred && (!unit.active || unit.retracting || now - this.deferred.at > RISE.defer))
+      this.deferred = null
     if (unit.active && !unit.retracting) {
       const ended = !voice.speaking && now - this.speechEnded >= TIMING.afterSpeech
       const capped = (unit.strokes >= TIMING.unitStrokes && now - this.lastStroke >= 0.6) || now - unit.start >= TIMING.unitSeconds
       const holding = unit.drive >= TIMING.holdDrive
-      if (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || !this.performable(input))
+      // A hand rising into a stroke it owes strokes first (`RISE`); only a performer that may not gesture drops it.
+      const owed = this.deferred !== null && this.performable(input)
+      if (!owed && (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || !this.performable(input)))
         this.retract(context, now, ended || !voice.speaking)
       // Walking keeps its one endless beat phrase.
       else if (holding && this.quiet >= TIMING.quiet && this.phrase && Number.isFinite(this.phrase.length) && this.phraseStrokes > 0 && unit.sides.every(side => this.tracks[side].state === 'ready'))
         this.nextPhrase(context, now)
     }
+    // A unit opened on this tick's onset owes that onset its stroke (`startUnit`).
     if (!unit.active && (speakingEdge || (voice.speaking && onset)) && now >= this.refractoryEnd && this.performable(input))
-      this.startUnit(context, now, onset, major)
-    if (unit.active && !unit.retracting && onset)
+      this.startUnit(context, now, onset, major, speakingEdge)
+    else if (unit.active && !unit.retracting && onset)
       this.stroke(context, now, major)
+    else if (this.deferred && unit.active && !unit.retracting)
+      this.strokeDeferred(context, now)
 
     for (const side of SIDES)
       this.step(this.tracks[side], context, now)
@@ -881,12 +900,15 @@ class GesturePerformer {
     return true
   }
 
-  private startUnit(context: PerformanceContext, now: number, onset: boolean, major: boolean): void {
+  private startUnit(context: PerformanceContext, now: number, onset: boolean, major: boolean, edge: boolean): void {
     const { input } = context
     const drive = gestureDrive(input.energy.level, input.mood)
     // A calm speaker lets most of an utterance pass: the unit waits for an emphasis or a loud onset.
     const stirred = onset && (major || input.voice.level >= this.peakFloor(drive))
     if (drive < CALM.drive && !stirred)
+      return
+    // Past the speaking edge, the hands rise only for an onset they will stroke (`RISE`).
+    if (!edge && !this.strikes(input, major, drive))
       return
     const walking = input.gait !== null && input.gait.mode !== 'idle'
     const free = SIDES.filter(side => this.free(side, input, context))
@@ -923,6 +945,8 @@ class GesturePerformer {
     this.report.plannedHit = null
     this.report.hand = started.length === 2 ? 'both' : started[0]
     this.aimBody(context, now, Math.max(...started.map(side => this.tracks[side].prepSeconds)))
+    if (onset)
+      this.stroke(context, now, major)
   }
 
   /**
@@ -1064,23 +1088,53 @@ class GesturePerformer {
     this.body.aim(target, now, seconds)
   }
 
+  /** Whether an onset strokes: the gate's S2 voice-peak rule, and for a calm speaker a louder voice unless it carries an emphasis (`CALM`). */
+  private strikes(input: BodyPerformanceInput, major: boolean, drive: number): boolean {
+    const { level, slow } = input.voice
+    return level >= VOICE.peak && level - slow >= VOICE.prominence && (major || level >= this.peakFloor(drive))
+  }
+
   private stroke(context: PerformanceContext, now: number, major: boolean): void {
     const { input } = context
     const unit = this.unit
-    if (input.voice.level < VOICE.peak || input.voice.level - input.voice.slow < VOICE.prominence)
-      return
-    if (!major && input.voice.level < this.peakFloor(unit.drive))
+    if (!this.strikes(input, major, unit.drive))
       return
     if (now - this.lastStroke < TIMING.strokeGap || unit.strokes >= TIMING.unitStrokes)
       return
+    const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
+    const form = this.chooseForm(input, now, major, unit.twoHand)
+    if (this.strokeReady(lead, now, GESTURE_FORMS[form].strokeSeconds / gestureTempo(unit.drive))) {
+      this.deferred = null
+      this.perform(context, now, form, major)
+    }
+    // The hand is still rising: it strokes this onset as soon as its preparation lets it (`RISE`).
+    else if (lead.state === 'preparation') {
+      this.deferred = { at: now, form, major: major || (this.deferred?.major ?? false) }
+    }
+  }
+
+  /** Plays an onset's stroke that waited for the lead hand's preparation (`RISE`), once that hand can stroke. */
+  private strokeDeferred(context: PerformanceContext, now: number): void {
+    const deferred = this.deferred
+    const unit = this.unit
+    if (!deferred || unit.strokes >= TIMING.unitStrokes)
+      return
+    const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
+    if (!this.strokeReady(lead, now, GESTURE_FORMS[deferred.form].strokeSeconds / gestureTempo(unit.drive)))
+      return
+    this.deferred = null
+    this.perform(context, now, deferred.form, deferred.major)
+  }
+
+  /** Starts the stroke of `form` on the unit's lead hand, and on the second hand when the form takes both. */
+  private perform(context: PerformanceContext, now: number, form: SpeechGestureForm, major: boolean): void {
+    const { input } = context
+    const unit = this.unit
     const drive = unit.drive
     const tempo = gestureTempo(drive)
     const lead = unit.twoHand ? this.dominant : unit.sides[0]
     const leadTrack = this.tracks[lead]
-    const form = this.chooseForm(input, now, major, unit.twoHand)
     const seconds = GESTURE_FORMS[form].strokeSeconds / tempo
-    if (!this.strokeReady(leadTrack, now, seconds))
-      return
     const walking = input.gait !== null && input.gait.mode !== 'idle'
     const amplitude = (major ? 1 : AMPLITUDE.minor) * (walking ? AMPLITUDE.walking : 1)
     const size = gestureGain(drive) * GESTURE_FORMS[form].scale * amplitude

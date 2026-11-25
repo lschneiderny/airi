@@ -316,6 +316,29 @@ describe('co-speech gestures', () => {
     expect(checked).toBeGreaterThanOrEqual(2)
   }, 60_000)
 
+  it('raises the hands after a pause only for an onset they stroke, and strokes it before lowering them', () => {
+    // The first unit lowers its hands in the pause; its refractory has passed by 4.4 s. Speech resumes with a weak
+    // onset, then a stroking one 0.4 s before speaking ends: the hands rise for that one and stroke it.
+    const run = perform({ utterances: [{ start: 0.5, end: 5.4, energy: 0.5, onsets: [{ at: 1 }, { at: 1.9 }, { at: 4.5, weak: true }, { at: 5 }], pauses: [[2.3, 4.2]] }] }, 8)
+    const units = run.frames.flatMap((frame, i) => i > 0 && frame.gesture.unitSeq !== run.frames[i - 1].gesture.unitSeq ? [frame] : [])
+    expect(units).toHaveLength(2)
+    expect(units[1].time).toBeGreaterThanOrEqual(5)
+    const second = strokes(run).filter(s => run.frames[s.index].gesture.unitSeq === 2)
+    expect(second).toHaveLength(1)
+    expect(second[0].onset).toBeCloseTo(5, 1)
+    expect(second[0].hit - second[0].onset).toBeLessThan(0.7)
+  })
+
+  it('strokes the onset that opens a unit once the hands have risen, instead of letting it pass', () => {
+    // A calm speaker's unit opens on a loud onset; the next onset is weak, and speaking ends before another comes.
+    for (const seed of [1, 2, 3]) {
+      const run = perform({ utterances: [{ start: 0.5, end: 2.2, energy: 0.3, onsets: [{ at: 1, loud: true }, { at: 1.6, weak: true }] }] }, 5, { seed })
+      const planned = strokes(run)
+      expect(planned, `seed ${seed}`).toHaveLength(1)
+      expect(planned[0].onset).toBeCloseTo(1, 1)
+    }
+  })
+
   it('lowers the hands in a pause between phrases and gestures again after it', () => {
     const run = perform({ utterances: [{ start: 0.5, end: 9, energy: 0.85, onsets: [1, 1.9, 2.8, 5.6, 6.5, 7.4].map(at => ({ at })), pauses: [[3.2, 5.2]] }] }, 9)
     const inPause = run.frames.filter(f => f.time > 3.2 && f.time < 5.6)
