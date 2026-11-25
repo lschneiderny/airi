@@ -193,8 +193,10 @@ describe('sidestep', () => {
     // came to lead her facing by at most 40 degrees. Re-pinned when a start from standing came to turn over 2 steps with its
     // gaze half a step ahead. Re-pinned when the chest came to roll and nod after the pelvis, the head to nod, the elbow
     // to trail by 0.1 s and the arm's hang floor to fall to 12 and 16 degrees. Re-pinned when a start from standing came
-    // to turn about each stance hip in turn and a walking foot to finish its turn by 0.7 of the swing.
-    expect(hash.digest('hex')).toBe('5625fa813ebe1d78cf7e5668959a7615a0f70cbc7a683ac38e47c51a0f9bad3f')
+    // to turn about each stance hip in turn and a walking foot to finish its turn by 0.7 of the swing. Re-pinned when a
+    // reversal came to turn over 2.8 steps at a steady rate, its feet to land within 55 degrees of the facings their
+    // stance sweeps, and its outgoing step to lead off 0.2 L ahead.
+    expect(hash.digest('hex')).toBe('39035b3bcda8341aa52c6b92a1c340b07fb17c66dfc959069f82b6aa1ff71048')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -1115,13 +1117,29 @@ describe('procedural gait', () => {
     expect(after[turning]!.root.yaw - after[turning]!.lookAhead).toBeGreaterThan(20 * rad)
     for (const frame of after)
       expect(Math.abs(frame.root.yaw - frame.lookAhead)).toBeLessThanOrEqual(40 * rad + 1e-9)
-    // She stands still for less than half a second and is never stopped while she faces the viewer.
-    const stopped = after.filter(frame => frame.speed === 0)
+    // She stands still for less than half a second, and only while her body turns through it at over 90 degrees a
+    // second: she never pauses facing the viewer.
+    const stopped = after.flatMap((frame, tick) => tick > 0 && frame.speed === 0 ? [(after[tick - 1]!.root.yaw - frame.root.yaw) / dt] : [])
     expect(stopped.length * dt).toBeLessThan(0.5)
-    expect(stopped.every(frame => Math.abs(frame.root.yaw) > 20 * rad)).toBe(true)
-    // The gaze names the new heading before the root moves the new way, and she sets off facing it, not backwards.
+    expect(Math.min(...stopped)).toBeGreaterThan(90 * rad)
+    // No planted foot stands more than 60 degrees off her facing, so no shoe swivels under the turning body.
+    for (const frame of after) {
+      for (const side of sides) {
+        if (frame.feet[side].planted)
+          expect(Math.abs(wrap(frame.feet[side].target.yaw - frame.root.yaw))).toBeLessThan(60 * rad)
+      }
+    }
+    // The outgoing step, the first to land past the viewer, lands clearly ahead of the planted foot along the new
+    // heading, so the ankles do not stack and the weight visibly moves onto it.
+    const outgoing = after.findIndex(frame => frame.root.yaw < 0 && frame.events.some(event => event.kind === 'heelStrike'))
+    const strike = after[outgoing]!.events.find(event => event.kind === 'heelStrike')!.foot
+    const lead = after[outgoing]!.feet[strike === 'left' ? 'right' : 'left'].target.position.x - after[outgoing]!.feet[strike].target.position.x
+    expect(lead).toBeGreaterThan(0.18 * legLength)
+    // The gaze leads her toward the new heading by its full 40 degrees, or names it, before the root moves the new way,
+    // and she sets off facing it, not backwards. The longer turn sets her off 23 degrees round, so the 40-degree limit
+    // holds the gaze short of the heading.
     const setOff = after.findIndex((frame, tick) => tick > 0 && frame.root.position.x < after[tick - 1]!.root.position.x)
-    expect(after[setOff]!.lookAhead).toBeCloseTo(-Math.PI / 2, 6)
+    expect(after[setOff]!.lookAhead).toBeCloseTo(Math.max(-Math.PI / 2, after[setOff]!.root.yaw - 40 * rad), 6)
     expect(after[setOff]!.root.yaw).toBeLessThan(-10 * rad)
     expect(after.at(-1)!.mode).toBe('walking')
     expect(run.locomotion.leashClamps).toBe(0)
