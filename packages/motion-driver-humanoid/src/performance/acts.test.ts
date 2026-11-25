@@ -178,9 +178,9 @@ describe('the act layer', () => {
     return { steps, supports }
   }
 
-  // Re-pinned for the stand-life pass: the step lifts higher, for longer, and sets the foot down at a new place, so the
-  // re-plant reads as one (it was 0.4 s, 0.02 L high, and turned the foot in place).
-  it.each(rigs)('re-plants the foot she takes her weight off on $name\'s body: one 0.5 s step lifting 0.035 L to a new place, 4 to 8 degrees, landed by the end (4e act 3)', (rig) => {
+  // Re-pinned so the re-plant reads from the front: it lifts higher and sets the foot down at another width and toe-out
+  // (it lifted 0.035 L and landed mostly nearer or farther, which only the side view showed).
+  it.each(rigs)('re-plants the foot she takes her weight off on $name\'s body: one 0.5 s step lifting 0.045 L to another width, turned out 8 to 12 degrees, landed by the end (4e act 3)', (rig) => {
     const { steps, supports } = replants(rig.traits, [record('shift-stance', 1.5, { side: 1 })])
     expect(steps).toHaveLength(1)
     const [{ step, support }] = steps
@@ -188,28 +188,30 @@ describe('the act layer', () => {
     expect(step.foot).toBe('left')
     expect(support).toBeGreaterThanOrEqual(0.9)
     expect(step.duration).toBe(0.5)
-    expect(step.lift).toBeCloseTo(0.035 * rig.traits.legLength, 9)
+    expect(step.lift).toBeCloseTo(0.045 * rig.traits.legLength, 9)
+    // The left foot goes out toward her left (+x) or in by at least 0.05 L, and its toe turns out to her left.
     const offset = step.offset ?? { x: 0, z: 0 }
-    expect(Math.hypot(offset.x, offset.z) / rig.traits.legLength).toBeGreaterThanOrEqual(0.05 - 1e-9)
-    expect(Math.abs(step.yaw) / DEG).toBeGreaterThanOrEqual(4)
-    expect(Math.abs(step.yaw) / DEG).toBeLessThanOrEqual(8)
+    expect(Math.abs(offset.x) / rig.traits.legLength).toBeGreaterThanOrEqual(0.05 - 1e-9)
+    expect(step.yaw / DEG).toBeGreaterThanOrEqual(8)
+    expect(step.yaw / DEG).toBeLessThanOrEqual(12)
     expect(step.startTime + step.duration).toBeLessThanOrEqual(START + 1.5 + 2 * BODY_TICK)
     // Landed, her weight goes onto the foot she set down instead of back to a half stance.
     const landed = supports.filter(entry => entry.at > step.startTime + step.duration && entry.at <= START + 1.5)
     expect(landed[landed.length - 1].support).toBeLessThan(landed[0].support - 0.1)
   })
 
-  it('sets each re-planted foot down inside its ranges and at least 0.05 L from where it last stood', () => {
-    let last = { out: 0, forward: 0, yaw: 0 }
-    for (let seq = 1; seq <= 200; seq++) {
-      const next = replant(last, createRandomStream(seq))
-      expect(Math.hypot(next.out - last.out, next.forward - last.forward)).toBeGreaterThanOrEqual(0.05)
-      expect(next.out).toBeGreaterThanOrEqual(-0.02)
-      expect(next.out).toBeLessThanOrEqual(0.06)
-      expect(next.forward).toBeGreaterThanOrEqual(-0.04)
-      expect(next.forward).toBeLessThanOrEqual(0.08)
-      expect(Math.abs(next.yaw) / DEG).toBeLessThanOrEqual(8 + 1e-9)
-      last = next
+  it('sets each re-planted foot down at another width, at least 0.05 L from where it last stood, inside its ranges', () => {
+    for (const outward of [1, -1] as const) {
+      let last = { out: 0, forward: 0, yaw: 0 }
+      for (let seq = 1; seq <= 200; seq++) {
+        const next = replant(last, outward, createRandomStream(seq))
+        expect(Math.abs(next.out - last.out)).toBeGreaterThanOrEqual(0.05)
+        expect(next.out).toBeGreaterThanOrEqual(-0.02)
+        expect(next.out).toBeLessThanOrEqual(0.08)
+        expect(next.forward).toBeGreaterThanOrEqual(-0.03)
+        expect(next.forward).toBeLessThanOrEqual(0.05)
+        last = next
+      }
     }
   })
 
@@ -250,17 +252,17 @@ describe('the act layer', () => {
     expect(diff('hipsRoll')).toBeLessThan(-3)
   })
 
-  it('turns each re-planted foot back toward where it stood, so its steps never add up past 12 degrees', () => {
+  it('turns each re-planted foot out and back to near straight in turn, so the front view sees its angle change and its steps never add up', () => {
     const acts = Array.from({ length: 8 }, (_, k) => record('shift-stance', 1.6, { seq: k + 1, side: 1 }))
     const { steps } = replants(chisaTraits, acts)
     expect(steps).toHaveLength(8)
     let last = 0
     for (const { step } of steps) {
-      const turn = step.yaw - last
-      expect(Math.abs(turn) / DEG).toBeGreaterThanOrEqual(4 - 1e-9)
-      expect(Math.abs(turn) / DEG).toBeLessThanOrEqual(8 + 1e-9)
-      expect(turn * last).toBeLessThanOrEqual(0)
-      expect(Math.abs(step.yaw) / DEG).toBeLessThanOrEqual(12)
+      // Side 1 always stands her on the right foot, so the left foot steps; its toe turns out toward her left (+yaw).
+      expect(step.foot).toBe('left')
+      expect(Math.abs(step.yaw - last) / DEG).toBeGreaterThanOrEqual(5 - 1e-9)
+      expect(step.yaw / DEG).toBeGreaterThanOrEqual(0)
+      expect(step.yaw / DEG).toBeLessThanOrEqual(12 + 1e-9)
       last = step.yaw
     }
   })

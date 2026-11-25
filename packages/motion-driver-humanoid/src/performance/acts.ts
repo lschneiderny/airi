@@ -65,19 +65,23 @@ function trapezoid(age: number, attack: number, hold: number, release: number): 
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
 /**
- * Architecture 4e act 3's re-plant: the free foot lifts once it carries 5 % of her weight (support 0.9), turns 4 to 8
- * degrees and sets down at a new place (`PLACE`). The first form stepped 0.02 L high in the turn planner's 0.4 s and
- * only turned about the root, which moved the shoe a few pixels while the knee and head shift caught the eye (stand-life
- * audit): the step now lifts 0.035 L over 0.5 s, so the foot visibly unloads and travels.
+ * Architecture 4e act 3's re-plant: the free foot lifts once it carries 5 % of her weight (support 0.9) and sets down
+ * at a new place (`PLACE`). The first form stepped 0.02 L high in the turn planner's 0.4 s and only turned about the
+ * root, which moved the shoe a few pixels while the knee and head shift caught the eye (stand-life audit); the second
+ * lifted 0.035 L over 0.5 s but landed mostly nearer or farther, which only the side view shows. The step now lifts
+ * 0.045 L and lands at another width and toe-out, which the front view shows. It keeps its 0.5 s: a short shift-stance
+ * (1.2 s) has about that much left once her weight is off the foot, and a step that cannot land by the end is skipped.
  */
-const REPLANT = { unloaded: 0.9, seconds: 0.5, lift: 0.035, yaw: [4, 8] } as const
+const REPLANT = { unloaded: 0.9, seconds: 0.5, lift: 0.045 } as const
 /**
  * Where a re-planted foot may land, leg lengths from its standing place: `out` away from her midline and `forward`,
- * each a range, and at least `moved` from where the foot last stood, so every re-plant reads as a deliberate
- * adjustment. A placement is absolute, so successive re-plants stay inside the ranges and never add up. The ranges are
- * the layer's: about a foot's width out or in and half a foot forward or back of the bind stance.
+ * each a range, at least `moved` wider or narrower than where the foot last stood, and turned out by `toeOut` degrees
+ * or set back near straight (`straight`), the one it was not, so every re-plant changes the stance width and the
+ * foot's angle as seen from the front. A placement is absolute, so successive re-plants stay inside the ranges and
+ * never add up. The ranges are the layer's: about a foot's width out or in and a third of a foot forward or back of
+ * the bind stance, and a relaxed stance's turned-out foot (a third of the 30 degrees of a ballet first position).
  */
-const PLACE = { out: [-0.02, 0.06], forward: [-0.04, 0.08], moved: 0.05, tries: 32 } as const
+const PLACE = { out: [-0.02, 0.08], forward: [-0.03, 0.05], moved: 0.05, toeOut: [8, 12], straight: [0, 3], tries: 32 } as const
 /** A foot's re-plant: leg lengths out and forward of its standing place, and radians from its standing angle. */
 interface Placement { out: number, forward: number, yaw: number }
 const NO_STEPS: readonly BodyFootStep[] = []
@@ -177,21 +181,23 @@ function stretchArm(context: PerformanceContext, side: BodySide): StretchArm {
 }
 
 /**
- * The next place of a foot re-planted from `last` (`PLACE`): a turn of 4 to 8 degrees toward and past its standing
- * angle, so it stays within 8 degrees of it, and a spot inside the ranges at least `moved` from the last one: the first
- * of `tries` draws far enough, else the corner of the ranges farthest from it (at least 0.07 L away).
+ * The next place of a foot re-planted from `last` (`PLACE`): turned out if it stood near straight, else set back near
+ * straight, toward its own outside (`outward`, +1 for the left foot, whose toe turns out toward her left); and a width
+ * at least `moved` from the last one: the first of `tries` draws far enough, else the end of the range farthest from it
+ * (at least 0.05 L away), with a forward place anywhere in its range.
  */
-export function replant(last: Placement, random: () => number): Placement {
-  const turn = (REPLANT.yaw[0] + (REPLANT.yaw[1] - REPLANT.yaw[0]) * random()) * DEG
-  const yaw = last.yaw - (last.yaw !== 0 ? Math.sign(last.yaw) : random() < 0.5 ? -1 : 1) * turn
+export function replant(last: Placement, outward: 1 | -1, random: () => number): Placement {
+  const turned = outward * last.yaw > PLACE.straight[1] * DEG
+  const [low, high] = turned ? PLACE.straight : PLACE.toeOut
+  const yaw = outward * (low + (high - low) * random()) * DEG
+  const forward = PLACE.forward[0] + (PLACE.forward[1] - PLACE.forward[0]) * random()
   for (let i = 0; i < PLACE.tries; i++) {
     const out = PLACE.out[0] + (PLACE.out[1] - PLACE.out[0]) * random()
-    const forward = PLACE.forward[0] + (PLACE.forward[1] - PLACE.forward[0]) * random()
-    if (Math.hypot(out - last.out, forward - last.forward) >= PLACE.moved)
+    if (Math.abs(out - last.out) >= PLACE.moved)
       return { out, forward, yaw }
   }
-  const far = (range: readonly [number, number], from: number) => from - range[0] > range[1] - from ? range[0] : range[1]
-  return { out: far(PLACE.out, last.out), forward: far(PLACE.forward, last.forward), yaw }
+  const out = last.out - PLACE.out[0] > PLACE.out[1] - last.out ? PLACE.out[0] : PLACE.out[1]
+  return { out, forward, yaw }
 }
 
 /** A re-plant of `foot` to `place`, starting now. */
@@ -566,17 +572,17 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shift-stance': {
-        // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`) at a new place
-        // (`PLACE`), turning toward and past its standing angle, so it stays within 8 degrees of it; it lifts only if it
-        // lands by the end. Then her weight settles onto the foot she set down, so she stands on one leg again: the first
-        // form went back to a half shift there, which read as a parade stance between two acts. Resting (4f), the
-        // support goes to the leg she did not stand on and stays there: she changes legs, the foot she leaves re-plants,
-        // and the rest layer takes the new leg as its own (g4 review, "let the rest change legs").
+        // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`) at a new width and
+        // toe-out (`PLACE`); it lifts only if it lands by the end. Then her weight settles onto the foot she set down, so
+        // she stands on one leg again: the first form went back to a half shift there, which read as a parade stance
+        // between two acts. Resting (4f), the support goes to the leg she did not stand on and stays there: she changes
+        // legs, the foot she leaves re-plants, and the rest layer takes the new leg as its own (g4 review, "let the rest
+        // change legs").
         const stance = a.stance
         const foot = sideOf(-stance)
         const unloaded = context.previous.support * stance >= REPLANT.unloaded
         if (a.lift === null && unloaded && context.traits.legIk && free(['lowerBody', 'upperBody']) && age + REPLANT.seconds <= D) {
-          planted[foot] = replant(planted[foot], createRandomStream(deriveSeed(a.record.seq, 3)))
+          planted[foot] = replant(planted[foot], foot === 'left' ? 1 : -1, createRandomStream(deriveSeed(a.record.seq, 3)))
           a.lift = time
           steps = [footStep(foot, planted[foot], time, context)]
         }
