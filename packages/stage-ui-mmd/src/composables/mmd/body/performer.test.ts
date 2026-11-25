@@ -294,6 +294,30 @@ describe('mmd body performer adapter', () => {
         expect(posed.angleTo(new Vector3(-fk[1], -fk[4], -fk[7]))).toBeLessThan(1e-6)
       }
     })
+
+    it.each([
+      { name: 'without twist bones', twist: undefined },
+      { name: 'with twist bones', twist: { offset: 0.04, tilt: 5 * Math.PI / 180 } },
+    ])('turns a rolled bind palm to the palm the forward kinematics assume, $name', ({ twist }) => {
+      const fixture = bodyFixture(0, Math.PI, { hand: { wrist: 0.2, roll: 0.35 }, twist })
+      const { performer, traits } = performerOf(fixture)
+      for (const side of ['left', 'right'] as const) {
+        const sigma = side === 'left' ? 1 : -1
+        for (const c of [channels({}), pose(side)]) {
+          performer.applyArms(fixture.pipeline.clean, free, c)
+          fixture.mmd.beforePhysics({ grant: true, ik: false, physics: false })
+          fixture.mesh.updateMatrixWorld(true)
+          const hand = fixture.bone(`${side === 'left' ? '左' : '右'}手首`).getWorldQuaternion(new Quaternion())
+          const calibration = fixture.rig.hands[side]!
+          const skeleton = new BodySkeleton(traits)
+          skeleton.update(c)
+          const fk = skeleton.arm(side, c).hand
+          // The canonical hand points along its -y with the palm toward its -sigma x (`BodySkeleton.arm`).
+          expect(new Vector3(...calibration.axis).applyQuaternion(hand).angleTo(new Vector3(-fk[1], -fk[4], -fk[7]))).toBeLessThan(1e-5)
+          expect(new Vector3(...calibration.normal).applyQuaternion(hand).angleTo(new Vector3(-sigma * fk[0], -sigma * fk[3], -sigma * fk[6]))).toBeLessThan(1e-5)
+        }
+      }
+    })
   })
 
   describe('twist bones', () => {

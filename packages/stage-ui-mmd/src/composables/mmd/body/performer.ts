@@ -87,8 +87,18 @@ interface FingerWrite {
 
 /** A side's calibrated hand write (`MMDHandCalibration`); null keeps the uncalibrated write. */
 interface HandWrite {
-  /** Swings the bind hand onto the forearm line, under the wrist channels. */
+  /**
+   * Turns the bind hand onto the forward kinematics' hand, under the wrist channels: its axis onto the forearm line and
+   * its palm normal onto the canonical palm (`BodySkeleton.arm`'s hand faces its -sigma x), so wrist 0 and pronation 0
+   * give every rig the palm the contact solves aim. It is `forearmBind Ry(roll) forearmBind^-1` after the swing.
+   */
   readonly align: Quaternion
+  /**
+   * The bind palm's roll about the forearm line to the canonical palm, radians, in the canonical frame as pronation's
+   * `Ry` is (5 to 21 degrees on the library rigs). A usable wrist twist bone carries it with pronation, so the forearm
+   * mesh takes it along its length and the wrist joint only bends; otherwise the hand bone holds it.
+   */
+  readonly roll: number
   /** `sigma * normal`: a positive turn about it moves a finger toward the thumb. */
   readonly spreadAxis: Vector3
   readonly fingers: readonly FingerWrite[]
@@ -149,12 +159,19 @@ function onAxis(q: Quaternion, axis: Vector3): Quaternion {
 function handWrite(calibration: MMDHandCalibration, sigma: 1 | -1, forearm: { x: number, y: number, z: number }): HandWrite {
   const axis = vector(calibration.axis)
   const normal = vector(calibration.normal)
+  const line = new Vector3(forearm.x, forearm.y, forearm.z).normalize()
+  const swing = new Quaternion().setFromUnitVectors(axis, line)
+  const bind = new Quaternion().setFromUnitVectors(new Vector3(0, -1, 0), line)
+  // The swung palm normal in the canonical forearm frame, and its turn about +y onto the canonical palm (-sigma, 0, 0).
+  const palm = normal.clone().applyQuaternion(swing).applyQuaternion(bind.clone().invert())
+  const roll = Math.atan2(-sigma * palm.z, -sigma * palm.x)
   const knuckleAxis = axis.clone().cross(normal)
   const measured = Object.values(calibration.fingers).filter(finger => finger !== null)
   const reference = calibration.fingers.middle?.spread ?? (measured.length ? measured.reduce((sum, finger) => sum + finger.spread, 0) / measured.length : 0)
   const thumb = calibration.thumb
   return {
-    align: new Quaternion().setFromUnitVectors(axis, new Vector3(forearm.x, forearm.y, forearm.z).normalize()),
+    align: bind.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), roll)).multiply(bind.clone().invert()).multiply(swing),
+    roll,
     spreadAxis: normal.clone().multiplyScalar(sigma),
     fingers: (['index', 'middle', 'ring', 'little'] as const).map((name) => {
       const finger = calibration.fingers[name]
@@ -529,8 +546,9 @@ export class MMDBodyPerformer {
    * Clavicles, arms, hands and fingers. The canonical channels hang a straight-down arm with the palm toward the thigh;
    * `upperBind` and `forearmBind` carry that reference onto the bind arm, so the posed segment directions equal the
    * performer's own forward kinematics, which its collision corrector cleared. A calibrated hand (`HandWrite`) is first
-   * swung onto the forearm line, so the posed hand direction also equals the forward kinematics' hand; the hand keeps
-   * its bind roll about that line. Where a side has a usable twist bone (`TwistWrite`), upper-arm twist turns `腕捩`
+   * turned onto the forward kinematics' hand, its axis onto the forearm line and its palm onto the canonical palm, so
+   * the posed hand direction and palm equal the forward kinematics' on every rig; a wrist twist bone takes that roll
+   * with pronation. Where a side has a usable twist bone (`TwistWrite`), upper-arm twist turns `腕捩`
    * and pronation turns `手捩` instead of the upper arm and the hand, so the mesh between the joints twists along its
    * length (the grant solve spreads each turn over its `捩1..3` children); every joint below keeps its world rotation
    * and position. Under a clip that owns part of the arm, the joints are blended with the clip pose first and the twist
@@ -570,9 +588,9 @@ export class MMDBodyPerformer {
         if (arm.armTwist)
           this.carried(this.part, arm.lower!, clean)
         if (arm.wristTwist) {
-          // Pronation T = forearmBind Ry(-sigma pron) forearmBind^-1 goes to the wrist twist bone the same way, at the
-          // write's share: the forearm ends with K, and the hand starts from `carry`.
-          this.turn.copy(arm.forearmBind).multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 6], 0, 'YXZ'))).multiply(this.q1.copy(arm.forearmBind).invert())
+          // Pronation T = forearmBind Ry(-sigma pron + roll) forearmBind^-1, with the calibrated hand's roll, goes to the
+          // wrist twist bone the same way, at the write's share: the forearm ends with K, and the hand starts from `carry`.
+          this.turn.copy(arm.forearmBind).multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 6] + (arm.calibrated?.roll ?? 0), 0, 'YXZ'))).multiply(this.q1.copy(arm.forearmBind).invert())
           this.turn.copy(this.q1.identity().slerp(this.turn, share))
           this.splitTwist(arm.wristTwist, clean, false)
           this.part.multiply(this.keep)
