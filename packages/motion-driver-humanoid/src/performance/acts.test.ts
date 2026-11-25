@@ -229,6 +229,18 @@ describe('the act layer', () => {
     expect(peak(diff('headRoll')) + peak(diff('neckRoll'))).toBeLessThan(3.5)
   })
 
+  it('zones out on one leg with her chest rounded and shoulders forward', () => {
+    const still = run(chisaTraits, quietInput, START + 10)
+    const acted = run(chisaTraits, playing(record('zone-out', 10, { side: 1 })), START + 10)
+    const mid = Math.round((START + 5) / BODY_TICK)
+    const diff = (channel: Parameters<typeof c>[0]) => (acted.channels[mid][c(channel)] - still.channels[mid][c(channel)]) / DEG
+    expect(diff('midPitch') + diff('upperPitch')).toBeGreaterThan(4)
+    expect(diff('leftClavProt')).toBeGreaterThan(3)
+    expect(diff('headPitch') + diff('neckPitch')).toBeGreaterThan(5)
+    // Her weight on the right leg drops the left hip (the posture's roll).
+    expect(diff('hipsRoll')).toBeLessThan(-3)
+  })
+
   it('turns each re-planted foot back toward where it stood, so its steps never add up past 12 degrees', () => {
     const acts = Array.from({ length: 8 }, (_, k) => record('shift-stance', 1.6, { seq: k + 1, side: 1 }))
     const { steps } = replants(chisaTraits, acts)

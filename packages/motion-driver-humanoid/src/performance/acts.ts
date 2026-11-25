@@ -127,6 +127,8 @@ const ROLL = {
   chestOpen: 2,
   headRoll: 3,
 } as const
+/** The zone-out's settled silhouette on 4f's rest posture, degrees: chest rounding, shoulders forward, head lower. */
+const ZONE = { mid: 3, upper: 2, protraction: 4, head: 4 } as const
 /** The channels a stretch moves in a side's arm block: clavicle elevation, flexion, abduction, elbow. */
 const STRETCH_CHANNELS = [0, 2, 3, 5] as const
 /**
@@ -430,14 +432,22 @@ export function createActLayer(): PerformanceLayer {
       }
       case 'zone-out': {
         // Architecture 4f's rest posture for a while (torso lower +3, clavicles -2, head pitch +3) with slack elbows
-        // (4c sad, -4 deg); main's zone-out head yaw 0.08 and roll 0.14, and the lift as she comes back (0.08).
+        // (4c sad, -4 deg); main's zone-out head yaw 0.08 and roll 0.14, and the lift as she comes back (0.08). On top
+        // (`ZONE`), so the silhouette changes as her attention leaves (stand-life audit rank 9): her weight sinks onto
+        // one leg, the chest rounds, the shoulders come forward and the head drops further.
         const e = trapezoid(age, 1.5, D - 2.1, 0.6)
         const back = raisedCosine((age - (D - 0.9)) / 0.9)
         add('lowerPitch', 3 * e)
+        add('midPitch', ZONE.mid * e)
+        add('upperPitch', ZONE.upper * e)
         clavicles(-2 * e)
+        add('leftClavProt', ZONE.protraction * e)
+        add('rightClavProt', ZONE.protraction * e)
         add('leftElbow', -4 * e)
         add('rightElbow', -4 * e)
-        head(NATURAL.head * s * 0.08 * e, 3 * e - NATURAL.head * 0.08 * back, -NATURAL.head * s * 0.14 * e)
+        head(NATURAL.head * s * 0.08 * e, (3 + ZONE.head) * e - NATURAL.head * 0.08 * back, -NATURAL.head * s * 0.14 * e)
+        if (age < D - 0.9 && free(['lowerBody', 'upperBody']))
+          plan.support = s
         break
       }
       case 'nod-off': {
