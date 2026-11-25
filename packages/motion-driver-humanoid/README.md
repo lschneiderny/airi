@@ -563,7 +563,9 @@ of `@proj-airi/stage-ui-mmd` poses every bone from it under the Natural driver.
 A support transfer stands her in contrapposto. As the weight leaves a foot, its
 heel rises up to 6 degrees, toe-down about its ball through the foot's
 `FootPitch` channel, so the free knee bends forward. The lift starts at support
-0.35, deepens at low arousal, and eases down while a turn steps. Each new
+0.35, deepens at low arousal, and eases down while a turn steps. The heel
+follows in about half a second of its own, so a quick transfer never sets it
+down at the weight's speed, and a lift under 0.1 degrees is left flat. Each new
 support target also re-settles the hanging arms. The elbow, the forearm's
 pronation, the wrist and the finger curl find a new hang, drawn per shift and
 per side. The settle follows the shoulder's arrival over the stance and exists

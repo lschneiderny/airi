@@ -27,13 +27,24 @@ const SWAY_TRUNK_SPLIT = [0.5, 0.3, 0.2] as const
  * foot is nearly unloaded and leaves the ground and returns to it without a residual step: a plain smoothstep left the
  * foot about 5e-5 rad of pitch on its last tick, which the foot stage's flat pivot read as ankle travel. Low arousal
  * deepens it and high arousal stands her squarer (`HEEL_AROUSAL`). While a turn steps the heel eases down
- * (`TURN_HEEL`), since the turn's steps lift the feet themselves. The size is the layer's: a light heel that the default
- * camera reads.
+ * (`TURN_HEEL`), since the turn's steps lift the feet themselves. The heel follows all this in time of its own
+ * (`HEEL_FOLLOW`): a quick weight transfer took it down 6 deg in 0.2 s, and the foot stage's ball pivot handed over to
+ * the flat one with half a degree still on it, a step at the contact point. The size is the layer's: a light heel that
+ * the default camera reads.
  */
 const FREE_HEEL = { degrees: 6, from: 0.35 } as const
 const HEEL_AROUSAL = 0.3
 /** How the free heel eases down for a turn and back up after it: a critically damped follower of its share. */
 const TURN_HEEL = secondOrderCoefficients({ f: 1.5, zeta: 1, r: 0 }, BODY_TICK)
+/**
+ * The free heel's own follower: critically damped, so it rises and sets down over about half a second. A heel under
+ * `HEEL_ONSET` radians (0.1 deg) is not lifted, and the tail lands on 0 once under `HEEL_FLAT`: a pitch too small to
+ * see still keeps the foot on its ball pivot, where any twist of the planted ankle moves the measured contact by the
+ * foot's length (a half shift hovering at the onset did so for seconds).
+ */
+const HEEL_FOLLOW = secondOrderCoefficients({ f: 2, zeta: 1, r: 0 }, BODY_TICK)
+const HEEL_ONSET = 0.1 * DEG
+const HEEL_FLAT = 1e-6
 /** A turn's weight transfer: settled in about half a second, against the scheduler's second and a half. */
 const QUICK = secondOrderCoefficients({ f: 1.6, zeta: 1, r: 0 }, BODY_TICK)
 const leftFootPitch = channelIndex('leftFootPitch')
@@ -85,6 +96,7 @@ export class BodyPosture {
   /** Set by the performer each tick: the turn planner is turning her (`TURN_HEEL`). */
   turning = false
   private readonly heelShare = { y: 1, v: 0, x: 1 }
+  private readonly heels = { left: { y: 0, v: 0, x: 0 }, right: { y: 0, v: 0, x: 0 } }
   /** Set by the performer each tick: a gaze shift is under way. */
   gazeShifting = false
   /** Set by the performer each tick from the merged plan: the cue layer plays the head cue, so the accent drops it. */
@@ -118,6 +130,15 @@ export class BodyPosture {
     this.dwell = this.drawDwell()
     this.lateralGain = 0.38 * Math.abs(traits.feet.left.ankle.x - traits.feet.right.ankle.x) / (2 * traits.legLength)
     this.rotationScale = traits.legIk ? 1 : 0.6
+  }
+
+  /** Advances one free heel's follower toward `target` radians and returns its toe-down pitch (`HEEL_FOLLOW`). */
+  private followHeel(state: { y: number, v: number, x: number }, target: number): number {
+    const goal = target < HEEL_ONSET ? 0 : target
+    advanceSecondOrder(state, goal, HEEL_FOLLOW)
+    if (goal === 0 && state.y < HEEL_FLAT)
+      state.y = state.v = 0
+    return Math.max(0, state.y)
   }
 
   private drawDwell(): number {
@@ -171,8 +192,8 @@ export class BodyPosture {
       // The heel follows the weight as it reaches the pelvis (the chain's first link); positive support is the right foot.
       advanceSecondOrder(this.heelShare, this.turning ? 0 : 1, TURN_HEEL)
       const heel = FREE_HEEL.degrees * DEG * Math.max(0, 1 - HEEL_AROUSAL * input.mood.arousal) * Math.max(0, this.heelShare.y)
-      out[leftFootPitch] -= heel * unloaded(chain[0])
-      out[rightFootPitch] -= heel * unloaded(-chain[0])
+      out[leftFootPitch] -= this.followHeel(this.heels.left, heel * unloaded(chain[0]))
+      out[rightFootPitch] -= this.followHeel(this.heels.right, heel * unloaded(-chain[0]))
     }
     out[7] -= 0.25 * Math.atan2(forward * this.traits.legLength, this.traits.hips.y - this.traits.feet.left.ankle.y)
     out[6] += this.drift[2].step(BODY_TICK) * gate * 0.5 * DEG
