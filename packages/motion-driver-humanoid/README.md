@@ -777,7 +777,8 @@ posture layer of architecture 4c. Each emotion
 in `BODY_EMOTIONS` is a whole pose with its own silhouette, so that with the face
 hidden no two emotions share one (the [emotion silhouettes ADR](../../docs/ai/adr/2026-11-24-emotion-silhouettes.md)
 lists each). A posture writes the trunk's pitch, roll and yaw per segment, the
-pelvis height and depth, and three arm blocks (`arms` on both sides, `sideArm`
+lower neck's pitch (sad's head goes down with its chest), the pelvis height and
+depth, and three arm blocks (`arms` on both sides, `sideArm`
 on the emotion's side, `farArm` on the other), at the weight
 `held.level x held.strength`, or at an unheld pulse's intensity, through its own
 second-order response (so happy bounces once, surprise rings and sad and sleepy
@@ -802,7 +803,9 @@ later) to a fifth of their size through a 1.2 Hz critically damped follower, and
 come back when she stands. Hand shapes, the trunk and the pelvis stay, a held
 form is let go once absorbed, and a surprised pulse dips the pelvis 0.03 leg
 lengths while she walks (`startle`). The step itself does not hitch: that needs
-a locomotion input. Neutral writes nothing, nor does any emotion term reach a group
+a locomotion input. While she speaks, love's chest lifts 4 degrees and its trunk
+turns 5 degrees toward the far, speaking hand, eased in and out over about half
+a second (`speech`). Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and
 awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches
 it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a

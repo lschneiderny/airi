@@ -1,5 +1,6 @@
 import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
+import type { BodyChannel } from './channels'
 import type { BodyPerformanceInput } from './contracts'
 import type { MergedPerformancePlan, PerformanceLayer } from './stack'
 
@@ -217,6 +218,26 @@ describe('emotion posture layer', () => {
     expect(lean / DEG).toBeCloseTo(0.6 * 18, 0)
   })
 
+  it('takes the neck down with the sad slump, so the head goes with the chest', () => {
+    const end = 12 * 120 - 1
+    const sad = layerEffect(held('sad', t => ramp(t, 0.5)), 12)
+    expect(sad[c('neckPitch')][end] / DEG).toBeCloseTo(14, 0)
+    expect(sad[c('headPitch')][end]).toBeCloseTo(0, 6)
+  })
+
+  it('lifts love\'s chest and turns it toward the speaking hand while she speaks, easing in', () => {
+    const from = 4
+    const speaking = (t: number) => ({ ...quietInput(t), held: { emotion: 'love' as const, strength: 1, level: ramp(t, 0.5), side: 1 }, voice: { ...quietInput(t).voice, speaking: t >= from } })
+    const still = layerOutput(held('love', t => ramp(t, 0.5)), 7)
+    const line = layerOutput(speaking, 7)
+    const delta = (tick: number, channel: BodyChannel) => (line[tick][c(channel)] - still[tick][c(channel)]) / DEG
+    const start = from * 120 + 1
+    expect(Math.abs(delta(start, 'midYaw'))).toBeLessThan(0.05)
+    const end = 7 * 120 - 1
+    expect(delta(end, 'midYaw')).toBeCloseTo(5, 0)
+    expect(delta(end, 'midPitch') + delta(end, 'upperPitch')).toBeCloseTo(-4, 0)
+  })
+
   it('sags sleepy back from the hips and lists it to its side, where sad curls forward', () => {
     const end = 12 * 120 - 1
     const sleepy = layerEffect(held('sleepy', t => ramp(t, 0.5)), 12)
@@ -273,9 +294,10 @@ describe('emotion posture layer', () => {
 
   it('settles a clear surprised startle to its held share of the pose', () => {
     const surprised = layerEffect(pulse('surprised', 0.5), 5)
-    // The elbow's 75 degrees at the clear weight 0.6, held at 0.35 of it, behind the arm followers. Re-pinned from 55:
-    // the startle now brings both hands up in front, palms out, instead of a half lift.
-    expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 75, 0)
+    // The elbow's 100 degrees at the clear weight 0.6, held at 0.35 of it, behind the arm followers. Re-pinned from 75:
+    // the startle now throws both hands up beside the shoulders, palms out, where the open hands at chest height read
+    // as a shrug (audit of 2026-11-25).
+    expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 100, 0)
   })
 
   it('leaves the arms of a startle from a poke to the touch reaction, and keeps its trunk recoil', () => {
