@@ -121,13 +121,10 @@ export class BodyGaze {
     this.headLatency -= BODY_TICK
     this.trunkLatency -= BODY_TICK
     const relativeYaw = wrap(goal.yaw - input.facingYaw)
-    // The trunk starts 120 ms after the head: through its latency it holds where it is, also when the new shift
-    // reverses it or, for a free glance, unwinds it.
-    if (this.trunkLatency <= 0) {
-      this.trunkGoal = goal.kind === 'free'
-        ? 0
-        : Math.sign(relativeYaw) * Math.min(18 * DEG, 0.3 * Math.max(0, Math.abs(relativeYaw) - 25 * DEG))
-    }
+    // The trunk starts 120 ms after the head. It takes a share of what lies past 25 degrees of the facing, a free
+    // goal's too: that is the viewer over feet still facing a far look, so the chest turns home with the head.
+    if (this.trunkLatency <= 0)
+      this.trunkGoal = Math.sign(relativeYaw) * Math.min(18 * DEG, 0.3 * Math.max(0, Math.abs(relativeYaw) - 25 * DEG))
     // The gaze lag chain is driven by a turn shaped like the head's (architecture 3a: the head leads and each link
     // arrives its delay after the one below), not by a step, so a fast chain cannot overtake a slow head.
     advanceSecondOrder(this.trunkDrive, this.trunkGoal, this.recruited ? this.coefficients : creepCoefficients)

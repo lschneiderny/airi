@@ -66,6 +66,12 @@ const STEADY_LAG = 0.08
  * a full shift, which carries the hips past the stance foot's reach while the other foot is in the air.
  */
 const SQUARE_UP_SUPPORT = 0.7
+/**
+ * How near the viewer a held gaze goal counts as looking at her, radians: within the eyes' reach of the facing a home
+ * turn leaves (Natural's glances at the viewer land within a few degrees), and inside the 15 degree glances the gaze
+ * scenario takes aside.
+ */
+const VIEWER_GOAL = 8 * DEG
 /** A held gaze's eye residue. */
 const HELD_MICRO = Object.freeze({ yaw: 0, pitch: 0 })
 const GAIT_SHAPED_CHANNELS: ReadonlySet<number> = new Set(SIDES.flatMap(side => [channelIndex(`${side}Abduct`), channelIndex(`${side}Flex`)]))
@@ -349,13 +355,14 @@ class BodyPerformer {
     frame.support = state.posture.support + (gait ? gait.weight * (gait.support - state.posture.support) : 0)
     frame.gaze.yaw = state.gaze.line.yaw + 0.3 * effective.gaze.micro.yaw
     frame.gaze.pitch = state.gaze.line.pitch + 0.3 * effective.gaze.micro.pitch
-    // A free goal is a fixation around the viewer (architecture 3e), and the viewer is the body's home: while the gaze
-    // is free the feet face the viewer, so after a far look they step back instead of staying torqued under a head that
-    // has returned, and a free glance never turns them.
-    const free = effective.gaze.kind === 'free'
-    this.turnInput.targetYaw = free ? input.viewerYaw : effective.gaze.yaw
+    // The viewer is the body's home (architecture 3e): for a free goal, or one held on the viewer, the feet face her,
+    // so after a far look they step back instead of staying torqued under a head that has returned. A free glance never
+    // turns them.
+    const offViewer = effective.gaze.yaw - input.viewerYaw
+    const home = effective.gaze.kind === 'free' || Math.abs(Math.atan2(Math.sin(offViewer), Math.cos(offViewer))) <= VIEWER_GOAL
+    this.turnInput.targetYaw = home ? input.viewerYaw : effective.gaze.yaw
     this.turnInput.facingYaw = input.facingYaw
-    this.turnInput.home = free
+    this.turnInput.home = home
     this.turnInput.allowTurn = input.allowTurn && (!gait || gait.mode === 'idle')
     const turn = state.turns.step(this.turnInput, BODY_TICK)
     frame.facingYaw = turn.facingYaw

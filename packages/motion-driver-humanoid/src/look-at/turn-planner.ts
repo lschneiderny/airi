@@ -39,6 +39,12 @@ const turnRemainder = 15 * radians
 const stepDuration = 0.4
 const stepYawLimit = 22.5 * radians
 const dwellDuration = 0.5
+/**
+ * A home turn's dwell: the head is already on its way back, and the feet start within it so the return is one turn of
+ * head, chest and feet rather than a head that has come back over hips still finishing theirs (stand-life audit rank
+ * 7). A home target past `turnStop` is where she rests facing, so there is nothing to wait out.
+ */
+const homeDwellDuration = 0.15
 const refractoryDuration = 1.5
 /**
  * A turn ends with both feet on the new facing: when its last step leaves the other foot more than `squareUpFrom` off
@@ -114,12 +120,13 @@ class TurnPlanner {
         if (this.dwellDirection !== Math.sign(error))
           this.dwell = 0
         this.dwellDirection = Math.sign(error)
-        if (magnitude <= turnImmediate && this.dwell < dwellDuration - 1e-12) {
-          const elapsed = Math.min(remaining, dwellDuration - this.dwell)
+        const dwell = input.home ? homeDwellDuration : dwellDuration
+        if (magnitude <= turnImmediate && this.dwell < dwell - 1e-12) {
+          const elapsed = Math.min(remaining, dwell - this.dwell)
           this.dwell += elapsed
           this.advance(elapsed)
           remaining -= elapsed
-          if (this.dwell < dwellDuration - 1e-12)
+          if (this.dwell < dwell - 1e-12)
             continue
         }
         this.frame.turning = true

@@ -118,19 +118,19 @@ describe('gaze performance', () => {
   })
 
   it('holds the head in space while the feet turn the body under it', () => {
-    // Architecture 5.5: the body turns under a head that is already there. A free goal recruits no trunk, and the
-    // facing ramps at 56 degrees per second, the rate of a 22.5 degree turn step in 0.4 s.
+    // Architecture 5.5: the body turns under a head already there, at a 22.5 degree step's 56 degrees per second.
+    // Re-pinned from a 40 degree goal, which now turns the chest too: this one stays within 25 degrees (no trunk).
     const performer = createBodyPerformer({ traits, seed: 1 })
     const input = quietInput()
     const space: number[] = []
     for (let i = 0; i < 600; i++) {
-      const facingYaw = Math.min(20, Math.max(0, i - 360) * 56 / 120) * DEG
-      const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: 40 * DEG, kind: 'free', saccadeSeq: 1 }, facingYaw })
+      const facingYaw = Math.min(10, Math.max(0, i - 360) * 56 / 120) * DEG
+      const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: 25 * DEG, kind: 'free', saccadeSeq: 1 }, facingYaw })
       const body = ['lowerYaw', 'midYaw', 'upperYaw', 'neckYaw', 'headYaw'] as const
       space.push(facingYaw + body.reduce((sum, channel) => sum + frame.channels[c(channel)], 0))
     }
     const settled = space[359]
-    expect(settled).toBeGreaterThan(20 * DEG)
+    expect(settled).toBeGreaterThan(10 * DEG)
     expect(Math.max(...space.slice(360).map(yaw => Math.abs(yaw - settled)))).toBeLessThan(0.01 * DEG)
   })
 
@@ -202,5 +202,41 @@ describe('gaze performance', () => {
     expect(count(45, 0.5)).toBe(0)
     // Evinger et al. 1994: the lid-closing muscle fires with 97 % of gaze shifts larger than 33 degrees.
     expect(count(34)).toBeGreaterThanOrEqual(186)
+  })
+
+  it('turns the chest home with the head when a free goal comes back to the viewer over feet still turned away', () => {
+    const trunkAfter = (facing: number, goal: number) => {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const input = quietInput()
+      let trunk = 0
+      for (let i = 0; i < 120; i++) {
+        const frame = performer.step({ ...input, facingYaw: facing * DEG, gaze: { ...input.gaze, kind: 'free', yaw: goal * DEG, saccadeSeq: 1 } })
+        trunk = frame.channels[c('lowerYaw')] + frame.channels[c('midYaw')] + frame.channels[c('upperYaw')]
+      }
+      return trunk / DEG
+    }
+    // Facing 60 degrees to her left, the viewer lies 60 to her right: the chest leads the way home.
+    expect(trunkAfter(60, 0)).toBeLessThan(-3)
+    // A free glance within 25 degrees of her facing leaves the trunk where it is.
+    expect(Math.abs(trunkAfter(0, 20))).toBeLessThan(0.5)
+  })
+
+  it('brings the feet home for a goal held on the viewer, as for a free one', () => {
+    const stepsFor = (kind: 'sustained' | 'free', goal: number) => {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const input = quietInput()
+      let facing = -24 * DEG
+      let steps = 0
+      for (let i = 0; i < 2 * 120; i++) {
+        const frame = performer.step({ ...input, allowTurn: true, facingYaw: facing, gaze: { ...input.gaze, kind, yaw: goal * DEG, saccadeSeq: 1 } })
+        steps += frame.turnSteps.length
+        facing = frame.facingYaw
+      }
+      return steps
+    }
+    expect(stepsFor('free', 0)).toBeGreaterThan(0)
+    expect(stepsFor('sustained', 0)).toBeGreaterThan(0)
+    // A held look 15 degrees off the viewer is not her home: within 60 degrees of it the feet stay.
+    expect(stepsFor('sustained', -15)).toBe(0)
   })
 })
