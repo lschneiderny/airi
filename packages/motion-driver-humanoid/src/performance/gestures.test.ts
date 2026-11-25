@@ -354,7 +354,7 @@ describe('co-speech gestures', () => {
 
   it('lets one hand of two go while the other strokes alone', () => {
     // Strokes 1.1 s apart with no pause, so one-hand phrases follow two-hand ones. Since its last stroke a raised hand
-    // holds, recovers, waits at most 1.4 s and starts home; a hand left out of the phrase used to wait 4.4 s.
+    // holds, recovers, waits at most 1.1 s and starts home; a hand left out of the phrase used to wait 4.4 s.
     const onsets = Array.from({ length: 10 }, (_, i) => ({ at: 1 + i * 1.1, major: i % 3 === 0 }))
     for (let seed = 1; seed <= 20; seed++) {
       const run = perform({ utterances: [{ start: 0.5, end: 12.5, energy: 0.65, onsets }] }, 12.5, { seed })
@@ -374,6 +374,34 @@ describe('co-speech gestures', () => {
       }
     }
   }, 120_000)
+
+  it('lets a hand go about a second after it is back at its ready key with nothing more to stress', () => {
+    // One stroke, then weak onsets: each hand holds, recovers, rests at its ready key and starts home. Without posture
+    // noise the wrist stands still only at the ready key.
+    let waits = 0
+    for (const energy of [0.45, 0.85]) {
+      for (let seed = 1; seed <= 6; seed++) {
+        const onsets = [{ at: 1, major: true }, { at: 2.5, weak: true }, { at: 4, weak: true }]
+        const run = perform({ utterances: [{ start: 0.5, end: 6, energy, onsets }], still: true }, 6, { seed })
+        const [stroke] = strokes(run)
+        for (const side of SIDES.filter(side => stroke.hand === side || stroke.hand === 'both')) {
+          const path = wristPath(run, side)
+          const moving = (i: number) => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]) / BODY_TICK >= 1e-3
+          // The longest stretch the wrist stays still after the stroke; a hold's end only touches zero speed.
+          let wait = 0
+          let still = 0
+          for (let i = Math.round(stroke.hit / BODY_TICK); i < path.length; i++) {
+            still = moving(i) ? 0 : still + BODY_TICK
+            wait = Math.max(wait, still)
+          }
+          expect(wait, `energy ${energy}, seed ${seed}, ${side}`).toBeGreaterThan(0.5)
+          expect(wait, `energy ${energy}, seed ${seed}, ${side}`).toBeLessThanOrEqual(1.1 + BODY_TICK)
+          waits++
+        }
+      }
+    }
+    expect(waits).toBeGreaterThanOrEqual(12)
+  })
 
   it('raises a hand only into a stroke of its own, also when a new phrase hands the thought to the other hand', () => {
     // Strokes 1 s apart, then weak onsets only. A phrase ending on the unit's sixth stroke could draw the other hand,
@@ -1086,7 +1114,7 @@ describe('co-speech gestures', () => {
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const script: Script = { utterances: [utterance(0.5, 0.65, [])], tension: 0 }
     const frames: { channels: Float32Array, unitSeq: number, hand: string | null }[] = []
-    // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 1.3 s after they are ready (`RISE`).
+    // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 1.1 s after they are ready (`RISE`).
     for (let tick = 1; tick <= Math.round(1.75 / BODY_TICK); tick++) {
       const frame = performer.step(speechInput(script, tick * BODY_TICK, state))
       frames.push({ channels: frame.channels.slice(), unitSeq: frame.diagnostics.gesture.unitSeq, hand: frame.diagnostics.gesture.hand })
