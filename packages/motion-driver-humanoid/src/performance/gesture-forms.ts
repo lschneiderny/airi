@@ -68,7 +68,7 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  * (98.01 - 84.54 - 7.82) / 78.27 = 0.072 L above the hip joints (`FRONT_LOW_HEIGHT`). The seed keeps the hips' midline and depth, and a rig without leg joints has no clasp height, so it does
  * not clasp. As 6.3 states, a rig that cannot reach the anchor does not clasp: its hands hang.
  *
- * The hair tuck (4e act 8) is two keys on one arm: `hair-touch`, the cupped fingertips at the side of the head at the
+ * The hair tuck (4e act 8) is two keys on one arm: `hair-touch`, the combing fingertips at the side of the head at the
  * tragion, and `hair-sweep`, the same height one ear breadth further back, which the gesture layer reaches from the
  * held `hair-touch` without going home (`after`). Moore 1985 (Ethology and Sociobiology 6(4):237-247) observed the
  * gesture as "raising one hand and pushing her fingers through her hair or running her palm along the surface of her
@@ -79,11 +79,11 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
  */
 export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape | Readonly<Record<BodySide, HandShape>>, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
   'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.05 }, hands: 'one' },
-  'thinking-hand': { shape: 'point', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
+  'thinking-hand': { shape: 'thinking', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
-  'hair-touch': { shape: 'open', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
-  'hair-sweep': { shape: 'open', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one', sweep: 1, after: 'hair-touch' },
-  'clasp': { shape: 'relaxed', pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
+  'hair-touch': { shape: 'comb', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
+  'hair-sweep': { shape: 'comb', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one', sweep: 1, after: 'hair-touch' },
+  'clasp': { shape: { left: 'relaxed', right: 'wrap' }, pron: 45 * DEG, wflex: 0, swivel: 15 * DEG, short: 0, seed: 'front-low', anchor: { side: 0, up: 0 }, hands: 'both' },
 }
 
 /** Writes the hand of arm form `form` on `side` into a side's arm block (`writeHandShape`); a form may name a hand per side. */

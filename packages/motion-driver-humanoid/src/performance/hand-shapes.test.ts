@@ -51,6 +51,21 @@ describe('hand shapes', () => {
     expect(point.opposition).toBe(fist.opposition)
   })
 
+  it.each(['cup', 'comb'] as const)('bends %s mostly at the knuckles, so its fingertips do not hook', (shape) => {
+    for (const [knuckle, middle, tip] of HAND_SHAPES[shape].fingers)
+      expect(knuckle).toBeGreaterThan(middle + tip)
+  })
+
+  it('raises the thinking hand\'s index over loosely curled fingers', () => {
+    const { thinking, fist } = HAND_SHAPES
+    const sum = ([a, b, c]: readonly number[]) => a + b + c
+    expect(sum(thinking.fingers[0])).toBeLessThan(30)
+    for (let finger = 1; finger < 4; finger++) {
+      expect(sum(thinking.fingers[finger])).toBeGreaterThan(0.5 * sum(fist.fingers[finger]))
+      expect(sum(thinking.fingers[finger])).toBeLessThan(0.8 * sum(fist.fingers[finger]))
+    }
+  })
+
   it('closes a hand knuckles first and rolls the fingertips in last', () => {
     const half = new Float64Array(26)
     const [relaxed, fist] = [pose('relaxed'), pose('fist')]

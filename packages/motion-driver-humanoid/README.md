@@ -681,12 +681,14 @@ emphasis nod to the gesture layers' head beat. A step may also return its `gestu
 of each kind, and `diagnostics.gesture.activation` is the weight the stack
 applied to each arm through gesture-order layers; `diagnostics.actActivation` is
 the same for act-order layers (an idle behaviour's form, the clip-free rest). Hosts turn report sequence
-changes into trace events. `HAND_SHAPES` holds architecture 4a's six hand
-shapes as data, each digit written out: `relaxed` is the rest hand (a curl
-cascade toward the little finger and a soft fan), `open` the presenting hand
-(palm-up, press, frame and the hair touch), `flat` only the chop's blade, `cup`
-a hold, and `fist` and `point` close to the knee of the finger limits with the
-thumb across the outside of the index and middle fingers. The emotion layer
+changes into trace events. `HAND_SHAPES` holds architecture 4a's hand shapes
+as data, each digit written out: `relaxed` is the rest hand (a curl cascade
+toward the little finger and a soft fan), `open` the presenting hand (palm-up,
+press, frame), `flat` only the chop's blade, `cup` a hold, `fist` and `point`
+close to the knee of the finger limits with the thumb across the outside of the
+index and middle fingers, `thinking` the thinking hand's index raised to the
+face over curled fingers, `comb` the hair tuck's fingers bent at the knuckles
+into the hair, and `wrap` the clasp's upper hand curled round the lower one. The emotion layer
 moves the whole hand (thumb, spread and opposition included) from the hand she
 holds, the rest hand plus the walk's, toward the open or fist shape with
 `addHandShape`, so an angry fist on a closed walking hand stays a fist. The
