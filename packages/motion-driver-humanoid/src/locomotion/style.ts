@@ -48,6 +48,16 @@ export interface GaitStyle {
   readonly wristCarry: number
   /** The hand's closure: 1 the rest hand, blending toward the open hand below 1 and toward a fist above it (a fist at the bound's top). */
   readonly handCurl: number
+  /**
+   * The push off the trailing foot as a share of the gait's: above 1 the toe-off pitch is deeper and the swing leaves the
+   * ground faster, a springy step; below 1 the swing starts slowly, a step that drags. The toe-off never rolls less than
+   * the gait's, so the rig's step limit holds for every push.
+   */
+  readonly push: number
+  /** Extra knee give after each heel strike, as a share of the gait's loading dip at a bounce of 2: a loaded, heavy step. */
+  readonly load: number
+  /** The chest curled forward over the spine, radians, with the shoulders rounded by half of it; negative opens the chest. */
+  readonly fold: number
 }
 
 export type GaitStyleKey = keyof GaitStyle
@@ -69,6 +79,9 @@ export const NEUTRAL_GAIT_STYLE: GaitStyle = Object.freeze({
   head: 0,
   wristCarry: 0,
   handCurl: 1,
+  push: 1,
+  load: 0,
+  fold: 0,
 })
 
 export const GAIT_STYLE_KEYS = Object.keys(NEUTRAL_GAIT_STYLE) as readonly GaitStyleKey[]
@@ -83,6 +96,8 @@ export const GAIT_STYLE_KEYS = Object.keys(NEUTRAL_GAIT_STYLE) as readonly GaitS
  * there; the low end brings the hand in line with the forearm. The rest curl sums
  * 45 degrees over the index finger's three joints; authored walks hold 14 to 17 (an open hand) up to 266 to 294 (a
  * fist), and the curl stops at 3.5 times the rest, where the joint limits close the fist (arm-hand plan, section 1).
+ * The push, load and fold bounds rest on judgment, since no reference measures them: a push of 1.5 rolls the toe-off
+ * half as far again, a load of 1 gives the knee the loading dip of a bounce of 2, and a fold of 12 degrees is a slump.
  */
 export const GAIT_STYLE_BOUNDS: Readonly<Record<GaitStyleKey, readonly [number, number]>> = Object.freeze({
   speed: [0.6, 1.35],
@@ -101,6 +116,9 @@ export const GAIT_STYLE_BOUNDS: Readonly<Record<GaitStyleKey, readonly [number, 
   head: [-8 * radians, 18 * radians],
   wristCarry: [-10 * radians, 12 * radians],
   handCurl: [0.3, 3.5],
+  push: [0.6, 1.5],
+  load: [0, 1],
+  fold: [-4 * radians, 12 * radians],
 })
 
 export type MutableGaitStyle = { -readonly [K in GaitStyleKey]: number }
@@ -152,6 +170,12 @@ function unit(value: number | undefined, min = -1) {
  * - Arousal leans the trunk a little forward too: happy, active and childish walks lean 4 to 8 degrees more.
  * - Urgency above the walk's leans the trunk forward, up to 6 degrees more at urgency 1: rushed and active walks lean
  *   (100STYLE Rushed 11 degrees, set 1 active 4 degrees against normal's 2). The urgency sets the speed elsewhere.
+ * - Each mood also shows in the legs and trunk: sad gait has short steps, a flexed upper body and a lowered head,
+ *   angry gait heavy steps (Roether, Omlor, Christensen and Giese 2009, J Vis 9(6):15; Montepare, Goldstein and Clausen
+ *   1987, J Nonverbal Behav 11:33, who also found happy gait bouncy). Arousal and valence push off the trailing foot harder;
+ *   fatigue and sadness let it peel off late and swing slowly. Tension loads each step with knee give after the strike,
+ *   most with arousal. Sadness curls the chest, rounds the shoulders and narrows the step, less as arousal rises, and
+ *   shortens the step; fatigue curls the chest a little; gladness opens it.
  * - The hand (arm-hand plan, section 1): no acted or authored walk carries the wrist flexed. Happy, childish and feminine
  *   walks extend it most (24 to 51 degrees), sad and proud ones least (5 to 12), masculine walks and runs with fists
  *   hold it near 0. The fingers open in model and feminine walks (summed index curl 14 to 17), curl loosely in normal
@@ -172,19 +196,24 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   const base = factors.baseline ?? {}
   const b = (key: keyof GaitBaseline) => unit(base[key])
   const hurry = factors.urgency === undefined ? 0 : Math.max(0, clampUrgency(factors.urgency) - WALK_URGENCY) / (1 - WALK_URGENCY)
-  out.speed = Math.exp(0.2 * a + 0.06 * v - 0.2 * f)
+  // Sadness slows the walk 10 % as it shortens the step 5 %, so a sad walk steps no faster: with a 10 % shorter step at
+  // the old speed, the cadence rose from 1.41 to 1.55 steps/s (reference rig), where sad is the slowest acted walk (1.12).
+  out.speed = Math.exp(0.2 * a + 0.06 * v - 0.1 * sad - 0.2 * f)
   // Acted happy and angry walks step faster with steps of about normal length, so rising arousal takes back the step
   // length its speed would add; falling arousal shortens the step as well as slowing it.
-  out.stride = Math.exp(0.07 * Math.min(0, a) - 0.1 * up + 0.05 * v - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
+  out.stride = Math.exp(0.07 * Math.min(0, a) - 0.1 * up + 0.05 * v - 0.05 * sad - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
   out.bounce = Math.exp(0.75 * a + 0.2 * v - 0.5 * t + 0.6 * b('bounce'))
   out.lift = Math.exp(0.15 * a - 0.3 * t - 0.2 * f)
   out.roll = Math.exp(0.1 * a - 0.35 * t - 0.2 * f)
   out.pelvisTwist = Math.exp(0.2 * a - 0.3 * t + 0.35 * b('sway'))
   out.pelvisList = Math.exp(0.15 * a + 0.15 * v - 0.3 * t + 0.6 * b('sway'))
-  out.width = Math.exp(0.4 * f + 0.1 * t + 0.6 * b('width'))
+  out.width = Math.exp(0.4 * f + 0.1 * t - 0.35 * sad * (1 - up) + 0.6 * b('width'))
   out.torsoTwist = Math.exp(0.35 * a + 0.15 * v - 0.4 * t)
   out.armSwing = Math.exp(0.5 * a + 0.35 * v - 0.8 * t - 0.5 * f + 0.5 * b('armSwing'))
-  out.elbowCarry = radians * (18 * up + 28 * t + 20 * Math.max(0, b('armCarry')))
+  // Tension bends the elbow; arousal adds to it less when she is tense, where the two together held the forearm up like
+  // a jog over walking legs (independent visual audit, 2026-11-24). Angry stays 30 degrees over neutral, as acted angry
+  // walks carry it (44 against normal's 14).
+  out.elbowCarry = radians * (18 * up * (1 - 0.5 * t) + 24 * t + 20 * Math.max(0, b('armCarry')))
   out.armOut = radians * 3 * b('armCarry')
   out.lean = radians * (20 * f + 4 * sad + 10 * t + 4 * up - 3 * b('posture') + 6 * hurry)
   out.head = radians * (12 * sad + 10 * f - 5 * glad * (1 - up) - 6 * b('posture'))
@@ -197,6 +226,10 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   // positive walk opens it (model and feminine walks: index curl 14 to 17, normal 43); a carried arm opens it, a wide
   // swing closes it a little.
   out.handCurl = Math.exp(0.2 * up + 1.1 * t + 0.6 * up * t - 0.9 * glad * (1 - up) - 0.8 * Math.max(0, b('armCarry')) + 0.4 * Math.max(0, b('armSwing')))
+  out.push = Math.exp(0.25 * up + 0.15 * glad - 0.2 * sad - 0.6 * f - 0.1 * t)
+  out.load = 0.9 * t * (0.4 + 0.6 * up)
+  // An aroused negative mood is anger, not defeat: the fold and the narrow step fade with arousal.
+  out.fold = radians * (9 * sad * (1 - up) + 5 * f - 3 * glad * (1 - t))
   return boundGaitStyle(out, out)
 }
 

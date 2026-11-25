@@ -1283,6 +1283,46 @@ describe('walk style', () => {
     expect(mean(shaped, frame => frame.speed) / mean(neutral, frame => frame.speed)).toBeCloseTo(1, 1)
   })
 
+  it('folds the chest with the shoulders rounded, loads the knee after each strike, and pushes the swing off by the style', () => {
+    const neutral = steady(styled({}))
+    const mean = (frames: LocomotionFrame[], read: (frame: LocomotionFrame) => number) => frames.reduce((sum, frame) => sum + read(frame), 0) / frames.length
+    const folded = steady(styled({ fold: 10 * rad }))
+    expect(mean(folded, frame => frame.body.chestPitch) - mean(neutral, frame => frame.body.chestPitch)).toBeCloseTo(10 * rad, 3)
+    expect(mean(folded, frame => frame.armSwing.left.clavProt) - mean(neutral, frame => frame.armSwing.left.clavProt)).toBeCloseTo(5 * rad, 3)
+    // The head keeps half the fold off its line of sight.
+    expect(mean(folded, frame => frame.body.neckPitch) - mean(neutral, frame => frame.body.neckPitch)).toBeCloseTo(-5 * rad, 2)
+    // A full load bends the knee 0.02 L after each strike, as a bounce of 2 does; it peaks a quarter step after the strike,
+    // where the bob has already begun to rise, so the pelvis's lowest point sinks by about half of it.
+    const deepest = (frames: LocomotionFrame[]) => Math.max(...frames.map(frame => frame.body.pelvisDrop))
+    expect((deepest(steady(styled({ load: 1 }))) - deepest(neutral)) / legLength).toBeGreaterThan(0.008)
+    // A fifth into the swing, a springy push has carried the foot further along its step than a dragging one.
+    const early = (frames: LocomotionFrame[]) => {
+      const shares: number[] = []
+      for (const side of sides) {
+        let lift: number | null = null
+        let at: number | null = null
+        frames.forEach((frame, k) => {
+          const foot = frame.feet[side]
+          if (!foot.planted && lift === null && k > 0 && frames[k - 1]!.feet[side].planted)
+            lift = frames[k - 1]!.feet[side].target.position.x
+          if (!foot.planted && lift !== null && at === null && (foot.swing ?? 0) >= 0.2)
+            at = foot.target.position.x
+          if (foot.planted && lift !== null && at !== null) {
+            shares.push((at - lift) / (foot.target.position.x - lift))
+            lift = null
+            at = null
+          }
+        })
+      }
+      return shares.reduce((sum, share) => sum + share, 0) / shares.length
+    }
+    const springy = early(steady(styled({ push: 1.4 })))
+    const dragging = early(steady(styled({ push: 0.7 })))
+    expect(springy).toBeGreaterThan(early(neutral))
+    expect(dragging).toBeLessThan(early(neutral))
+    expect(springy - dragging).toBeGreaterThan(0.03)
+  })
+
   it('eases a wide, carried swing under the forearm\'s ceiling and leaves the neutral swing alone', () => {
     const rise = (frames: LocomotionFrame[]) => Math.max(...frames.map(frame => frame.armSwing.left.flexion + frame.armSwing.left.elbowFlex))
     // Uneased, the carry alone puts this swing's forearm past the ceiling at the front: 37 + 2 + 50 degrees.
