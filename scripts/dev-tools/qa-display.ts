@@ -12,7 +12,7 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { run } from './lib/exec'
 import { procStat } from './qa-display-guard'
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, wireplumberNoDevicesConf } from './qa-display-plan'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayHostPlan, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, wireplumberNoDevicesConf } from './qa-display-plan'
 
 const startTimeoutMs = 20_000
 /** Extra startup time for `--private-audio`, whose own waits add up to 20 seconds at most. */
@@ -200,13 +200,22 @@ function runningSession(unit: string, envFile: string, name: string): QaSession 
 }
 
 async function main() {
-  if (process.platform !== 'linux')
-    fail('the headless QA display needs Linux. On Windows, T3 runs use the real desktop.', 2)
-
   const args = parseQaDisplayArgs(process.argv.slice(2))
   if ('error' in args) {
     console.error(`qa:display: ${args.error}\n\n${qaDisplayUsage}`)
     process.exit(2)
+  }
+  if (process.platform !== 'linux') {
+    const plan = qaDisplayHostPlan(process.platform, args)
+    if (plan.kind === 'refuse')
+      fail(plan.message, 2)
+    if (plan.kind === 'done') {
+      console.info(`qa:display: ${plan.message}`)
+      return
+    }
+    console.warn('qa:display: macOS has no headless display; the command runs on your desktop.')
+    process.exitCode = await run(plan.command, plan.args, { cwd: process.cwd() })
+    return
   }
   const paths = qaDisplayPaths(args.name, runtimeDir())
 

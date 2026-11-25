@@ -279,6 +279,8 @@ The `dev-tools` Vitest project and the `stage-tamagotchi` node project load `vit
 
 Startup failures name the unit. Read its log with `journalctl --user -u airi-qa-display-<name>.service`.
 
+macOS has no headless display. There, `run -- <command...>` runs the command on your desktop under `caffeinate -di`, which keeps the display and the Mac awake, ignores the `up` flags, and exits with the command's exit code; `down` succeeds with nothing to stop; every other command exits 2. This lets `pnpm qa:display run -- pnpm qa:bench` work unchanged on both platforms. The host session guard already passes on platforms other than Linux.
+
 The session isolates the display, not the process environment. An app inside it still shares the user's files, network ports, and default profile. T3 runs already set their own profile through `APP_USER_DATA_PATH`. For other runs, set `APP_USER_DATA_PATH` to a scratch directory so the agent's app does not take the desktop instance's single-instance lock.
 
 ## `pnpm qa:kwin-probe`
