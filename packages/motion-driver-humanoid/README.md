@@ -161,7 +161,8 @@ turns were refitted to walking adults on 2026-11-23; the
 
 A walk shorter than one reference step turns toward the goal before moving. For longer walks, a start that must turn up to
 100 degrees opens with the foot on the side it turns to and
-turns the body over its first 2.4 steps; a wider turn first turns the excess on the spot through `planFootSteps`
+turns the body over its first 2.0 steps from standing, its gaze half a step ahead so the eyes and head leave first, or
+over 2.4 steps when it carries an on-spot turn's yaw rate; a wider turn first turns the excess on the spot through `planFootSteps`
 (at most 45 degrees per 0.45 second step), and the walk takes the last 90 degrees over without a stop. From the first
 braking tick after departure the body turns to `arriveFacing` over 2.6 steps, longer for a turn wider than 90 degrees.
 A new arrival facing during braking changes the target from the current yaw and yaw rate. A goal behind her that is worth
