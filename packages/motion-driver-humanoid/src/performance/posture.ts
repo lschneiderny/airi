@@ -12,6 +12,13 @@ const WANDER_DEG = [6, 3.6, 2.1] as const
 const WANDER_CALM = 0.3
 /** Speech- and cue-timed head accents keep the fast follower so a nod lands on its beat. */
 const accentTerms = ['emphasis', 'impulse', 'gesture', 'cue'] as const
+/**
+ * Share of pep's sway roll the spine chain takes, so she leans from the waist. Live2D draws the sway's body roll at 10
+ * degrees per unit and its head roll at 30, and Natural's lean and trailing tilt are of a size, so the body has a third.
+ */
+const SWAY_TRUNK_SHARE = 1 / 3
+/** How the trunk's share of the sway roll spreads over the lower, mid and upper trunk: most at the waist. */
+const SWAY_TRUNK_SPLIT = [0.5, 0.3, 0.2] as const
 
 /** Weight starts at the ground. Head attitude travels in the opposite direction. */
 export class BodyPosture {
@@ -20,6 +27,8 @@ export class BodyPosture {
   shoulderSupport = 0
   /** The trunk's yaw taken up from Natural's slow head yaw: intent, which the head does not cancel. */
   trunkIntentYaw = 0
+  /** The trunk's roll taken up from pep's sway this tick: intent, which the head does not cancel. */
+  trunkSwayRoll = 0
   target = 0
   dwell = 0
   private readonly random
@@ -139,6 +148,16 @@ export class BodyPosture {
     out[12] += trunkUpper * (1 - withheld[0])
     out[9] += trunkMid * (1 - withheld[1])
     this.trunkIntentYaw = trunkUpper * (1 - withheld[0]) + trunkMid * (1 - withheld[1])
+    // Pep's sway is already shaped by Natural, so it is added without a follower. A zero sway (also the -0 the intent
+    // maps at pep 0) adds nothing, not even a zero, so every channel stays bit-identical without pep.
+    const pepSway = input.head.terms.sway
+    this.trunkSwayRoll = 0
+    if (pepSway.roll !== 0) {
+      this.trunkSwayRoll = SWAY_TRUNK_SHARE * pepSway.roll
+      out[8] += SWAY_TRUNK_SPLIT[0] * this.trunkSwayRoll
+      out[11] += SWAY_TRUNK_SPLIT[1] * this.trunkSwayRoll
+      out[14] += SWAY_TRUNK_SPLIT[2] * this.trunkSwayRoll
+    }
     const calm = input.gaze.kind === 'sustained' || this.gazeShifting ? WANDER_CALM : 1
     this.wanderAttention = calm + (this.wanderAttention - calm) * Math.exp(-BODY_TICK / 0.8)
     const wanderGate = this.wanderGate.step(BODY_TICK) * input.posture.amplitude * this.wanderAttention
@@ -158,6 +177,12 @@ export class BodyPosture {
       advanceSecondOrder(this.accent[axis], accent * headGain, this.accentCoefficients)
       out[15 + axis] += 0.35 * (this.attitudeNeck[axis].y + this.accent[axis].y)
       out[18 + axis] += 0.65 * (this.attitudeHead[axis].y + this.accent[axis].y)
+      // The head takes the roll the trunk did not, so its world tilt is the sway's roll.
+      const swayHead = axis === 2 ? pepSway.roll - this.trunkSwayRoll : pepSway[axes[axis]]
+      if (swayHead !== 0) {
+        out[15 + axis] += 0.35 * swayHead
+        out[18 + axis] += 0.65 * swayHead
+      }
     }
   }
 }

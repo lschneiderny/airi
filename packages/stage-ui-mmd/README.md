@@ -359,7 +359,9 @@ shares. The adapter has four parts:
   a spine, neck, head, two full arms or a leg length gets no performer.
 - `MMDBodyIntent` (`body/intent.ts`): maps `NaturalBodyIntent`, the gaze goal,
   the director's stance, the gait and clip ownership into
-  `BodyPerformanceInput`. Natural head terms are 30 degrees per unit. The gaze
+  `BodyPerformanceInput`. Natural head terms are 30 degrees per unit; pep's
+  `sway` term reaches the performer with the others, which leans the trunk by a
+  share of its roll (see the humanoid performer README). The gaze
   goal follows Natural's gaze target (`intent.gaze.on`), first match wins: the
   facing still to come while walking or turning (the gait's `lookAhead`, so the
   head leads a turn and runs along the travel line on a straight walk); the cursor point, as a sustained goal, while

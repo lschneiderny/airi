@@ -101,7 +101,7 @@ export const fixtureRigs: readonly { readonly name: string, readonly traits: Bod
 export function idleInput(time = 0): BodyPerformanceInput {
   const zero = { yaw: 0, pitch: 0, roll: 0 }
   return {
-    head: { attitude: zero, slow: zero, terms: { emphasis: zero, impulse: zero, pet: zero, held: zero, gesture: zero, cue: zero } },
+    head: { attitude: zero, slow: zero, terms: { emphasis: zero, impulse: zero, pet: zero, held: zero, gesture: zero, cue: zero, sway: zero } },
     posture: { amplitude: 1, shiftRate: 1, support: null },
     gaze: { yaw: 0, pitch: 0, kind: 'sustained', saccadeSeq: 0, blinkFactor: 1, micro: { yaw: 0, pitch: 0 } },
     breath: { phase: time * 2 * Math.PI / 4, period: 4, scale: 1 },

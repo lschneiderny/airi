@@ -11,7 +11,8 @@ export type BodyBone = 'hips' | 'spine0' | 'spine1' | 'spine2' | 'spine3' | 'nec
 export type BodyRest = 'none' | 'rest' | 'doze'
 export type BodyActId = 'sigh' | 'shoulder-roll' | 'foot-replant' | 'look-around' | 'hand-inspect' | 'clasp-rock' | 'arm-swing' | 'hair-tuck' | 'yawn' | 'peek-chat' | 'heel-raise' | 'wave'
 export type BodyEmotion = PerformanceEmotion
-export type BodyHeadTerm = 'emphasis' | 'impulse' | 'pet' | 'held' | 'gesture' | 'cue'
+/** Natural's additive head terms; `sway` is pep's sway, zero at pep 0. */
+export type BodyHeadTerm = 'emphasis' | 'impulse' | 'pet' | 'held' | 'gesture' | 'cue' | 'sway'
 export type BodyCueKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
 /** Architecture 4a gesture forms; `hand-to-chest` and `thinking-hand` are the emotion-requested arm forms. */
 export type BodyGestureForm = 'beat' | 'palm-up' | 'press' | 'point' | 'chop' | 'frame' | 'hand-to-chest' | 'thinking-hand'

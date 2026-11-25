@@ -189,7 +189,7 @@ export class MMDBodyPerformer {
   private restInput(): BodyPerformanceInput {
     const zero = { yaw: 0, pitch: 0, roll: 0 }
     return {
-      head: { attitude: zero, slow: zero, terms: { emphasis: zero, impulse: zero, pet: zero, held: zero, gesture: zero, cue: zero } },
+      head: { attitude: zero, slow: zero, terms: { emphasis: zero, impulse: zero, pet: zero, held: zero, gesture: zero, cue: zero, sway: zero } },
       posture: { amplitude: 0, shiftRate: 0, support: 0 },
       gaze: { yaw: 0, pitch: 0, kind: 'sustained', saccadeSeq: 0, blinkFactor: 1, micro: { yaw: 0, pitch: 0 } },
       breath: { phase: 0, period: 4, scale: 0 },

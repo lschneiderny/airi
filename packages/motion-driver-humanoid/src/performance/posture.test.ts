@@ -278,3 +278,37 @@ describe('posture and breath hooks for the performance layers', () => {
     expect(Math.abs(sighed[359] - base[359])).toBeLessThan(0.5 * extension)
   })
 })
+
+describe('pep sway', () => {
+  type Rotation = BodyPerformanceInput['head']['attitude']
+  const withSway = (input: BodyPerformanceInput, sway: Rotation): BodyPerformanceInput =>
+    ({ ...input, head: { ...input.head, terms: { ...input.head.terms, sway } } })
+
+  it('leans the trunk from the waist by a third of the sway roll and keeps the head\'s world tilt at the sway, feet planted', () => {
+    const roll = 6 * DEG
+    const run = (size: number) => channelTrace(createBodyPerformer({ traits, seed: 1 }), 4, t => withSway(quietInput(t), { yaw: 0, pitch: 0, roll: t < 0.5 ? 0 : size }))
+    const still = run(0)
+    const swayed = run(roll)
+    // The change the sway makes at the end, after the steadying reflex has had 3.5 s to act on it.
+    const moved = (name: Parameters<typeof c>[0]) => (swayed[c(name)].at(-1) ?? 0) - (still[c(name)].at(-1) ?? 0)
+    const trunk = moved('lowerRoll') + moved('midRoll') + moved('upperRoll')
+    expect(trunk / roll).toBeCloseTo(1 / 3, 6)
+    expect(moved('lowerRoll')).toBeGreaterThan(moved('midRoll'))
+    expect(moved('midRoll')).toBeGreaterThan(moved('upperRoll'))
+    // The head's own share is the rest of the roll, so the steadying reflex does not cancel the intended lean.
+    expect((trunk + moved('neckRoll') + moved('headRoll')) / roll).toBeCloseTo(1, 6)
+    for (const name of ['pelvisX', 'pelvisY', 'pelvisZ', 'hipsYaw', 'hipsPitch', 'hipsRoll', 'leftFootPitch', 'rightFootPitch'] as const)
+      expect(swayed[c(name)]).toEqual(still[c(name)])
+  })
+
+  it('adds the sway\'s yaw and pitch to the head only', () => {
+    const run = (sway: Rotation) => channelTrace(createBodyPerformer({ traits, seed: 1 }), 2, t => withSway(quietInput(t), sway))
+    const still = run({ yaw: 0, pitch: 0, roll: 0 })
+    const turned = run({ yaw: -0.01, pitch: 0.02, roll: 0 })
+    const moved = (name: Parameters<typeof c>[0]) => (turned[c(name)].at(-1) ?? 0) - (still[c(name)].at(-1) ?? 0)
+    expect(moved('neckYaw') + moved('headYaw')).toBeCloseTo(-0.01, 6)
+    expect(moved('neckPitch') + moved('headPitch')).toBeCloseTo(0.02, 6)
+    for (const name of ['lowerYaw', 'midYaw', 'upperYaw', 'lowerPitch', 'midPitch', 'upperPitch', 'lowerRoll', 'midRoll', 'upperRoll'] as const)
+      expect(turned[c(name)]).toEqual(still[c(name)])
+  })
+})

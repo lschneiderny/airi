@@ -554,7 +554,7 @@ the gait every proxy keeps the hard projection, which gesture paths are planned
 to graze.
 
 `BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
-radians, and `head.terms` keeps the six other terms separate. `head.slow` is the
+radians, and `head.terms` keeps the seven other terms separate. `head.slow` is the
 slow posture component. The adapter reads `controller.bodyIntent()`, resolves
 the gaze goal and the viewer's direction (`viewerYaw`, the camera before
 Natural's fixation deflects it), converts Natural units, and maps breath, voice,
@@ -565,7 +565,13 @@ Positive support names the RIGHT foot, so its pelvis displacement is negative X.
 The performer follows `attitude`, `pet` and `held` through separate neck and
 head responses, with the neck starting each turn and the head following, and
 the speech- and cue-timed terms `emphasis`, `impulse`, `gesture` and `cue`
-through one fast follower so an accent keeps its beat. In a gaze shift the neck
+through one fast follower so an accent keeps its beat. Pep's `sway` term is
+already shaped by Natural, so it is added without a follower: the spine chain
+takes a third of its roll (0.5, 0.3 and 0.2 of that share over the lower, mid
+and upper trunk), so she leans from the waist, and the neck and head take the
+rest of the roll and all of its yaw and pitch, so the head's world tilt is the
+sway's roll. The pelvis, hips and feet are not moved. A zero sway adds nothing,
+not even a zero. In a gaze shift the neck
 also follows the head plan through its own, faster response. Both responses
 hold their direction in space while the facing changes, so feet that turn the
 body under a head already on its target leave the head there; the gaze trunk
@@ -573,7 +579,8 @@ stays a share of the body. Underneath these,
 the neck and head counter-rotate part of the trunk's world rotation from
 posture and breath (0.5 of yaw, 0.6 of pitch and roll, 80 ms late), so the
 head stays near level while the body sways; the trunk's share of Natural's head
-yaw and the gaze trunk are intent and are not cancelled. The trunk carries 0.6
+yaw, the trunk's share of the sway roll and the gaze trunk are intent and are
+not cancelled. The trunk carries 0.6
 of that share while the gaze holds a target or travels and all of it for a free
 gaze; a change of gaze kind moves the share through the same lag links as the
 head yaw it scales, so the trunk never steps on it. At idle the head also

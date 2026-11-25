@@ -28,6 +28,19 @@ describe('mmd body intent mapping', () => {
     expect(tick(0.5).yaw).toBeCloseTo(0.61, 12)
   })
 
+  it('hands the performer Natural\'s sway head term in radians, with the signs of the other head terms', () => {
+    const natural = new NaturalMotion({ seed: 1 })
+    const frame = natural.advance(0)
+    const intent = new MMDBodyIntent()
+    const base = natural.bodyIntent()
+    intent.capture({ intent: { ...base, head: { ...base.head, sway: [0.1, 0.2, 0.3] } }, frame, dt: 1 / 60, gaze: { yaw: 0, pitch: 0, kind: 'sustained' }, viewerYaw: 0, energy: 0.5, stance: 'stand', rest: 'none', dragging: false, owned, armLift: { left: 0, right: 0 }, eyeLimits: { yaw: 0.35, pitch: 0.25 } })
+    const { sway } = intent.tick({ alpha: 1, facingYaw: 0, allowTurn: false, rootVelocity: { x: 0, y: 0, z: 0 }, gait: null }).head.terms
+    const span = Math.PI / 6
+    expect(sway.yaw).toBeCloseTo(0.1 * span, 12)
+    expect(sway.pitch).toBeCloseTo(-0.2 * span, 12)
+    expect(sway.roll).toBeCloseTo(-0.3 * span, 12)
+  })
+
   it('gives the performer an idle behaviour in its own seconds, with a release only when it was let go early', () => {
     const base = { seq: 3, kind: 'yawn', intentId: null, start: 100, end: 105.5, releasedAt: null, releaseSeconds: 0, side: -1, period: 2, tone: 0, count: 1, variant: 0, keys: [], glances: [] } as const
     expect(bodyIdleAct(base)).toMatchObject({ seq: 3, kind: 'yawn', duration: 5.5, release: null, side: -1 })
