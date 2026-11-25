@@ -2,6 +2,7 @@ import type { BodyPerformanceInput } from './contracts'
 
 import { describe, expect, it } from 'vitest'
 
+import { BodyArms } from './arms'
 import { BodyBreath } from './breath'
 import { BODY_CHANNELS, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
@@ -130,6 +131,50 @@ describe('posture performance', () => {
       for (const side of ['left', 'right'] as const)
         expect(peakSpeed(trace[c(`${side}Elbow`)]), `${side} support ${support}`).toBeGreaterThan(peakSpeed(trace[c(`${side}Abduct`)]))
     }
+  })
+
+  it('lifts the free heel as the weight leaves a foot, so the free knee bends forward of the stance knee', () => {
+    for (const support of [-1, 1]) {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const trace = channelTrace(performer, 6, t => ({
+        ...quietInput(t),
+        posture: { amplitude: 0, shiftRate: 0, support: t < 0.5 ? 0 : support },
+      }))
+      // Positive support stands her on the right foot, so the left heel rises; toe-down is a negative pitch.
+      const free = support > 0 ? 'left' : 'right'
+      const stance = support > 0 ? 'right' : 'left'
+      const last = trace[0].length - 1
+      expect(trace[c(`${free}FootPitch`)][last] / DEG).toBeLessThan(-4)
+      expect(Math.abs(trace[c(`${stance}FootPitch`)][last]) / DEG).toBeLessThan(0.1)
+      // Standing even, both soles stay flat.
+      expect(Math.abs(trace[c(`${free}FootPitch`)][30]) / DEG).toBeLessThan(0.1)
+    }
+  })
+
+  it('re-settles each hanging arm by a few degrees at a weight shift, and holds it between shifts', () => {
+    const shifted = new BodyArms(traits, 3)
+    const held = new BodyArms(traits, 3)
+    const a = new Float64Array(BODY_CHANNELS.length)
+    const b = new Float64Array(BODY_CHANNELS.length)
+    const channels = ['leftElbow', 'leftPron', 'leftWflex', 'rightElbow', 'rightPron', 'rightWflex'] as const
+    const difference = () => channels.map(channel => (a[c(channel)] - b[c(channel)]) / DEG)
+    let settled: number[] = []
+    for (let tick = 0; tick < 6 * 120; tick++) {
+      a.fill(0)
+      b.fill(0)
+      // The weight goes over to one side from the second second on, which is the shift.
+      const shoulder = tick < 120 ? 0 : Math.min(1, (tick - 120) / 120)
+      shifted.generate(quietInput(tick / 120), a, shoulder, tick < 120 ? 0 : 1)
+      held.generate(quietInput(tick / 120), b, shoulder, 0)
+      if (tick === 119)
+        expect(Math.max(...difference().map(Math.abs))).toBe(0)
+      if (tick === 4 * 120)
+        settled = difference()
+    }
+    expect(Math.max(...settled.map(Math.abs))).toBeGreaterThan(0.5)
+    expect(Math.max(...settled.map(Math.abs))).toBeLessThanOrEqual(6)
+    const later = difference()
+    settled.forEach((value, k) => expect(Math.abs(later[k] - value)).toBeLessThan(Math.max(1, Math.abs(value) * 0.6)))
   })
 
   it('rolls the hips with the lateral sway between weight transfers', () => {

@@ -544,6 +544,15 @@ and final arm collision correction. It never integrates root position, chooses
 a director goal, reads a clock, writes a bone, or imports Natural. The MMD body
 of `@proj-airi/stage-ui-mmd` poses every bone from it under the Natural driver.
 
+A support transfer stands her in contrapposto. As the weight leaves a foot, its
+heel rises up to 6 degrees, toe-down about its ball through the foot's
+`FootPitch` channel, so the free knee bends forward. The lift starts at support
+0.35, deepens at low arousal, and eases down while a turn steps. Each new
+support target also re-settles the hanging arms. The elbow, the forearm's
+pronation, the wrist and the finger curl find a new hang, drawn per shift and
+per side. The settle follows the shoulder's arrival over the stance and exists
+only while she stands on one leg.
+
 `step` advances exactly `BODY_TICK` (1/120 second), regardless of display rate.
 The adapter supplies interpolated continuous inputs, consumes discrete events
 once, and interpolates the previous and current channel buffers for display.

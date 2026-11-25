@@ -62,6 +62,16 @@ const offsetDegrees = [0, 0, 2.5, 2, 0, 4, 8, 4, 0] as const
 /** The spread's own idle drift, degrees. */
 const SPREAD_NOISE = 1
 /**
+ * A weight shift re-settles each hanging arm: as the shoulder arrives over the new stance, the elbow, the forearm's
+ * pronation and the wrist find a slightly different hang and the fingers curl a little more or less, drawn per shift
+ * and per side, so no two stances hang the same. Degrees either side of the rest (elbow, pronation, wrist flexion) and
+ * the share the finger curls change by. The settle takes the shoulder's own arrival (the elbow weight link) and a
+ * second lag (`seconds`), so the hands settle last.
+ */
+const SETTLE = { elbow: 3, pron: 6, wflex: 3, curl: 0.1, seconds: 0.6 } as const
+/** The elbow on the stance side straightens and the other bends as the weight shifts, degrees at a full shift. */
+const WEIGHT_ELBOW = { stance: -3, free: 4.5 } as const
+/**
  * Finger follow-through: drag gains (seconds) of a digit's three joints, knuckle to tip; the tension at which it stops
  * (`looseness`, 1 at the neutral 0.4); the summed curl of a digit (radians) at which the digit no longer trails, about a
  * fist's; and the clamp, degrees.
@@ -141,6 +151,13 @@ export class BodyArms {
   }
 
   private readonly elbowWeight = createLagChain([ELBOW_WEIGHT_LAG], BODY_TICK)
+  /** Each shift's drawn re-settle of the hanging arms (`SETTLE`), its stream, and the shift count it was drawn for. */
+  private readonly settleRandom
+  private readonly settleTarget = new Float64Array(BODY_CHANNELS.length)
+  private readonly settleGoal = new Float64Array(BODY_CHANNELS.length)
+  private readonly settle = new Float64Array(BODY_CHANNELS.length)
+  private settledShifts = 0
+  private lastSupport = 0
   private warm = false
   private redraw = 70
   private tension = 0
@@ -153,6 +170,7 @@ export class BodyArms {
   constructor(private readonly traits: BodyRigTraits, seed: number) {
     this.skeleton = new BodySkeleton(traits)
     this.random = createRandomStream(deriveSeed(seed, 12))
+    this.settleRandom = createRandomStream(deriveSeed(seed, 14))
     this.gates = { left: createActivityGate({ seed: deriveSeed(seed, 10) }), right: createActivityGate({ seed: deriveSeed(seed, 11) }) }
     // Streams 32..57 and 64..89 remain independent even when a rig lacks fingers.
     const noise = (base: number) => Array.from({ length: 26 }, (_, i) => createDriftNoise({ seed: deriveSeed(seed, base + i) }))
@@ -184,12 +202,43 @@ export class BodyArms {
     this.redraw = Math.max(40, Math.min(120, Math.exp(Math.log(70) + 0.3 * gaussian(this.random))))
   }
 
-  /** `shoulderSupport` is the support transfer as the weight chain delivers it to the shoulders. */
-  generate(input: BodyPerformanceInput, out: Float64Array, shoulderSupport: number): void {
+  /** Draws each arm's re-settle for a new weight shift (`SETTLE`). */
+  private drawSettle(): void {
+    const draw = () => 2 * this.settleRandom() - 1
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      this.settleTarget[start + 5] = draw() * SETTLE.elbow * DEG
+      this.settleTarget[start + 6] = draw() * SETTLE.pron * DEG
+      this.settleTarget[start + 7] = draw() * SETTLE.wflex * DEG
+      const curl = draw() * SETTLE.curl
+      for (let j = 9; j < 24; j++)
+        this.settleTarget[start + j] = curl * this.desired[start + j]
+    }
+  }
+
+  /**
+   * `shoulderSupport` is the support transfer as the weight chain delivers it to the shoulders; `shifts` counts the
+   * posture's support targets, so each new shift re-settles the arms.
+   */
+  generate(input: BodyPerformanceInput, out: Float64Array, shoulderSupport: number, shifts = 0): void {
     const support = this.elbowWeight.step(shoulderSupport)[0]
     this.redraw -= BODY_TICK
     if (this.redraw <= 0)
       this.drawRest()
+    if (shifts !== this.settledShifts) {
+      this.settledShifts = shifts
+      this.drawSettle()
+    }
+    // The settle follows the shoulder's arrival: its goal moves mostly while the weight still travels, and the arm
+    // follows the goal with a lag of its own, so the hands settle after the upper arm has moved.
+    const travel = Math.min(1, Math.abs(support - this.lastSupport) / (BODY_TICK * 0.8))
+    this.lastSupport = support
+    const gate = (1 - Math.exp(-BODY_TICK / SETTLE.seconds)) * Math.max(travel, 0.15)
+    const ease = 1 - Math.exp(-BODY_TICK / SETTLE.seconds)
+    for (let c = 0; c < this.settle.length; c++) {
+      this.settleGoal[c] += (this.settleTarget[c] - this.settleGoal[c]) * gate
+      this.settle[c] += (this.settleGoal[c] - this.settle[c]) * ease
+    }
     for (const side of SIDES) {
       const start = ARM_START[side]
       const gate = this.gates[side].step(BODY_TICK) * input.posture.amplitude
@@ -204,10 +253,11 @@ export class BodyArms {
           noise = j < 9 ? value * ARM_NOISE_DEGREES[j] * DEG : j === 24 ? value * SPREAD_NOISE * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
         }
         this.noise[start + j] = noise
-        out[start + j] += this.rest[start + j] + noise
+        // The settle belongs to a one-leg stance: it grows as she goes over onto one leg and is gone standing even.
+        out[start + j] += this.rest[start + j] + noise + this.settle[start + j] * Math.abs(support)
       }
       const onSupport = (side === 'right' ? 1 : -1) * support > 0
-      out[start + 5] += (onSupport ? -2 : 3) * DEG * Math.abs(support)
+      out[start + 5] += (onSupport ? WEIGHT_ELBOW.stance : WEIGHT_ELBOW.free) * DEG * Math.abs(support)
       out[start + 3] += input.armLift[side]
     }
   }

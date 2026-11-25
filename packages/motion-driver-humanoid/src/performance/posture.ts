@@ -3,7 +3,7 @@ import type { BodyPerformanceInput, BodyRigTraits } from './contracts'
 import { advanceSecondOrder, createLagChain, secondOrderCoefficients } from '../dynamics'
 import { createActivityGate, createDriftNoise, deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
-import { BODY_TICK, DEG } from './channels'
+import { BODY_TICK, channelIndex, DEG } from './channels'
 
 const axes = ['yaw', 'pitch', 'roll'] as const
 const heldTerms = ['pet', 'held'] as const
@@ -20,6 +20,30 @@ const SWAY_TRUNK_SHARE = 1 / 3
 /** How the trunk's share of the sway roll spreads over the lower, mid and upper trunk: most at the waist. */
 const SWAY_TRUNK_SPLIT = [0.5, 0.3, 0.2] as const
 
+/**
+ * The free leg of a one-leg stance (contrapposto): as the weight leaves a foot its heel rises, the foot turning toe-down
+ * about its ball, so the free knee bends forward instead of standing braced beside the stance knee. Degrees at a fully
+ * unloaded foot, and the support beyond which it starts, eased in by a squared smoothstep, so the heel rises once the
+ * foot is nearly unloaded and leaves the ground and returns to it without a residual step: a plain smoothstep left the
+ * foot about 5e-5 rad of pitch on its last tick, which the foot stage's flat pivot read as ankle travel. Low arousal
+ * deepens it and high arousal stands her squarer (`HEEL_AROUSAL`). While a turn steps the heel eases down
+ * (`TURN_HEEL`), since the turn's steps lift the feet themselves. The size is the layer's: a light heel that the default
+ * camera reads.
+ */
+const FREE_HEEL = { degrees: 6, from: 0.35 } as const
+const HEEL_AROUSAL = 0.3
+/** How the free heel eases down for a turn and back up after it: a critically damped follower of its share. */
+const TURN_HEEL = secondOrderCoefficients({ f: 1.5, zeta: 1, r: 0 }, BODY_TICK)
+const leftFootPitch = channelIndex('leftFootPitch')
+const rightFootPitch = channelIndex('rightFootPitch')
+
+/** How far the weight has left the foot on the other side of `support`, 0 to 1 (`FREE_HEEL`). */
+export function unloaded(support: number): number {
+  const u = Math.max(0, Math.min(1, (support - FREE_HEEL.from) / (1 - FREE_HEEL.from)))
+  const eased = u * u * (3 - 2 * u)
+  return eased * eased
+}
+
 /** Weight starts at the ground. Head attitude travels in the opposite direction. */
 export class BodyPosture {
   support = 0
@@ -31,6 +55,8 @@ export class BodyPosture {
   trunkSwayRoll = 0
   target = 0
   dwell = 0
+  /** Counts the changes of the support target, the scheduler's and a layer's alike; the arms re-settle at each (`BodyArms`). */
+  shifts = 0
   private readonly random
   private readonly transfer = { y: 0, v: 0, x: 0 }
   private transferCoefficients = secondOrderCoefficients({ f: 0.55, zeta: 0.7, r: -0.45 }, BODY_TICK)
@@ -49,6 +75,9 @@ export class BodyPosture {
   private readonly wanderSmooth = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
   private readonly wanderCoefficients = secondOrderCoefficients({ f: 0.25, zeta: 1, r: 0 }, BODY_TICK)
   private wanderAttention = 1
+  /** Set by the performer each tick: the turn planner is turning her (`TURN_HEEL`). */
+  turning = false
+  private readonly heelShare = { y: 1, v: 0, x: 1 }
   /** Set by the performer each tick: a gaze shift is under way. */
   gazeShifting = false
   /** Set by the performer each tick from the merged plan: the cue layer plays the head cue, so the accent drops it. */
@@ -99,12 +128,14 @@ export class BodyPosture {
           next *= this.random() < 0.5 ? -1 : 1
         }
         this.target = next
+        this.shifts++
         this.dwell = this.drawDwell()
         this.transferCoefficients = secondOrderCoefficients({ f: 0.55 * (1 + 0.25 * input.mood.arousal) * Math.exp(0.2 * gaussian(this.random)), zeta: 0.7, r: -0.45 }, BODY_TICK)
       }
     }
-    else {
+    else if (input.posture.support !== this.target) {
       this.target = input.posture.support
+      this.shifts++
     }
     advanceSecondOrder(this.transfer, this.target, this.transferCoefficients)
     const s = this.transfer.y
@@ -130,6 +161,11 @@ export class BodyPosture {
       out[0] += -this.lateralGain * s + lateral
       out[1] -= 0.0065 * Math.abs(s)
       out[2] += forward
+      // The heel follows the weight as it reaches the pelvis (the chain's first link); positive support is the right foot.
+      advanceSecondOrder(this.heelShare, this.turning ? 0 : 1, TURN_HEEL)
+      const heel = FREE_HEEL.degrees * DEG * Math.max(0, 1 - HEEL_AROUSAL * input.mood.arousal) * Math.max(0, this.heelShare.y)
+      out[leftFootPitch] -= heel * unloaded(chain[0])
+      out[rightFootPitch] -= heel * unloaded(-chain[0])
     }
     out[7] -= 0.25 * Math.atan2(forward * this.traits.legLength, this.traits.hips.y - this.traits.feet.left.ankle.y)
     out[6] += this.drift[2].step(BODY_TICK) * gate * 0.5 * DEG
