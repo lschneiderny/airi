@@ -64,10 +64,21 @@ function trapezoid(age: number, attack: number, hold: number, release: number): 
 const raisedCosine = (u: number) => u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 
 /**
- * Architecture 4e act 3's re-plant: the free foot lifts once it carries 5 % of her weight (support 0.9), for the turn
- * planner's 0.4 s in-place step, `0.02 L` high, and turns 4 to 8 degrees.
+ * Architecture 4e act 3's re-plant: the free foot lifts once it carries 5 % of her weight (support 0.9), turns 4 to 8
+ * degrees and sets down at a new place (`PLACE`). The first form stepped 0.02 L high in the turn planner's 0.4 s and
+ * only turned about the root, which moved the shoe a few pixels while the knee and head shift caught the eye (stand-life
+ * audit): the step now lifts 0.035 L over 0.5 s, so the foot visibly unloads and travels.
  */
-const REPLANT = { unloaded: 0.9, seconds: 0.4, lift: 0.02, yaw: [4, 8] } as const
+const REPLANT = { unloaded: 0.9, seconds: 0.5, lift: 0.035, yaw: [4, 8] } as const
+/**
+ * Where a re-planted foot may land, leg lengths from its standing place: `out` away from her midline and `forward`,
+ * each a range, and at least `moved` from where the foot last stood, so every re-plant reads as a deliberate
+ * adjustment. A placement is absolute, so successive re-plants stay inside the ranges and never add up. The ranges are
+ * the layer's: about a foot's width out or in and half a foot forward or back of the bind stance.
+ */
+const PLACE = { out: [-0.02, 0.06], forward: [-0.04, 0.08], moved: 0.05, tries: 32 } as const
+/** A foot's re-plant: leg lengths out and forward of its standing place, and radians from its standing angle. */
+interface Placement { out: number, forward: number, yaw: number }
 const NO_STEPS: readonly BodyFootStep[] = []
 
 /**
@@ -139,6 +150,32 @@ function stretchArm(context: PerformanceContext, side: BodySide): StretchArm {
   return { rest: STRETCH_CHANNELS.map(k => hanging[k] / DEG), fold: 180 - Math.acos(cosine) / DEG }
 }
 
+/**
+ * The next place of a foot re-planted from `last` (`PLACE`): a turn of 4 to 8 degrees toward and past its standing
+ * angle, so it stays within 8 degrees of it, and a spot inside the ranges at least `moved` from the last one: the first
+ * of `tries` draws far enough, else the corner of the ranges farthest from it (at least 0.07 L away).
+ */
+export function replant(last: Placement, random: () => number): Placement {
+  const turn = (REPLANT.yaw[0] + (REPLANT.yaw[1] - REPLANT.yaw[0]) * random()) * DEG
+  const yaw = last.yaw - (last.yaw !== 0 ? Math.sign(last.yaw) : random() < 0.5 ? -1 : 1) * turn
+  for (let i = 0; i < PLACE.tries; i++) {
+    const out = PLACE.out[0] + (PLACE.out[1] - PLACE.out[0]) * random()
+    const forward = PLACE.forward[0] + (PLACE.forward[1] - PLACE.forward[0]) * random()
+    if (Math.hypot(out - last.out, forward - last.forward) >= PLACE.moved)
+      return { out, forward, yaw }
+  }
+  const far = (range: readonly [number, number], from: number) => from - range[0] > range[1] - from ? range[0] : range[1]
+  return { out: far(PLACE.out, last.out), forward: far(PLACE.forward, last.forward), yaw }
+}
+
+/** A re-plant of `foot` to `place`, starting now. */
+function footStep(foot: BodySide, place: Placement, time: number, context: PerformanceContext): BodyFootStep {
+  const L = context.traits.legLength
+  // `out` points away from her midline: toward her left (+x) for the left foot.
+  const outward = foot === 'left' ? 1 : -1
+  return { foot, startTime: time, duration: REPLANT.seconds, yaw: place.yaw, lift: REPLANT.lift * L, offset: { x: outward * place.out * L, z: place.forward * L } }
+}
+
 /** One behaviour the layer plays; times are performer seconds. */
 interface Act {
   readonly record: BodyIdleAct
@@ -189,8 +226,8 @@ export function createActLayer(): PerformanceLayer {
   let arms: Record<BodySide, StretchArm> | null = null
   /** The open hand an arm swing flicks to (`openHand`), built at the first swing. */
   let flicks: Float64Array | null = null
-  /** The yaw, radians from its standing angle, each foot was last re-planted to. */
-  const planted: Record<BodySide, number> = { left: 0, right: 0 }
+  /** Where each foot was last re-planted (`Placement`). */
+  const planted: Record<BodySide, Placement> = { left: { out: 0, forward: 0, yaw: 0 }, right: { out: 0, forward: 0, yaw: 0 } }
   let steps = NO_STEPS
   /** Deep breaths started: a sigh (4e act 1) and a yawn's long inspiration (Provine 1986) take 4c's sigh inhale. */
   let deepBreaths = 0
@@ -479,25 +516,23 @@ export function createActLayer(): PerformanceLayer {
         break
       }
       case 'shift-stance': {
-        // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`), turning toward and
-        // past its standing angle, so it stays within 8 degrees of it; it lifts only if it lands by the end. Then a half
-        // shift. Resting (4f), the support goes to the leg she did not stand on and stays there: she changes legs, the
-        // foot she leaves re-plants, and the rest layer takes the new leg as its own (g4 review, "let the rest change
-        // legs").
+        // 4e act 3: the support goes fully to a side. Unloaded, the other foot re-plants (`REPLANT`) at a new place
+        // (`PLACE`), turning toward and past its standing angle, so it stays within 8 degrees of it; it lifts only if it
+        // lands by the end. Then her weight settles onto the foot she set down, so she stands on one leg again: the first
+        // form went back to a half shift there, which read as a parade stance between two acts. Resting (4f), the
+        // support goes to the leg she did not stand on and stays there: she changes legs, the foot she leaves re-plants,
+        // and the rest layer takes the new leg as its own (g4 review, "let the rest change legs").
         const stance = a.stance
         const foot = sideOf(-stance)
         const unloaded = context.previous.support * stance >= REPLANT.unloaded
         if (a.lift === null && unloaded && context.traits.legIk && free(['lowerBody', 'upperBody']) && age + REPLANT.seconds <= D) {
-          const random = createRandomStream(deriveSeed(a.record.seq, 3))
-          const turn = (REPLANT.yaw[0] + (REPLANT.yaw[1] - REPLANT.yaw[0]) * random()) * DEG
-          const last = planted[foot]
-          planted[foot] = last - (last !== 0 ? Math.sign(last) : random() < 0.5 ? -1 : 1) * turn
+          planted[foot] = replant(planted[foot], createRandomStream(deriveSeed(a.record.seq, 3)))
           a.lift = time
-          steps = [{ foot, startTime: time, duration: REPLANT.seconds, yaw: planted[foot], lift: REPLANT.lift * context.traits.legLength }]
+          steps = [footStep(foot, planted[foot], time, context)]
         }
         const airborne = a.lift !== null && time < a.lift + REPLANT.seconds
         if (airborne || free(['lowerBody', 'upperBody']))
-          plan.support = a.lift !== null && !airborne && !a.resting ? 0.5 * stance : stance
+          plan.support = a.lift !== null && !airborne && !a.resting ? -stance : stance
         break
       }
       case 'clasp-hands': {
@@ -597,7 +632,8 @@ export function createActLayer(): PerformanceLayer {
       act = null
       playedSeq = null
       arms = null
-      planted.left = planted.right = 0
+      planted.left = { out: 0, forward: 0, yaw: 0 }
+      planted.right = { out: 0, forward: 0, yaw: 0 }
       steps = NO_STEPS
       deepBreaths = 0
       tick = -1

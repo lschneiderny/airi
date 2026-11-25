@@ -2,7 +2,7 @@ import type { Vec3 } from '../types'
 
 import { describe, expect, it } from 'vitest'
 
-import { createFootContact, planFootSteps } from './index'
+import { createFootContact, planFootPlacement, planFootSteps } from './index'
 
 // Ellen post-parse bind positions from the regenerated PMX audit (2026-10-31).
 const legs = {
@@ -180,5 +180,21 @@ describe('turn step planner', () => {
     const [step] = planFootSteps([{ foot: 'right', yawDelta: -Math.PI / 4, duration: 0.45 }], anchors, { x: 0, y: 0, z: 0 }, 0.12)
     expect(step?.sample(0.225).position.y).toBeCloseTo(1.12, 12)
     expect(step?.sample(0.45).position.y).toBe(1)
+  })
+
+  it('places a foot from one anchor to another, lifting it once and setting it down at rest', () => {
+    const start = { position: { x: 1, y: 1, z: 0 }, yaw: 0 }
+    const end = { position: { x: 1.2, y: 1, z: 0.3 }, yaw: 0.1 }
+    const step = planFootPlacement(start, end, 0.5, 0.2)
+    expect(step.sample(0)).toEqual(start)
+    for (const elapsed of [0.5, 1]) {
+      expect(distance(step.sample(elapsed).position, end.position)).toBeLessThan(1e-12)
+      expect(step.sample(elapsed).yaw).toBeCloseTo(end.yaw, 12)
+    }
+    const heights = Array.from({ length: 51 }, (_, k) => step.sample(k / 100).position.y)
+    expect(Math.max(...heights)).toBeCloseTo(1.2, 3)
+    // It leaves and lands without a jump in speed: the last and first hundredths barely move.
+    expect(distance(step.sample(0.005).position, start.position)).toBeLessThan(0.02)
+    expect(distance(step.sample(0.495).position, end.position)).toBeLessThan(0.01)
   })
 })

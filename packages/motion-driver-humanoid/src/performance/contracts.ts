@@ -289,6 +289,12 @@ export interface BodyFootStep {
   readonly duration: number
   readonly yaw: number
   readonly lift: number
+  /**
+   * Where the foot lands, model units from its standing place (its bind spot beside the root, turned with the facing),
+   * in the standing frame: `x` toward her left, `z` forward. Omitted, the foot turns about the root to `yaw` from where
+   * it stands, as a turn step does. A placement is absolute, so re-plants never add up and every layer may issue one.
+   */
+  readonly offset?: { readonly x: number, readonly z: number }
 }
 
 /** Borrowed until the next step/reset; copy channels for display interpolation. */

@@ -7,7 +7,7 @@ import type { AnimationClip, Bone, Matrix4 } from 'three'
 import type { MMDFrameContext } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
 
-import { createFootContact, planFootSteps, STANDING_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/foot-contact'
+import { createFootContact, planFootPlacement, planFootSteps, STANDING_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/foot-contact'
 import { ballRoll, GAIT_REACH_SHARE } from '@proj-airi/motion-driver-humanoid/locomotion'
 import { Euler, Quaternion, Vector3 } from 'three'
 
@@ -83,7 +83,7 @@ export class MMDFootContact {
   private result: ReturnType<ReturnType<typeof createFootContact>['step']> | null = null
   private readonly targets: Partial<Record<Foot, FootAnchor>> = {}
   private readonly planted: Partial<Record<Foot, FootAnchor>> = {}
-  private readonly steps: Partial<Record<Foot, { start: number, arc: ReturnType<typeof planFootSteps>[number] }>> = {}
+  private readonly steps: Partial<Record<Foot, { start: number, arc: { readonly duration: number, sample: (elapsed: number) => FootAnchor } }>> = {}
   private readonly last: Record<Foot, Vector3>
   private plannedYaw = 0
   private root: MMDRootPose = { x: 0, yaw: 0 }
@@ -258,12 +258,17 @@ export class MMDFootContact {
       const [arc] = planFootSteps([{ foot: step.foot, yawDelta: root.yaw + this.plannedYaw - anchor.yaw, duration: step.duration }], { left, right }, { x: root.x, y: 0, z: 0 })
       this.steps[step.foot] = { start: step.startTime, arc }
     }
-    // A re-plant turns the foot about the root like a turn step, to `yaw` from the standing angle, and leaves the
-    // facing the turn steps keep (`plannedYaw`) as it is.
+    // A re-plant without a placement turns the foot about the root like a turn step, to `yaw` from the standing angle;
+    // one with a placement sets it down at that offset from its standing place. Neither changes the facing the turn
+    // steps keep (`plannedYaw`).
     for (const step of input.footSteps) {
       const left = this.planted.left ?? toGroundAnchor(this.result.feet.left.anchor, root)
       const right = this.planted.right ?? toGroundAnchor(this.result.feet.right.anchor, root)
       const anchor = step.foot === 'left' ? left : right
+      if (step.offset) {
+        this.steps[step.foot] = { start: step.startTime, arc: planFootPlacement(anchor, this.standingPlace(step.foot, step.offset, step.yaw, root), step.duration, step.lift) }
+        continue
+      }
       const [arc] = planFootSteps([{ foot: step.foot, yawDelta: root.yaw + this.plannedYaw + step.yaw - anchor.yaw, duration: step.duration }], { left, right }, { x: root.x, y: 0, z: 0 }, step.lift)
       this.steps[step.foot] = { start: step.startTime, arc }
     }
@@ -338,6 +343,20 @@ export class MMDFootContact {
       ik.quaternion.copy(clean.quaternions[chain.ikBoneIndex]).slerp(parent.invert().multiply(worldYaw), contact.c)
       ik.updateWorldMatrix(false, true)
     }
+  }
+
+  /**
+   * The ground anchor `offset` model units from the foot's standing place, in the standing frame (x toward her left, z
+   * forward), turned `yaw` from the standing angle: the bind ankle beside the root, both turned with the facing the turn
+   * steps keep, as `planFootSteps` turns a foot about the root.
+   */
+  private standingPlace(side: Foot, offset: { readonly x: number, readonly z: number }, yaw: number, root: MMDRootPose): FootAnchor {
+    const bind = this.bindAnchors()[side]
+    const cos = Math.cos(this.plannedYaw)
+    const sin = Math.sin(this.plannedYaw)
+    const x = bind.position.x + offset.x
+    const z = bind.position.z + offset.z
+    return toGroundAnchor({ position: { x: cos * x + sin * z, y: bind.position.y, z: -sin * x + cos * z }, yaw: this.plannedYaw + yaw }, root)
   }
 
   /** A standing foot's roll about its ball for the performer's toe-down pitch; undefined while the foot stays flat. */
