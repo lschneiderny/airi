@@ -164,7 +164,12 @@ A walk shorter than one reference step turns toward the goal before moving. For 
 turns the body over its first 2.4 steps; a wider turn first turns the excess on the spot through `planFootSteps`
 (at most 45 degrees per 0.45 second step), and the walk takes the last 90 degrees over without a stop. From the first
 braking tick after departure the body turns to `arriveFacing` over 2.6 steps, longer for a turn wider than 90 degrees.
-A new arrival facing during braking changes the target from the current yaw and yaw rate. Each foot lands
+A new arrival facing during braking changes the target from the current yaw and yaw rate. A goal behind her that is worth
+a walk is a reversal instead: from the first braking tick the body turns toward the new heading through the viewer over
+2.0 steps, and once the stop step lands the same walk sets off the other way with the turn still under way, without a
+settle or a turn on the spot. Its gaze runs 0.8 step ahead of the turn, so the eyes and head leave first. A goal that
+comes during the settle starts a new walk at once. The look-ahead of every turn stays within 40 degrees of her facing,
+and the trunk's lean into a turn scales with the speed. Each foot lands
 turned toward where the body faces a step later, at most 42 degrees from her facing at the landing, and the trunk
 leans into the turn. After the root stops, closing steps bring the feet to their bind stance at her facing, and the gait
 returns to `idle` after both feet have been planted for 0.45 seconds. A turn without a walk still turns on the spot: it

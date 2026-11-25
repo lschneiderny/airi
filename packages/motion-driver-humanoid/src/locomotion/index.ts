@@ -288,6 +288,30 @@ const departTurnSteps = 2.4
 const arriveTurnSteps = 2.6
 const arriveLeadSteps = 0.5
 const brakeTurnSteps = 1.6
+/**
+ * A goal behind her is a reversal, not an arrival: from the first braking tick she turns toward the new heading, through
+ * the viewer, over this many steps for the half turn, and the walk sets off the other way from the stop with that turn
+ * still under way, so no settle or turn on the spot comes between. A walk at the walk urgency brakes over about 1.4 steps,
+ * so 2.0 steps make the half turn's middle while she still moves and leave about 30 degrees for the stop and the first
+ * step. At 2.4 steps the middle fell at the stop, and the faster spin over planted feet doubled the contact skate on two
+ * rigs. Judged on the reference rig's walk scenario (2026-11-24): before, she stood 0.7 s and faced the viewer 2.2 s
+ * between the two directions; now 0.2 s and 0.2 s.
+ */
+const reverseTurnSteps = 2.0
+/**
+ * A reversal's gaze runs this many steps ahead of the turn and sweeps over all of it, so the eyes leave first with a
+ * glance of about 40 degrees and the head is round before the body sets off. Without a lead the head stayed within 10
+ * degrees of the hips through the turn and then swung 25 degrees past the new heading; at 0.4 steps the opening glance
+ * fell below the size that recruits the head and the head still trailed (reference rig, walk scenario, 2026-11-24).
+ */
+const reverseLookLead = 0.8
+const reverseLookShare = 1
+/**
+ * The look-ahead leads her facing by at most this much: walking adults turning a quarter turn carry the head up to 39
+ * degrees ahead of the body (natural walk refit ADR). A reversal's lead would otherwise reach 80 degrees, past a
+ * comfortable neck turn.
+ */
+const lookLeadMax = 40 * radians
 /** A start that must turn further than this first turns the excess on the spot, so she never sets off backwards. */
 const mergedTurnMax = 100 * radians
 const mergedTurn = 90 * radians
@@ -295,7 +319,12 @@ const mergedTurn = 90 * radians
 const footLead = 42 * radians
 /** The gaze reaches a merged turn's final facing at this share of the turn, so the head leads the body by up to 35 degrees. */
 const lookLeadShare = 0.65
-/** Trunk roll into a turn per radian per second of yaw rate: 3.5 degrees at the 84 deg/s peak of a walking quarter turn. */
+/**
+ * Trunk roll into a turn per radian per second of yaw rate at the reference speed: 3.5 degrees at the 84 deg/s peak of a
+ * walking quarter turn. The lean answers the turn's centripetal acceleration, speed times yaw rate, so it scales with the
+ * speed: a reversal that turns fast about a stop leans hardly at all, where a lean sized by the yaw rate alone tipped her
+ * 8 degrees while she stood.
+ */
 const turnLean = 3.5 / 84
 /** Time constant of the trunk's lean into a turn, seconds: the trunk follows the yaw rate, it does not step with it. */
 const turnLeanTau = 0.25
@@ -507,12 +536,18 @@ interface Swing {
 interface Walk {
   /** Seconds into the preparation; the walk's first step starts at preparationDuration. */
   preparation: number
-  readonly direction: 1 | -1
-  readonly heading: number
+  /** The travel direction and heading; a reversal flips both at the stop (`reverse`). */
+  direction: 1 | -1
+  heading: number
   readonly firstFoot: Foot
   /** Index of the current step, floor(phase). */
   step: number
   starting: boolean
+  /**
+   * The least roll of a start's steps: 0.5 from standing, where a first step has neither reach nor a foot behind; none
+   * after a reversal, whose stop step lands flat and whose next steps roll by their own reach, so no roll jumps in.
+   */
+  startRoll: number
   arrived: boolean
   settle: { readonly phase: number, elapsed: number } | null
   /** The last facing planned for the arrival, or null on the way to the goal. */
@@ -544,6 +579,9 @@ interface YawPlan {
   readonly fromPhase: number
   readonly toPhase: number
   readonly startRate: number
+  /** Steps the gaze's look-ahead runs ahead of the plan, and the share of the plan over which it turns. */
+  readonly lookLead: number
+  readonly lookShare: number
 }
 
 interface Turn {
@@ -791,6 +829,9 @@ class Locomotion {
       this.halt()
     }
     else if (!this.rebased && dt > 0) {
+      // A goal that comes while she settles sets off at once: the settle only hands the body back to standing.
+      if (this.walk?.settle && !this.walk.sidestep && this.worthWalking(input.goalX))
+        this.walk = null
       if (!this.walk && !this.turn)
         this.depart(input)
       if (this.turn)
@@ -804,7 +845,7 @@ class Locomotion {
       this.lastTurnFoot = null
     if (dt > 0) {
       this.yawRate = (this.yaw - previousYaw) / dt
-      this.turnRoll += ((this.walk ? turnLean * this.yawRate : 0) - this.turnRoll) * (1 - Math.exp(-dt / turnLeanTau))
+      this.turnRoll += ((this.walk ? turnLean * this.yawRate * this.speed / this.referenceSpeed : 0) - this.turnRoll) * (1 - Math.exp(-dt / turnLeanTau))
     }
 
     const owned = mode === 'turning' || (this.walk !== null && this.walk.settle === null)
@@ -1086,11 +1127,16 @@ class Locomotion {
     return hip.y - anchor.y - Math.sqrt(Math.max(0, reach ** 2 - horizontal))
   }
 
+  /** True for a goal far enough from the root to walk to. */
+  private worthWalking(goal: number | null): goal is number {
+    return goal !== null && Number.isFinite(goal) && Math.abs(goal - this.x) > minWalkShare * this.traits.legLength
+  }
+
   private depart(input: LocomotionInput) {
     const goal = input.goalX
     if (goal === null || !Number.isFinite(goal))
       return
-    const walkTo = Math.abs(goal - this.x) > minWalkShare * this.traits.legLength
+    const walkTo = this.worthWalking(goal)
     const direction = goal > this.x ? 1 : -1
     let sidestep = false
     if (input.step === 'sidestep') {
@@ -1203,9 +1249,9 @@ class Locomotion {
     // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
-    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, arrived: false, settle: null, arrivalFacing: null, stopping: false }
+    this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, startRoll: 0.5, arrived: false, settle: null, arrivalFacing: null, stopping: false }
     this.yawPlan = Math.abs(turn) > turnTolerance
-      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate }
+      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + departTurnSteps, startRate: this.yawRate / minRate, lookLead: 0, lookShare: lookLeadShare }
       : null
     if (sidestep) {
       this.walk.sidestep = {
@@ -1247,8 +1293,16 @@ class Locomotion {
     const turn = wrap(facing - this.yaw)
     const span = steps * Math.max(1, Math.abs(turn) / mergedTurn)
     return Math.abs(turn) > turnTolerance || Math.abs(this.yawRate) > turnTolerance
-      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + span, startRate: this.yawRate / rate }
+      ? { from: this.yaw, to: this.yaw + turn, fromPhase: this.phase, toPhase: this.phase + span, startRate: this.yawRate / rate, lookLead: 0, lookShare: lookLeadShare }
       : null
+  }
+
+  /**
+   * A reversal's turn to `facing`, the heading behind her, through the viewer and unwrapped, over `reverseTurnSteps`;
+   * its gaze runs `reverseLookLead` steps ahead.
+   */
+  private planReverse(facing: number, rate: number): YawPlan {
+    return { from: this.yaw, to: facing, fromPhase: this.phase, toPhase: this.phase + reverseTurnSteps, startRate: this.yawRate / rate, lookLead: reverseLookLead, lookShare: reverseLookShare }
   }
 
   /** A start's share of the acceleration limit at `speed` toward `command`: the speed leaves rest gently. */
@@ -1289,12 +1343,16 @@ class Locomotion {
     const arriving = braking || (nearing && (wasArriving || ((!this.yawPlan || walk.step > 0) && (!profiled || target <= this.speed + epsilon))))
     const wasStopping = walk.stopping
     walk.stopping = arriving && (walk.stopping || braking || (profiled && target <= this.speed + epsilon))
-    const facing = arriving ? finite(input.arriveFacing) : walk.heading
+    // A goal behind her, worth a walk, turns her toward the opposite heading through the viewer (`reverseTurnSteps`).
+    const reversing = goal !== null && ahead < -minWalkShare * this.traits.legLength
+    const facing = reversing ? walk.heading - walk.direction * Math.PI : arriving ? finite(input.arriveFacing) : walk.heading
     const slowed = walk.stopping ? (1 - Math.min(1, speed / command)) ** 2 : 0
     const rate = this.stepRate(speed) + (closingRate - minRate) * slowed
     // A goal moved behind her during the lead brakes at once, so the turn is planned again over the braking's steps.
     if (!walk.settle && (arriving !== wasArriving || (braking && !wasStopping) || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
-      this.yawPlan = this.planYaw(facing, arriving ? braking ? brakeTurnSteps : arriveTurnSteps : departTurnSteps, rate)
+      this.yawPlan = reversing
+        ? this.planReverse(facing, rate)
+        : this.planYaw(facing, arriving ? braking ? brakeTurnSteps : arriveTurnSteps : departTurnSteps, rate)
       walk.arrivalFacing = arriving ? facing : null
     }
     if (walk.settle) {
@@ -1321,6 +1379,11 @@ class Locomotion {
 
     this.advanceFeet(walk, goal, braking, command, dt, input.now, events)
 
+    // Stopped with both feet down and the goal still behind: the same walk sets off the other way, its turn under way.
+    if (reversing && walk.arrived && !this.swing && !walk.settle) {
+      this.reverse(walk)
+      return 'starting'
+    }
     if (walk.arrived && !this.swing && !walk.settle) {
       // Both feet stand beside the root and face as she does; until then they take closing steps.
       const closed = !this.yawPlan && sides.every(side =>
@@ -1339,6 +1402,21 @@ class Locomotion {
       return 'starting'
     walk.starting = false
     return 'walking'
+  }
+
+  /**
+   * Turns a stopped walk round: it heads the other way from the next step, on the turn its braking began (the yaw plan
+   * already names the new heading), and accelerates as a start does. The phase, the feet and the gait's weight carry on,
+   * so the stop step is the first step's preparation.
+   */
+  private reverse(walk: Walk) {
+    walk.direction = walk.direction === 1 ? -1 : 1
+    walk.heading = walk.direction * Math.PI / 2
+    walk.starting = true
+    walk.startRoll = 0
+    walk.stopping = false
+    walk.arrived = false
+    walk.arrivalFacing = null
   }
 
   /**
@@ -1567,10 +1645,14 @@ class Locomotion {
     return from + (to - from) * progress
   }
 
-  /** The look-ahead of a turn made while walking: the gaze sweeps to the final facing over the first `lookLeadShare` of it. */
+  /**
+   * The look-ahead of a turn made while walking: the gaze sweeps to the final facing over the plan's `lookShare` of it,
+   * `lookLead` steps early, and at most `lookLeadMax` ahead of her facing.
+   */
   private planLookAhead(plan: YawPlan): number {
-    const u = clamp((this.phase - plan.fromPhase) / (plan.toPhase - plan.fromPhase), 0, 1)
-    return plan.from + (plan.to - plan.from) * minJerk(Math.min(1, u / lookLeadShare))
+    const u = clamp((this.phase + plan.lookLead - plan.fromPhase) / (plan.toPhase - plan.fromPhase), 0, 1)
+    const look = plan.from + (plan.to - plan.from) * minJerk(Math.min(1, u / plan.lookShare))
+    return this.yaw + clamp(look - this.yaw, -lookLeadMax, lookLeadMax)
   }
 
   private footFrame(side: Foot, strideScale: number): LocomotionFoot {
@@ -1601,7 +1683,7 @@ class Locomotion {
     // Both measure against the style's own full stride: the cadence law's step grows as the root of the speed.
     const own = this.style.stride * Math.sqrt(this.style.speed)
     // The settle hands the feet back flat: a planted foot's roll fades with the gait's weight.
-    const scale = Math.min(1, Math.max(strideScale / own, (swing ? swing.reach : Math.min(this.spans[side], Math.max(0, behind))) / (stanceShare * this.referenceLength * own), this.walk.starting ? 0.5 : 0))
+    const scale = Math.min(1, Math.max(strideScale / own, (swing ? swing.reach : Math.min(this.spans[side], Math.max(0, behind))) / (stanceShare * this.referenceLength * own), this.walk.starting ? this.walk.startRoll : 0))
       * (this.walk.settle ? this.blend : 1)
     // The style's roll acts on full strides only: the short steps of a start or a stop keep the gait's own.
     const styled = 1 + (this.style.roll - 1) * clamp(2 * scale - 1, 0, 1)
