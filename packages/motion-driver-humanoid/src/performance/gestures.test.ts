@@ -1,3 +1,4 @@
+import type { BodySide } from './channels'
 import type { BodyArmForm, BodyGestureForm, BodyGestureHand, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { PerformanceLayer } from './stack'
 
@@ -6,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision } from './collision'
-import { GESTURE_FORMS, gestureGain, GestureKeys, writeArmFormHand } from './gesture-forms'
+import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, writeArmFormHand } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { writeHandShape } from './hand-shapes'
 import { BodySkeleton, createBodyPerformer } from './index'
@@ -21,6 +22,8 @@ interface Utterance {
   /** Onset times; `major` marks an accepted emphasis, `weak` an onset below the gate's S2 voice-peak rule. */
   readonly onsets: readonly { readonly at: number, readonly major?: boolean, readonly weak?: boolean, readonly loud?: boolean }[]
   readonly gaze?: 'free' | 'sustained'
+  /** Silences inside the utterance, `[start, end]`: speaking goes on, the voice floor drops to 0. */
+  readonly pauses?: readonly (readonly [number, number])[]
 }
 
 interface Script {
@@ -29,6 +32,7 @@ interface Script {
   readonly armForm?: (time: number) => { side: BodyGestureHand, form: BodyArmForm } | null
   /** Natural's mood tension; its speak scenario reports 0. */
   readonly tension?: number
+  readonly mood?: { readonly valence: number, readonly arousal: number }
   /** Natural's speech emphasis head pitch term, radians. */
   readonly headEmphasis?: (time: number) => number
   /** The body's facing, radians; the feet turning under the gaze. */
@@ -44,7 +48,7 @@ interface Script {
 function speechInput(script: Script, time: number, state: { onset: number, emphasis: number, slow: number }): BodyPerformanceInput {
   const base = script.still ? quietInput(time) : idleInput(time)
   const utterance = script.utterances.find(u => time >= u.start && time < u.end)
-  let level = utterance ? 0.1 : 0
+  let level = utterance && !utterance.pauses?.some(([start, end]) => time >= start && time < end) ? 0.1 : 0
   for (const u of script.utterances) {
     for (const onset of u.onsets) {
       if (Math.abs(time - onset.at) < BODY_TICK / 2) {
@@ -63,7 +67,7 @@ function speechInput(script: Script, time: number, state: { onset: number, empha
     facingYaw: script.facing?.(time) ?? base.facingYaw,
     voice: { speaking: utterance !== undefined, level, slow: state.slow, onsetSeq: state.onset, emphasis: state.emphasis ? { seq: state.emphasis, at: time, magnitude: 0.5, tau: 0.3, kind: 'nod', side: 1 } : null },
     energy: { ...base.energy, level: last?.energy ?? 0.5 },
-    mood: { ...base.mood, tension: script.tension ?? base.mood.tension },
+    mood: { ...base.mood, ...script.mood, tension: script.tension ?? base.mood.tension },
     gaze: { ...base.gaze, kind: utterance?.gaze ?? 'free' },
     owned: { ...base.owned, ...script.owned?.(time) },
   }
@@ -88,7 +92,7 @@ function armFormPlanner(script: Script): PerformanceLayer {
 }
 
 interface Run {
-  readonly frames: { readonly time: number, readonly channels: Float32Array, readonly gesture: BodyPerformanceFrame['diagnostics']['gesture'], readonly corrector: BodyPerformanceFrame['diagnostics']['corrector'], readonly correction: BodyPerformanceFrame['diagnostics']['correction'], readonly holds: number }[]
+  readonly frames: { readonly time: number, readonly channels: Float32Array, readonly gesture: BodyPerformanceFrame['diagnostics']['gesture'], readonly corrector: BodyPerformanceFrame['diagnostics']['corrector'], readonly correction: BodyPerformanceFrame['diagnostics']['correction'], readonly holds: number, readonly support: number }[]
   readonly onsets: number[]
 }
 
@@ -139,7 +143,7 @@ function perform(script: Script, seconds: number, options: { seed?: number, trai
       if (options.corrections && g.activation[side] === 1)
         options.corrections[side] = Math.max(options.corrections[side], rise)
     }
-    frames.push({ time, channels: frame.channels.slice(), gesture: { ...g, activation: { ...g.activation } }, corrector: { ...frame.diagnostics.corrector }, correction: { ...frame.diagnostics.correction }, holds: frame.diagnostics.collisions.count })
+    frames.push({ time, channels: frame.channels.slice(), gesture: { ...g, activation: { ...g.activation } }, corrector: { ...frame.diagnostics.corrector }, correction: { ...frame.diagnostics.correction }, holds: frame.diagnostics.collisions.count, support: frame.support })
   }
   return { frames, onsets }
 }
@@ -183,7 +187,51 @@ function apexes(run: Run, side: 'left' | 'right', rig: BodyRigTraits = traits): 
   return out
 }
 
+/**
+ * A transition's speed peaks, counted as the reference's were (sources.md): a peak counts once the speed has risen and
+ * then fallen by 10 % of the span's top speed. Returns the peaks' indices in `span`.
+ */
+function speedPeaks(span: readonly number[]): number[] {
+  const delta = 0.1 * Math.max(...span)
+  const peaks: number[] = []
+  let low = span[0]
+  let high = -Infinity
+  let at = -1
+  let rising = true
+  span.forEach((v, i) => {
+    if (rising && v > high) {
+      high = v
+      at = i
+    }
+    if (rising && high - low >= delta && high - v >= delta) {
+      peaks.push(at)
+      rising = false
+      low = v
+    }
+    else if (!rising) {
+      low = Math.min(low, v)
+      if (v - low >= delta) {
+        rising = true
+        high = v
+        at = i
+      }
+    }
+  })
+  return peaks
+}
+
 const nearest = (values: readonly number[], to: number) => values.reduce((best, value) => Math.abs(value - to) < Math.abs(best - to) ? value : best, Infinity)
+
+/**
+ * The hand a stroke marker reports: its own, or for a two-hand stroke the lead (dominant) hand, whose apex the marker
+ * is; the second hand's lands 40 to 70 ms later.
+ */
+function markedSide(run: Run, stroke: { hit: number, hand: string }, rig: BodyRigTraits = traits): 'left' | 'right' {
+  if (stroke.hand !== 'both')
+    return stroke.hand === 'left' ? 'left' : 'right'
+  const off = (side: 'left' | 'right') => Math.abs(nearest(apexes(run, side, rig), stroke.hit) - stroke.hit)
+  return off('left') <= off('right') ? 'left' : 'right'
+}
 
 const utterance = (start: number, energy: number, onsets: Utterance['onsets'], extra: Partial<Utterance> = {}): Utterance => ({ start, end: start + 6, energy, onsets, ...extra })
 const peaks = (start: number, major = true) => [1.0, 2.1, 3.0, 4.2, 5.4].map((at, i) => ({ at: start + at, major: major && i % 2 === 0 }))
@@ -198,7 +246,10 @@ describe('co-speech gestures', () => {
   })
 
   it('starts one unit per utterance before its first onset, and none inside the refractory', () => {
-    const run = perform({ utterances: [utterance(0.5, 0.65, peaks(0.5)), utterance(12, 0.65, peaks(12)), utterance(18.3, 0.65, peaks(18.3))] }, 26)
+    // The third utterance starts after the second's end has lowered the hands (0.3 s after speaking ends), so its
+    // onsets fall inside the refractory that the end of speech starts. (A unit its caps lower while speech goes on
+    // takes the short refractory, `TIMING.pauseBase`.)
+    const run = perform({ utterances: [utterance(0.5, 0.65, peaks(0.5)), utterance(12, 0.65, peaks(12)), utterance(19, 0.65, peaks(19).slice(0, 3), { end: 22.3 })] }, 26)
     const starts = run.frames.flatMap((frame, i) => i > 0 && frame.gesture.unitSeq !== run.frames[i - 1].gesture.unitSeq ? [frame.time] : [])
     expect(starts).toHaveLength(2)
     expect(starts[0]).toBeGreaterThanOrEqual(0.5)
@@ -214,6 +265,171 @@ describe('co-speech gestures', () => {
     expect(planned.map(s => Math.round(s.onset * 10) / 10)).toEqual([1.2, 2.4, 4.4])
     for (const stroke of planned)
       expect(stroke.hit - stroke.onset).toBeLessThan(0.3)
+  })
+
+  it('moves each new phrase of a long utterance to another place, prepared from where the hands are', () => {
+    const onsets = Array.from({ length: 12 }, (_, i) => ({ at: 1 + 0.75 * i, major: i % 3 === 0 }))
+    let found = 0
+    for (const seed of [1, 2, 3, 4]) {
+      const run = perform({ utterances: [{ start: 0.5, end: 11, energy: 0.85, onsets }] }, 11, { seed })
+      const unit = run.frames[run.frames.length - 1].gesture.unitSeq
+      // The wrist where each preparation ends, of every preparation of the first unit after its first.
+      const ends: number[] = []
+      for (let i = 1; i < run.frames.length; i++) {
+        const g = run.frames[i].gesture
+        if (run.frames[i - 1].gesture.phase === 'preparation' && g.phase !== 'preparation' && g.unitSeq === 1)
+          ends.push(i - 1)
+      }
+      if (ends.length < 2)
+        continue
+      found++
+      const lead = run.frames[ends[0]].gesture.hand === 'left' ? 'left' : 'right'
+      const path = wristPath(run, lead)
+      const [a, b] = [path[ends[0]], path[ends[1]]]
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]), `seed ${seed}`).toBeGreaterThan(0.05)
+      expect(unit).toBeGreaterThanOrEqual(1)
+    }
+    expect(found).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('carries a hand into its next phrase with a second submovement that homes in on the new place', () => {
+    const onsets = Array.from({ length: 12 }, (_, i) => ({ at: 1 + 0.75 * i, major: i % 3 === 0 }))
+    let checked = 0
+    for (const seed of [1, 2, 3, 4]) {
+      const run = perform({ utterances: [{ start: 0.5, end: 11, energy: 0.85, onsets }] }, 11, { seed })
+      // Every preparation of the first unit after its first is a phrase change; a one-hand phrase's is its hand's.
+      for (let i = 1; i < run.frames.length; i++) {
+        const g = run.frames[i].gesture
+        if (g.unitSeq !== 1 || g.phase !== 'preparation' || run.frames[i - 1].gesture.phase === 'preparation' || run.frames[i - 1].gesture.phase === 'rest' || (g.hand !== 'left' && g.hand !== 'right'))
+          continue
+        const end = run.frames.findIndex((frame, k) => k > i && frame.gesture.phase !== 'preparation')
+        // A stroke may leave from a preparation about to end, cutting its correction short.
+        if (run.frames[end].gesture.phase === 'stroke')
+          continue
+        const fed = [2, 3, 4, 5].map(j => ARM_START[g.hand as BodySide] + j)
+        // The output's followers land the second submovement a little after the plan's end, as for the unit's own.
+        const span = run.frames.slice(i, end + Math.round(0.15 / BODY_TICK)).map((frame, k) => Math.hypot(...fed.map(c => frame.channels[c] - run.frames[i + k - 1].channels[c])))
+        expect(speedPeaks(span).length, `seed ${seed} at ${run.frames[i].time.toFixed(2)} s`).toBeGreaterThanOrEqual(2)
+        checked++
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('lowers the hands in a pause between phrases and gestures again after it', () => {
+    const run = perform({ utterances: [{ start: 0.5, end: 9, energy: 0.85, onsets: [1, 1.9, 2.8, 5.6, 6.5, 7.4].map(at => ({ at })), pauses: [[3.2, 5.2]] }] }, 9)
+    const inPause = run.frames.filter(f => f.time > 3.2 && f.time < 5.6)
+    expect(inPause.some(f => f.gesture.phase === 'rest')).toBe(true)
+    const after = strokes(run).filter(s => s.hit > 5.6)
+    expect(after.length).toBeGreaterThanOrEqual(2)
+    expect(run.frames.at(-1)!.gesture.unitSeq).toBe(2)
+  })
+
+  it('holds an excited speaker\'s hands through a short pause, taking them on to the next place, and lowers a calmer one\'s', () => {
+    const onsets = [1, 1.8, 2.6, 4.2, 5.0, 5.8].map(at => ({ at }))
+    const run = (energy: number, seed: number) => perform({ utterances: [{ start: 0.5, end: 6.5, energy, onsets, pauses: [[3, 3.9]] }] }, 7, { seed })
+    const inPause = (r: Run) => r.frames.filter(f => f.time > 3 && f.time < 4.2)
+    let moved = 0
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const excited = run(0.85, seed)
+      expect(inPause(excited).map(f => f.gesture.phase), `seed ${seed}`).not.toContain('retraction')
+      expect(excited.frames.at(-1)!.gesture.unitSeq).toBe(1)
+      expect(strokes(excited).filter(s => s.hit > 4.2).length).toBeGreaterThanOrEqual(2)
+      // A phrase that has stroked ends with the thought: its hands go on to the next place once the voice has been
+      // quiet 0.4 s (the slow envelope falls under 0.05 about 0.17 s into the pause).
+      if (inPause(excited).some((f, i, all) => i > 0 && f.time > 3.5 && f.gesture.phase === 'preparation' && all[i - 1].gesture.phase !== 'preparation'))
+        moved++
+      expect(inPause(run(0.45, seed)).map(f => f.gesture.phase), `seed ${seed}`).toContain('retraction')
+    }
+    expect(moved).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('turns the trunk and tilts the head toward a one-handed phrase, lifts that shoulder and settles the other, more when livelier', () => {
+    // Seed 3 opens with a one-handed phrase at both energies.
+    const measure = (energy: number) => {
+      const script: Script = { utterances: [utterance(0.5, energy, peaks(0.5))], still: true }
+      const run = perform(script, 6.5, { seed: 3 })
+      const still = perform(script, 6.5, { seed: 3, layers: false })
+      const hand = strokes(run)[0].hand as BodySide
+      expect(hand).not.toBe('both')
+      const toward = hand === 'left' ? 1 : -1
+      // The first phrase only: the next may go on with the other hand or both.
+      const first = strokes(run)[0].index
+      const end = run.frames.findIndex((f, i) => i > first && f.gesture.hand !== hand)
+      const held = run.frames.slice(0, end < 0 ? undefined : end).map((f, i) => ({ f, s: still.frames[i] })).filter(({ f }) => f.gesture.phase === 'hold' || f.gesture.phase === 'stroke')
+      const mean = (c: number) => held.reduce((sum, { f, s }) => sum + f.channels[c] - s.channels[c], 0) / held.length
+      const other: BodySide = hand === 'left' ? 'right' : 'left'
+      return { turn: toward * mean(channelIndex('upperYaw')), tilt: toward * mean(channelIndex('headRoll')), lift: mean(ARM_START[hand]), free: mean(ARM_START[other]) }
+    }
+    const calm = measure(0.45)
+    const lively = measure(0.85)
+    for (const body of [calm, lively]) {
+      expect(body.turn).toBeGreaterThan(0.5 * DEG)
+      expect(body.tilt).toBeGreaterThan(0.5 * DEG)
+      expect(body.lift).toBeGreaterThan(0)
+      expect(body.free).toBeLessThan(0)
+    }
+    expect(lively.turn).toBeGreaterThan(calm.turn)
+    expect(lively.lift).toBeGreaterThan(calm.lift)
+  }, 60_000)
+
+  it('moves the weight to the other foot as the hands come down, in most units', () => {
+    let shifted = 0
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const run = perform({ utterances: [utterance(0.5, 0.65, peaks(0.5))] }, 9, { seed })
+      const down = run.frames.findIndex(f => f.time > 6.5 && f.gesture.phase === 'retraction')
+      expect(down).toBeGreaterThan(0)
+      // Where the weight stood as the hands came down, and where it went over the next 1.4 s, while the shift holds
+      // the support against Natural's own shifts.
+      const before = run.frames[down].support
+      const moved = run.frames[down + Math.round(1.4 / BODY_TICK)].support - before
+      if (Math.abs(moved) > 0.3) {
+        shifted++
+        if (before !== 0)
+          expect(Math.sign(moved), `seed ${seed}`).toBe(-Math.sign(before))
+      }
+    }
+    expect(shifted).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('gestures seldom and small when calm, often and large when excited, for the same speech', () => {
+    const onsets = Array.from({ length: 16 }, (_, i) => ({ at: 1 + 0.8 * i, major: i % 4 === 0, loud: i % 5 === 2 }))
+    const speech = (energy: number, mood?: Script['mood']): Script => ({ utterances: [{ start: 0.5, end: 14.5, energy, onsets }], mood })
+    const calm = perform(speech(0.2), 15)
+    const excited = perform(speech(0.5, { valence: 0.6, arousal: 0.9 }), 15)
+    const reach = (run: Run) => {
+      const path = [...wristPath(run, 'left'), ...wristPath(run, 'right')]
+      const ys = path.map(p => p[1])
+      return Math.max(...ys) - Math.min(...ys)
+    }
+    expect(strokes(excited).length).toBeGreaterThanOrEqual(2 * strokes(calm).length)
+    expect(reach(excited)).toBeGreaterThan(reach(calm))
+  }, 60_000)
+
+  it('moves a beat\'s fingers with the stroke and brings them back with the recovery', () => {
+    // A beat closes the relaxed hand 0.45 of the way to a cup, or in a set phrase opens the half-open hand fully. The
+    // index knuckle (channel 12) peaks in the hold behind its follower (4a: the hand shape last).
+    let closing = 0
+    for (const seed of [1, 2, 3, 4]) {
+      const run = perform({ utterances: [utterance(0.5, 0.45, peaks(0.5, false))] }, 6.5, { seed })
+      for (const beat of strokes(run).filter(s => s.form === 'beat' && s.hand !== 'both' && s.hit < 5.5)) {
+        const side = beat.hand === 'left' ? 'left' : 'right'
+        const curl = (time: number) => run.frames[Math.round(time / BODY_TICK) - 1].channels[ARM_START[side] + 12]
+        const start = curl(beat.hit - 0.2)
+        let turn = 0
+        for (let t = beat.hit; t <= beat.hit + 0.35; t += BODY_TICK) {
+          if (Math.abs(curl(t) - start) > Math.abs(turn))
+            turn = curl(t) - start
+        }
+        expect(Math.abs(turn) / DEG, `seed ${seed} at ${beat.hit}`).toBeGreaterThan(1.5)
+        if (turn > 0) {
+          closing++
+          expect(turn / DEG).toBeGreaterThan(6)
+          expect(Math.abs(curl(beat.hit + 0.8) - start)).toBeLessThan(0.4 * turn)
+        }
+      }
+    }
+    expect(closing).toBeGreaterThanOrEqual(2)
   })
 
   it.each(fixtureRigs)('hits within the emphasis window and shows each hit kinematically on $name', ({ traits: rig }) => {
@@ -235,7 +451,7 @@ describe('co-speech gestures', () => {
           expect(stroke.hit - stroke.onset, `${stroke.form} at tension ${tension}, energy ${energy}`).toBeLessThanOrEqual(Math.max(window, landed + 2 * BODY_TICK))
           expect(landed, `${stroke.form} profile at tension ${tension}, energy ${energy}`).toBeLessThanOrEqual(stroke.form === 'chop' ? 0.2 : window - 2 * BODY_TICK)
           expect(stroke.hit - stroke.onset).toBeGreaterThan(0.06)
-          const side = stroke.hand === 'both' ? 'right' : stroke.hand as 'left' | 'right'
+          const side = markedSide(run, stroke, rig)
           expect(Math.abs(nearest(apexes(run, side, rig), stroke.hit) - stroke.hit)).toBeLessThanOrEqual(0.05)
         }
         expect(run.frames.at(-1)?.corrector).toEqual({ capHits: 0, guardScans: 0 })
@@ -255,7 +471,7 @@ describe('co-speech gestures', () => {
         const planned = strokes(run)
         expect(planned).toHaveLength(5)
         for (const stroke of planned) {
-          const path = wristPath(run, stroke.hand === 'left' ? 'left' : 'right', rig)
+          const path = wristPath(run, markedSide(run, stroke, rig), rig)
           const speed = (i: number) => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2])
           const onset = Math.round(stroke.onset / BODY_TICK) - 1
           const hit = Math.round(stroke.hit / BODY_TICK) - 1
@@ -429,6 +645,14 @@ describe('co-speech gestures', () => {
     expect(mean(travel.high)).toBeGreaterThan(mean(travel.low))
   }, 120_000)
 
+  it('cuts a chop nearly straight down, apart from a beat\'s forward fall by more than the report\'s 10 deg', () => {
+    // A phrase's beats leave from several places and keep its hand, so the chop cannot rely on its hand alone to read
+    // as its own form.
+    const angle = (a: readonly number[], b: readonly number[]) => Math.acos(a.reduce((s, v, k) => s + v * b[k], 0) / Math.hypot(...a) / Math.hypot(...b))
+    expect(angle(GESTURE_FORMS.chop.stroke, [0, -1, 0])).toBeLessThan(5 * DEG)
+    expect(angle(GESTURE_FORMS.chop.stroke, GESTURE_FORMS.beat.stroke)).toBeGreaterThan(20 * DEG)
+  })
+
   it('plays a two-hand stroke with the second hand 40 to 70 ms later and smaller', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const run = perform({ utterances: [utterance(0.3, 0.85, peaks(0.3))] }, 6.5, { seed })
@@ -580,7 +804,10 @@ describe('co-speech gestures', () => {
 
   it('nods the head with each stroke, its apex on the hit, 3 degrees for a major stroke', () => {
     const pitch = [channelIndex('neckPitch'), channelIndex('headPitch')]
-    const yawRoll = [channelIndex('neckYaw'), channelIndex('neckRoll'), channelIndex('headYaw'), channelIndex('headRoll')]
+    const yaw = [channelIndex('neckYaw'), channelIndex('headYaw')]
+    // The phrase tilts the head toward a one-handed phrase's hand (`BODY`), held from its preparation on: a slow lean,
+    // never a beat.
+    const roll = [channelIndex('neckRoll'), channelIndex('headRoll')]
     // A still facing, then the feet turning 40 degrees under the gaze during the utterance (the gaze head held in space).
     const turning = (time: number) => 40 * DEG * Math.max(0, Math.min(1, (time - 2) / 3))
     const added: number[][] = []
@@ -591,8 +818,14 @@ describe('co-speech gestures', () => {
       const nod = run.frames.map((frame, i) => pitch.reduce((sum, c) => sum + frame.channels[c] - silent.frames[i].channels[c], 0) / DEG)
       added.push(nod)
       for (let i = 0; i < run.frames.length; i++) {
-        for (const c of yawRoll)
+        for (const c of yaw)
           expect(run.frames[i].channels[c]).toBe(silent.frames[i].channels[c])
+        for (const c of roll) {
+          const tilt = (frame: number) => run.frames[frame].channels[c] - silent.frames[frame].channels[c]
+          expect(Math.abs(tilt(i))).toBeLessThanOrEqual(2 * DEG)
+          if (i > 0)
+            expect(Math.abs(tilt(i) - tilt(i - 1)) / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
+        }
       }
       const found = strokes(run)
       expect(found.length).toBeGreaterThanOrEqual(4)
@@ -661,8 +894,7 @@ describe('co-speech gestures', () => {
 
   it('corrects about 40 % of preparations and retractions with an overlapping second submovement, by seed', () => {
     const script: Script = { utterances: [utterance(0.5, 0.65, [], { end: 2 })], still: true }
-    // Each transition's speed peaks on the arm's output (flex, abduction, twist, elbow), counted as the reference's
-    // were (sources.md): a peak counts once the speed has risen and then fallen by 10 % of the transition's top speed.
+    // Each transition's speed peaks on the arm's output (flex, abduction, twist, elbow), counted by `speedPeaks`.
     const transitions = (seed: number) => {
       const run = perform(script, 5, { seed })
       const side = run.frames.find(frame => frame.gesture.hand)?.gesture.hand === 'left' ? 'left' : 'right'
@@ -672,31 +904,7 @@ describe('co-speech gestures', () => {
         const start = run.frames.findIndex(frame => frame.gesture.phase === phase)
         const end = run.frames.findIndex((frame, i) => i > start && frame.gesture.phase !== phase) + Math.round(0.15 / BODY_TICK)
         const span = speed.slice(start, end)
-        const delta = 0.1 * Math.max(...span)
-        const peaks: number[] = []
-        let low = span[0]
-        let high = -Infinity
-        let at = -1
-        let rising = true
-        span.forEach((v, i) => {
-          if (rising && v > high) {
-            high = v
-            at = i
-          }
-          if (rising && high - low >= delta && high - v >= delta) {
-            peaks.push(at)
-            rising = false
-            low = v
-          }
-          else if (!rising) {
-            low = Math.min(low, v)
-            if (v - low >= delta) {
-              rising = true
-              high = v
-              at = i
-            }
-          }
-        })
+        const peaks = speedPeaks(span)
         return peaks.length < 2 ? null : { ratio: span[peaks[1]] / span[peaks[0]], trough: Math.min(...span.slice(peaks[0], peaks[1])) / span[peaks[0]] }
       })
     }
@@ -785,11 +993,11 @@ describe('co-speech gestures', () => {
           const outward = form === 'frame' ? 0.1 : 0
           const ready = new Float64Array(rest.subarray(ARM_START[side], ARM_START[side] + 26))
           writeHandShape('relaxed', ready)
-          expect(keys.solve(side, keys.readyKey(energy, outward), ready)).toBe(true)
+          expect(keys.solve(side, keys.readyKey(energy, { ...NO_OFFSET, out: outward }), ready)).toBe(true)
           const stroke = ready.slice()
           writeHandShape(GESTURE_FORMS[form].shape, stroke)
           const size = gestureGain(energy) * GESTURE_FORMS[form].scale
-          expect(keys.solve(side, keys.strokeKey(keys.readyKey(energy, outward), form, size), stroke, ready)).toBe(true)
+          expect(keys.solve(side, keys.strokeKey(keys.readyKey(energy, { ...NO_OFFSET, out: outward }), form, size), stroke, ready)).toBe(true)
           expect(keys.pathDepth(side, ready, stroke)).toBe(0)
         }
       }

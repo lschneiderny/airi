@@ -1,0 +1,23 @@
+# Speech gestures play in phrases
+
+Date: 2026-11-24
+Status: accepted. Changes the unit structure of architecture 4a and plan 3.1's decision D3 (one gesture unit per utterance) in the [whole-body performer](2026-11-11-whole-body-performer.md)'s gesture layer.
+
+## Context
+
+A visual audit of speech found that she gestures in one repeated pose: the elbow parks at the waist, the wrist delivers the beats, and the feet, ribs and free shoulder take little part. The fingers keep one spread through every stroke. Every stroke of a unit left from and returned to one ready key, a unit covered a whole utterance, and the only body participation was each stroke's torso pulse and head nod. Energy alone scaled the gestures; mood did not reach them.
+
+## Decision
+
+1. **A unit plays phrases.** A phrase has its hands, a place (`centre`, `low`, `side`, `high`, or two hands' `inner`), a theme and two to four strokes, drawn from the phrase stream (`deriveSeed(seed, 142)`). The place and the theme differ from the phrase before. At a phrase's end the hands go on into the next phrase, prepared again from where they are to its place, the other hand taking over or both joining; a hand that leaves retracts. The unit's marker (`unitSeq`) counts units, not phrases.
+2. **Hands lower between thoughts.** 0.4 s of quiet lowers the hands (4a had 0.8 s), so a pause between phrases ends the unit. From drive 0.6 up the speaker holds the hands through up to 0.4 s + 0.6 s x drive of quiet instead, and hands at rest in a phrase that has stroked go on to the next phrase's place in the pause; with every pause lowering the hands, an excited speaker lifted and dropped them between phrases without a stroke. A unit lowered while speech goes on (a pause, a cap, a phrase's end) takes a refractory of 0.4 s + 1.2 s x (1 - drive); after speaking ends the refractory stays 2.5 s + 3 s x (1 - drive). Below drive 0.4 a phrase's end may lower the hands too.
+3. **Drive replaces energy.** Gesture size, tempo, form shares and phrase choices read the drive, the energy raised 0.3 x arousal and 0.1 x valence. Below drive 0.4 a unit opens only on an emphasis or a loud onset, and an ordinary onset does not stroke, so a calm speaker gestures seldom.
+4. **The elbow floats and the hand lives.** Each recovery returns to a ready key moved within the place, the elbow up or down by turns. A theme stroke sets the phrase's hand: its beats keep that palm. A beat's hand closes part-way to a cup, every hold eases the hand back part-way, and the recovery opens it. Because beats now keep other palms and leave from several places, the chop cuts nearly straight down to stay a form of its own. A hand carried on into a new phrase, or joining one, always takes the corrected transition and homes in on its new place; the hand-offs added plain moves, which alone read smoother than the talk reference.
+5. **The body takes part.** An additive third gesture layer holds the phrase's trunk turn toward a one-handed phrase's hand, a forward lean with drive, a head and neck tilt, the gesturing shoulder's lift and the free shoulder's settle. Each stroke lifts its shoulder, or presses it down on a downward stroke. Standing, a unit lowering its hands asks for the weight on the other foot through `plan.support`, unless an earlier layer holds it.
+
+## Consequences
+
+- "Every onset strokes" no longer holds inside an utterance: onsets in a pause, before a calm unit opens and in a lowered unit's refractory pass without a stroke.
+- Stroke keys clear the settling headroom where they can, because the trunk now moves under them. A segment's minimum duration now counts the velocity it carries, which a corrected transition's second submovement can bring past the followers' input slope.
+- `createGestureLayers` returns three layers; hosts register all three.
+- `lab:motion3d report gesture-timing` still judges the `speak` scenario, whose utterances carry no pauses. The `speak-phrases` scenario carries pauses for visual review; no report judges it.

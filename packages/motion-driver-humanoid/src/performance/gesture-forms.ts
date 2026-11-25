@@ -15,6 +15,11 @@ export type SpeechGestureForm = Exclude<BodyGestureForm, BodyArmForm>
 /** One form of architecture 4a's table with unit A's amplitude scale. Angles in radians, times in seconds. */
 export interface GestureFormSpec {
   readonly shape: HandShape
+  /**
+   * How far the stroke's hand goes from the relaxed hand toward `shape`: a beat's fingers close part of the way to a
+   * cup on the downstroke and open again on the way back, so the hand works with the beat instead of riding it still.
+   */
+  readonly shapeShare: number
   /** 4a's stroke displacement from the ready key, arm lengths `[out, up, forward]`, before gain and scale. */
   readonly stroke: readonly [number, number, number]
   /**
@@ -32,12 +37,12 @@ export interface GestureFormSpec {
 }
 
 export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>> = {
-  'beat': { shape: 'relaxed', stroke: [0, -0.06, 0.03], scale: 2, pron: 20 * DEG, wflex: 10 * DEG, wdev: 0, strokeSeconds: 0.11, hold: [0.1, 0.25], hands: 'one' },
-  'palm-up': { shape: 'open', stroke: [0.1, -0.02, 0.08], scale: 2, pron: -70 * DEG, wflex: -12 * DEG, wdev: 0, strokeSeconds: 0.16, hold: [0.3, 0.8], hands: 'either' },
-  'press': { shape: 'open', stroke: [0, -0.1, 0.02], scale: 2, pron: 80 * DEG, wflex: -8 * DEG, wdev: 0, strokeSeconds: 0.15, hold: [0.25, 0.6], hands: 'either' },
-  'point': { shape: 'point', stroke: [-0.02, 0.04, 0.16], scale: 1.46, pron: 60 * DEG, wflex: 0, wdev: 0, strokeSeconds: 0.14, hold: [0.3, 0.7], hands: 'one' },
-  'chop': { shape: 'flat', stroke: [0, -0.14, 0.04], scale: 1.55, pron: 0, wflex: 0, wdev: 10 * DEG, strokeSeconds: 0.13, hold: [0.1, 0.2], hands: 'one' },
-  'frame': { shape: 'open', stroke: [0.05, -0.03, 0], scale: 2, pron: 0, wflex: 0, wdev: 0, strokeSeconds: 0.15, hold: [0.3, 0.8], hands: 'two' },
+  'beat': { shape: 'cup', shapeShare: 0.45, stroke: [0, -0.06, 0.03], scale: 2, pron: 20 * DEG, wflex: 10 * DEG, wdev: 0, strokeSeconds: 0.11, hold: [0.1, 0.25], hands: 'one' },
+  'palm-up': { shape: 'open', shapeShare: 1, stroke: [0.1, -0.02, 0.08], scale: 2, pron: -70 * DEG, wflex: -12 * DEG, wdev: 0, strokeSeconds: 0.16, hold: [0.3, 0.8], hands: 'either' },
+  'press': { shape: 'open', shapeShare: 1, stroke: [0, -0.1, 0.02], scale: 2, pron: 80 * DEG, wflex: -8 * DEG, wdev: 0, strokeSeconds: 0.15, hold: [0.25, 0.6], hands: 'either' },
+  'point': { shape: 'point', shapeShare: 1, stroke: [-0.02, 0.04, 0.16], scale: 1.46, pron: 60 * DEG, wflex: 0, wdev: 0, strokeSeconds: 0.14, hold: [0.3, 0.7], hands: 'one' },
+  'chop': { shape: 'flat', shapeShare: 1, stroke: [0, -0.14, 0.01], scale: 1.55, pron: 0, wflex: 0, wdev: 10 * DEG, strokeSeconds: 0.13, hold: [0.1, 0.2], hands: 'one' },
+  'frame': { shape: 'open', shapeShare: 1, stroke: [0.05, -0.03, 0], scale: 2, pron: 0, wflex: 0, wdev: 0, strokeSeconds: 0.15, hold: [0.3, 0.8], hands: 'two' },
 }
 
 /**
@@ -90,6 +95,41 @@ export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape
 export function writeArmFormHand(form: BodyArmForm, side: BodySide, pose: Float64Array): void {
   const { shape } = ARM_FORMS[form]
   writeHandShape(typeof shape === 'string' ? shape : shape[side], pose)
+}
+
+const relaxedHand = new Float64Array(26)
+writeHandShape('relaxed', relaxedHand)
+
+/**
+ * Writes `shape` into a side's arm block `share` of the way from the relaxed hand (channels 9 to 25), as a static mix
+ * of the two hands' joint angles: a key's hand, not a moment on the closing path (`blendHand`).
+ */
+export function writeHandShare(shape: HandShape, share: number, pose: Float64Array): void {
+  writeHandShape(shape, pose)
+  for (let j = 9; j < 26; j++)
+    pose[j] += (1 - share) * (relaxedHand[j] - pose[j])
+}
+
+/** Writes the hand a speech form's stroke lands with (`GestureFormSpec.shapeShare`). */
+export function writeFormHand(form: SpeechGestureForm, pose: Float64Array): void {
+  writeHandShare(GESTURE_FORMS[form].shape, GESTURE_FORMS[form].shapeShare, pose)
+}
+
+/**
+ * A ready key's place against 4a's ready key: the hand moved out, up and forward in arm lengths, and the elbow swung out
+ * by `swivel` radians.
+ */
+export interface ReadyOffset {
+  readonly out: number
+  readonly up: number
+  readonly forward: number
+  readonly swivel: number
+}
+
+export const NO_OFFSET: ReadyOffset = { out: 0, up: 0, forward: 0, swivel: 0 }
+
+export function addOffsets(a: ReadyOffset, b: ReadyOffset): ReadyOffset {
+  return { out: a.out + b.out, up: a.up + b.up, forward: a.forward + b.forward, swivel: a.swivel + b.swivel }
 }
 
 /** Architecture 4a's energy gain on stroke size, energy in [0, 1]. */
@@ -206,14 +246,14 @@ export class GestureKeys {
   }
 
   /**
-   * 4a's ready key at `energy`; `outward` moves the hand out in arm lengths, `swivel` adds degrees. The wrist comes up
-   * in line with the forearm, 10 degrees out of the rest's extension, so the preparation still moves the wrist after
-   * the elbow and the hand hovers relaxed in front of the body; held 20 degrees extended, the relaxed fingers read as a
-   * claw on a calibrated hand.
+   * 4a's ready key at `energy`, moved by `offset` (a phrase's place, a float within it). The wrist comes up in line
+   * with the forearm, 10 degrees out of the rest's extension, so the preparation still moves the wrist after the elbow
+   * and the hand hovers relaxed in front of the body; held 20 degrees extended, the relaxed fingers read as a claw on a
+   * calibrated hand.
    */
-  readyKey(energy: number, outward = 0, swivel = 0): ArmKey {
+  readyKey(energy: number, offset: ReadyOffset = NO_OFFSET): ArmKey {
     const lift = Math.max(0, Math.min(1, energy))
-    return { hand: [-0.05 + outward, -0.6 + 0.22 * lift, 0.42], swivel: (20 + swivel) * DEG, pron: 20 * DEG, wflex: 0, wdev: 0 }
+    return { hand: [-0.05 + offset.out, -0.6 + 0.22 * lift + offset.up, 0.42 + offset.forward], swivel: 20 * DEG + offset.swivel, pron: 20 * DEG, wflex: 0, wdev: 0 }
   }
 
   /** The stroke key of `form` from `ready`, by size factor `size` (gain x scale x amplitude), yawed by `yaw` radians. */
