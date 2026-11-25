@@ -53,6 +53,18 @@ describe('performer invariants', () => {
     expect(collision.distance(elbow.x, elbow.y, elbow.z)).toBe(plain.distance(elbow.x, elbow.y, elbow.z))
   })
 
+  it('keeps every proxy as given for a caller that measures them unfitted', () => {
+    const natural = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const skeleton = new BodySkeleton(traits)
+    skeleton.update(natural)
+    const elbow = { ...skeleton.arm('left', natural).elbow }
+    const chest = traits.spineChain[traits.spineChain.length - 1]
+    const ball: BodyCollider = { bone: 'spine2', shape: 'sphere', radius: 0.5, centre: { x: elbow.x - chest.x, y: elbow.y - chest.y, z: elbow.z - chest.z }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
+    const whole = new BodyCollision({ ...traits, colliders: [ball] }, natural.slice(), false)
+    expect(whole.fit).toEqual([1])
+    expect(whole.measure('left', natural).depth).toBeGreaterThan(0.5)
+  })
+
   it('searches the arm forms again for another seed of the same rig, whose rest hang differs', () => {
     // Bodies beside the thighs, near the rest hands: whether the hair tuck is reachable depends on the seed's rest hang.
     const ball: BodyCollider = { bone: 'hips', shape: 'sphere', radius: 0.8, centre: { x: 2.4, y: -2, z: 1.4 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
