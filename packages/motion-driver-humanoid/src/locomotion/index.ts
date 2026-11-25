@@ -367,6 +367,14 @@ const upperArmLag = 0.0259
 const armOutBack = 14
 const armOutForward = 19
 /**
+ * The forearm's forward rise (shoulder flexion plus elbow flexion, degrees from hanging) at which the walk starts to ease
+ * the elbow's swing, and the rise it never reaches. Walking adults' fast arms carry the hand forward to about chest
+ * height, not above it; an elbow that swung freely with a wide, carried swing lifted the forearm 123 degrees at the
+ * front, above horizontal, so the hand rose as in a wave (visual review, 2026-11-24). The neutral walk's forearm rises
+ * at most about 58 degrees, under the knee.
+ */
+const forearmRise = { knee: 60, ceiling: 85 } as const
+/**
  * The arm's roll at a full swing, degrees either way, positive inward at the front of the swing and outward behind it,
  * timed with the elbow. Acted walks roll the forearm 7 to 19 degrees within a stride (36 in a youthful walk), and about
  * half the authored MMD walks key the arm twist bone, swinging 13 to 16 degrees either way (arm-hand plan, section 1).
@@ -1688,9 +1696,15 @@ class Locomotion {
       // Walking adults swing the upper arm about 19 degrees forward and 17 to 24 back, and bend the elbow 34 degrees
       // more at the front, straight at the back; 15.5 back here, since a wider back swing met the body colliders (Bandai Namco Research Motiondataset 2 walk clips, measured 2026-11-23).
       const size = share * this.style.armSwing
+      const flexion = 2 * radians + size * radians * (-17.5 * swing + 2 * soft(swing))
+      // The elbow's swing eases into the forearm's ceiling, bent as the back swing is (`easeBackSwing`): the same
+      // tanh shape keeps the elbow's speed continuous.
+      const knee = forearmRise.knee * radians
+      const room = (forearmRise.ceiling - forearmRise.knee) * radians
+      const rise = flexion + 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late)
       return {
-        flexion: 2 * radians + size * radians * (-17.5 * swing + 2 * soft(swing)),
-        elbowFlex: 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late),
+        flexion,
+        elbowFlex: (rise <= knee ? rise : knee + room * Math.tanh((rise - knee) / room)) - flexion,
         abduct: radians * (armOutBack + (armOutForward - armOutBack) * forward) + this.style.armOut,
         clavProt: -3 * radians * share * girdle,
         // The arm turns inward as it swings forward and back out behind, timed with the elbow.
