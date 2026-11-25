@@ -195,8 +195,9 @@ describe('sidestep', () => {
     // to trail by 0.1 s and the arm's hang floor to fall to 12 and 16 degrees. Re-pinned when a start from standing came
     // to turn about each stance hip in turn and a walking foot to finish its turn by 0.7 of the swing. Re-pinned when a
     // reversal came to turn over 2.8 steps at a steady rate, its feet to land within 55 degrees of the facings their
-    // stance sweeps, and its outgoing step to lead off 0.2 L ahead.
-    expect(hash.digest('hex')).toBe('39035b3bcda8341aa52c6b92a1c340b07fb17c66dfc959069f82b6aa1ff71048')
+    // stance sweeps, and its outgoing step to lead off 0.2 L ahead. Re-pinned when the chest came to nod 2.5 degrees 0.12
+    // step after the spine, the head 2.5 degrees 0.2 step after it, and the elbow to trail by 0.17 s.
+    expect(hash.digest('hex')).toBe('fbc8c129948c6704fe4744415852c05ade91293f121eeb908c7a1a95704a4f7e')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -665,8 +666,9 @@ describe('procedural gait', () => {
     expect(Math.max(...flexion)).toBeGreaterThan(2 * rad + 0.98 * 19.5 * rad)
     expect(Math.min(...flexion)).toBeGreaterThanOrEqual(2 * rad - 15.5 * rad)
     expect(Math.min(...flexion)).toBeLessThan(2 * rad - 0.98 * 15.5 * rad)
-    // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.1 s (12 ticks) earlier. Re-pinned from
-    // 0.03 s: at that lag the posed forearm trailed the upper arm by 67 ms against the reference's 201.
+    // The elbow's forward bend peaks when the shoulder's forward swing peaked 0.17 s (20 ticks) earlier. Re-pinned from
+    // 0.03 s: at that lag the posed forearm trailed the upper arm by 67 ms against the reference's 201; and from 0.1 s,
+    // where the forearm still did not carry on after the trunk had turned back.
     const peaks = (values: readonly number[]) => values.flatMap((value, index) => index > 0 && index < values.length - 1 && value > (values[index - 1] ?? 0) && value >= (values[index + 1] ?? 0) ? [index] : [])
     const shoulder = peaks(flexion)
     const elbow = peaks(steady.map(frame => frame.armSwing.left.elbowFlex))
@@ -674,7 +676,7 @@ describe('procedural gait', () => {
     for (const peak of shoulder) {
       const next = elbow.find(index => index >= peak)
       if (next !== undefined)
-        expect(Math.abs(next - peak - 12)).toBeLessThanOrEqual(1)
+        expect(Math.abs(next - peak - 20)).toBeLessThanOrEqual(1)
     }
     for (const frame of steady) {
       const swing = frame.armSwing.left
@@ -704,11 +706,15 @@ describe('procedural gait', () => {
     // The chest takes back 0.35 of the pelvis list, 0.06 step after it.
     expect(range(frame => frame.body.chestCounterRoll) / range(frame => frame.body.lowerBodyRoll)).toBeCloseTo(0.35, 2)
     expect(after(peakPhase(frame => frame.body.chestCounterRoll), peakPhase(frame => -frame.body.lowerBodyRoll))).toBeCloseTo(0.06, 2)
-    // The chest's nod lands 0.06 step after the spine's, and the head's 0.12 step after the trunk's, about 1.5 degrees.
-    expect(after(peakPhase(frame => frame.body.chestPitch), peakPhase(frame => frame.body.spinePitch))).toBeCloseTo(0.06, 2)
-    expect(after(peakPhase(frame => frame.body.neckPitch), peakPhase(frame => frame.body.spinePitch))).toBeCloseTo(0.12, 2)
-    expect(range(frame => frame.body.neckPitch)).toBeGreaterThan(2.8 * rad)
-    expect(range(frame => frame.body.neckPitch)).toBeLessThan(3.1 * rad)
+    // The chest nods 2.5 degrees of its own 0.12 step after the spine, and the head 2.5 degrees 0.2 step after the spine.
+    // Re-pinned from 0.06 and 0.12 step, a chest nod of 0.4 of the spine's and a head nod of 1.5 degrees: the profile
+    // repeated step after step.
+    expect(after(peakPhase(frame => frame.body.chestPitch), peakPhase(frame => frame.body.spinePitch))).toBeCloseTo(0.12, 2)
+    expect(after(peakPhase(frame => frame.body.neckPitch), peakPhase(frame => frame.body.spinePitch))).toBeCloseTo(0.2, 2)
+    expect(range(frame => frame.body.chestPitch)).toBeGreaterThan(4.8 * rad)
+    expect(range(frame => frame.body.chestPitch)).toBeLessThan(5.1 * rad)
+    expect(range(frame => frame.body.neckPitch)).toBeGreaterThan(4.8 * rad)
+    expect(range(frame => frame.body.neckPitch)).toBeLessThan(5.1 * rad)
   })
 
   it('arm swing: the right arm swings 0.781 of the left, the mean overground asymmetry', () => {
@@ -1408,8 +1414,8 @@ describe('walk style', () => {
     const steps = (read: (frame: LocomotionFrame) => number) => run.frames.slice(1).map((frame, index) => Math.abs(read(frame) - read(run.frames[index] as LocomotionFrame)))
     // Re-pinned from 0.3 degrees a tick when the head came to nod with the step: the nod adds up to 0.11 a tick.
     expect(Math.max(...steps(frame => frame.body.neckPitch))).toBeLessThan(0.4 * rad)
-    // The neck reaches the style's head carriage, give or take the head's nod of 1.5 degrees a step.
-    expect(Math.abs((run.frames.at(-1)?.body.neckPitch ?? 0) - 15 * rad)).toBeLessThanOrEqual(1.5 * rad + 1e-9)
+    // The neck reaches the style's head carriage, give or take the head's nod of 2.5 degrees a step.
+    expect(Math.abs((run.frames.at(-1)?.body.neckPitch ?? 0) - 15 * rad)).toBeLessThanOrEqual(2.5 * rad + 1e-9)
   })
 
   it('keeps easing through the hand-off from a departure turn to the first step', () => {

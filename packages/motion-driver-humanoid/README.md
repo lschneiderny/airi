@@ -296,9 +296,9 @@ probed once per rig in 1 degree steps up to 36 degrees): the swing is unchanged 
 so a wide style's swing slows into a tail or a skirt instead of stepping off it. A walking arm opens at least 1.5
 degrees beyond its rest hang, or to the gait's floor of 12 degrees out at the back of the swing and 16 at the front
 where that is wider. The upper body follows the pelvis through each step: the chest rolls against the pelvis list by
-0.35 of it, 0.06 step behind; the chest's share of the trunk's 2-degree nod comes 0.06 step after the spine's; the head
-nods 1.5 degrees, scaled by the root of the style's bounce, 0.12 step after the trunk; and the elbow trails the shoulder
-by 0.1 s.
+0.35 of it, 0.06 step behind; the spine nods 2 degrees a step and the chest 2.5 degrees of its own 0.12 step after it;
+the head nods 2.5 degrees, scaled by the root of the style's bounce, 0.2 step after the spine; and the elbow trails the
+shoulder by 0.17 s, while the arm's roll keeps 0.1 s.
 `walkStyleFrom({ mood, energy, baseline, urgency })` turns the performer's mood, the host energy, a character's
 `GaitBaseline` (a card's walking baseline, owned by `@proj-airi/stage-shared/character-state`) and the goal's urgency
 into a style (the walk style ADR, `docs/ai/adr/2026-11-23-walk-style.md`); a calm mood at resting tension and energy
