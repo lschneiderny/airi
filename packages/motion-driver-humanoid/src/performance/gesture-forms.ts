@@ -129,6 +129,12 @@ const FRONT_LOW_HEIGHT = (98.01 - 84.54 - 7.82) / (84.54 - 6.27)
  * The fingertips are the end of the hand, a hand length from the wrist along the hand as the wrist bends it.
  */
 const TUCK = { headBreadth: 14.78, tragionTop: 12.65, earBreadth: 3.32 } as const
+/**
+ * How far the tuck's palm may roll about the hand from facing the side of the head when the wrist turns it there in
+ * full (`bentHand`). Keys whose palm faces the head go first (Moore 1985: the palm runs along the hair); by least joint
+ * change alone the tuck chose hands held up beside the head palm forward, a salute rather than a touch.
+ */
+const TUCK_PALM_ROLL = 50 * DEG
 /** Directions from the fingertips in which the tuck tries the wrist. */
 const WRIST_DIRECTIONS = 600
 /** No joint of an arm form sits within this of its limit. */
@@ -513,7 +519,9 @@ export class GestureKeys {
    * depth and steps in until it is the hand capsule's radius plus 0.01 A from the nearest collider; from there it backs
    * off outward in 0.01 A steps, as far as 0.2 A, and the first step with candidates gives them (`tuckCandidates`). Of
    * all touch and sweep candidates, the pair whose largest joint change from touch to sweep is least, with the angle
-   * path between them clear of the proxies, gives both keys.
+   * path between them clear of the proxies, gives both keys. Pairs whose touch and sweep both have the palm facing the
+   * side of the head (`TUCK_PALM_ROLL`) go first, so the hand slides back along the hair; a facing touch with a sweep
+   * that cannot face would turn the palm out on the way back.
    */
   private tuck(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
     const known = this.tucked.get(`${side}:${form}`)
@@ -526,16 +534,16 @@ export class GestureKeys {
       return false
     const touches = this.tuckCandidates(side, 'hair-touch', pose, this.headSize)
     const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', pose, this.headSize) : []
-    const pairs: { readonly touch: ArmPose, readonly sweep: ArmPose, readonly change: number }[] = []
+    const pairs: { readonly touch: ArmPose, readonly sweep: ArmPose, readonly change: number, readonly facing: boolean }[] = []
     for (const touch of touches) {
       for (const sweep of sweeps) {
         let change = 0
         for (let j = 2; j <= 8; j++)
-          change = Math.max(change, Math.abs(sweep[j] - touch[j]))
-        pairs.push({ touch, sweep, change })
+          change = Math.max(change, Math.abs(sweep.pose[j] - touch.pose[j]))
+        pairs.push({ touch: touch.pose, sweep: sweep.pose, change, facing: touch.facing && sweep.facing })
       }
     }
-    pairs.sort((a, b) => a.change - b.change)
+    pairs.sort((a, b) => Number(b.facing) - Number(a.facing) || a.change - b.change)
     for (const { touch, sweep } of pairs) {
       if (this.deepest(side, sweep, touch, KEY_HEADROOM) !== null)
         continue
@@ -554,7 +562,7 @@ export class GestureKeys {
    * fingertips clear of the proxies by its capsule's radius, and the pose clear of them with the settling headroom, the
    * touch's angle path from the rest arm too; each wrist direction gives its swivel with the most limit margin.
    */
-  private tuckCandidates(side: BodySide, form: BodyArmForm, pose: ArmPose, head: { readonly top: number, readonly breadth: number }): ArmPose[] {
+  private tuckCandidates(side: BodySide, form: BodyArmForm, pose: ArmPose, head: { readonly top: number, readonly breadth: number }): { readonly pose: ArmPose, readonly facing: boolean }[] {
     const spec = ARM_FORMS[form]
     const { traits } = this
     const length = this.lengths[side].upper + this.lengths[side].forearm
@@ -577,7 +585,7 @@ export class GestureKeys {
     const hand = traits.arms[side].handLength
     for (let out = 0; out <= ANCHOR.backOff + 1e-9; out += ANCHOR.backOffStep) {
       const tip = { x: surface + sigma * out * length, y, z }
-      const candidates: ArmPose[] = []
+      const candidates: { readonly pose: ArmPose, readonly facing: boolean }[] = []
       for (let i = 0; i < WRIST_DIRECTIONS; i++) {
         // A Fibonacci sphere: evenly spread directions from the fingertips to the wrist.
         const up = 1 - 2 * (i + 0.5) / WRIST_DIRECTIONS
@@ -589,15 +597,17 @@ export class GestureKeys {
           clear = this.collision.distance(wrist.x + (tip.x - wrist.x) * k / 4, wrist.y + (tip.y - wrist.y) * k / 4, wrist.z + (tip.z - wrist.z) * k / 4) >= radius
         if (!clear)
           continue
-        let best: ArmPose | null = null
+        let best: { pose: ArmPose, facing: boolean } | null = null
         let margin = LIMIT_MARGIN
         for (let swivel = spec.swivel; swivel <= ANCHOR.swivel + 1e-9; swivel += ANCHOR.swivelStep) {
-          if (!this.bentHand(side, { wrist, tip, swivel }, pose))
+          const turned = this.bentHand(side, { wrist, tip, swivel }, pose)
+          if (!turned || (best?.facing && turned !== 'facing'))
             continue
           const inside = this.limitMargin(side, pose)
-          if (inside >= margin && this.deepest(side, pose, from, KEY_HEADROOM) === null) {
+          const facing = turned === 'facing'
+          if ((inside >= margin || (facing && !best?.facing)) && inside >= LIMIT_MARGIN && this.deepest(side, pose, from, KEY_HEADROOM) === null) {
             margin = inside
-            best = pose.slice()
+            best = { pose: pose.slice(), facing }
           }
         }
         if (best)
@@ -611,11 +621,13 @@ export class GestureKeys {
 
   /**
    * Solves the arm to `wrist` with the elbow at `swivel`, and turns the hand at the wrist so that a hand length along it
-   * ends at `tip` with the palm toward the head (Moore 1985: the palm runs along the hair): pronation turns the wrist's
-   * flexion plane onto the fingertips and flexion (3f's positive `wflex` is palmar) bends the hand into it, of the two
-   * ways the one whose palm faces the head bone's midline; no deviation. False outside the limits.
+   * ends at `tip` with the palm toward the head (Moore 1985: the palm runs along the hair). 'facing' when all three
+   * wrist angles turn the palm to face the side of the head within `TUCK_PALM_ROLL` (`orientHand`); otherwise 'bent'
+   * when pronation turns the wrist's flexion plane onto the fingertips and flexion (3f's positive `wflex` is palmar) bends
+   * the hand into it, of the two ways the one whose palm faces the head bone's midline, with no deviation. False outside
+   * the limits.
    */
-  private bentHand(side: BodySide, target: { readonly wrist: Readonly<Vec3>, readonly tip: Readonly<Vec3>, readonly swivel: number }, pose: ArmPose): boolean {
+  private bentHand(side: BodySide, target: { readonly wrist: Readonly<Vec3>, readonly tip: Readonly<Vec3>, readonly swivel: number }, pose: ArmPose): 'facing' | 'bent' | false {
     const { wrist, tip, swivel } = target
     const length = this.lengths[side].upper + this.lengths[side].forearm
     const sigma = side === 'left' ? 1 : -1
@@ -635,9 +647,17 @@ export class GestureKeys {
     const lz = f[2] * hx + f[5] * hy + f[8] * hz
     const bend = Math.acos(Math.max(-1, Math.min(1, -ly)))
     const turn = Math.atan2(-lz, lx)
+    const reached = this.traits.arms[side].handLength
+    // The palm faces the side of the head, so the sweep slides back along it instead of turning toward the head bone.
+    const inward = { x: this.traits.head.x - tip.x, y: 0, z: 0 }
+    if (this.orientHand(side, pose, { x: hx, y: hy, z: hz }, inward, TUCK_PALM_ROLL)) {
+      this.load(side, pose, pose, 0)
+      const h = this.skeleton.arm(side, this.scratch).hand
+      if (Math.hypot(h[9] - reached * h[1] - tip.x, h[10] - reached * h[4] - tip.y, h[11] - reached * h[7] - tip.z) <= ANCHOR.clearance * length)
+        return 'facing'
+    }
     const start = ARM_START[side]
     const pronLimit = this.traits.arms[side].twist ? JOINT_LIMITS[start + 6] : [-UNTWISTED_PRONATION, UNTWISTED_PRONATION] as const
-    const reached = this.traits.arms[side].handLength
     for (const [a, b] of [[turn, bend], [turn > 0 ? turn - Math.PI : turn + Math.PI, -bend]] as const) {
       const pron = -sigma * a
       const wflex = -sigma * b
@@ -652,7 +672,7 @@ export class GestureKeys {
       const palm = -sigma * h[0] * (this.traits.head.x - tip.x)
       const miss = Math.hypot(h[9] - reached * h[1] - tip.x, h[10] - reached * h[4] - tip.y, h[11] - reached * h[7] - tip.z)
       if (palm > 0 && miss <= ANCHOR.clearance * length)
-        return true
+        return 'bent'
     }
     return false
   }

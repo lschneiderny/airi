@@ -871,7 +871,7 @@ describe('co-speech gestures', () => {
     expect(createBodyPerformer({ traits: chisaTraits, seed: 1 }).step(quietInput(0)).capabilities.clasp).toBe(false)
   })
 
-  it('puts the cupped fingertips on the side of the head at the tragion, then one ear breadth back, clear and 2 degrees inside every limit, on Chisa', () => {
+  it('puts the combing fingertips on the side of the head at the tragion, then one ear breadth back, palm toward the head, clear and 2 degrees inside every limit, on Chisa', () => {
     const rig = chisaTraits
     const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
     const keys = new GestureKeys(rig, rest)
@@ -912,6 +912,13 @@ describe('co-speech gestures', () => {
         channels.set(pose, start)
         skeleton.update(channels)
         const hand = skeleton.arm(side, channels).hand
+        // The palm faces the side of the head within the tuck's 50 degree roll about the hand: its normal, the hand
+        // frame's -sigma x, against the way across to the midline square to the hand (its frame's -y).
+        const sigma = side === 'left' ? 1 : -1
+        const along = sigma * hand[1]
+        const across = [-sigma + along * hand[1], along * hand[4], along * hand[7]]
+        const facing = -sigma * (hand[0] * across[0] + hand[3] * across[1] + hand[6] * across[2]) / Math.hypot(...across)
+        expect(facing, side).toBeGreaterThan(Math.cos(50 * DEG) - 1e-6)
         return { x: hand[9] - arm.handLength * hand[1], y: hand[10] - arm.handLength * hand[4], z: hand[11] - arm.handLength * hand[7] }
       })
       const sigma = side === 'left' ? 1 : -1

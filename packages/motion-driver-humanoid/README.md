@@ -42,8 +42,9 @@ deterministic motion algorithms for reusable character motion drivers.
   hanging hands. A heel raise (4e act 11) lifts the pelvis 0.012 L and turns
   both feet toe-down 14 degrees through their `FootPitch` channels, which the
   host's foot stage turns about each ball, two or three times. A hair tuck
-  (4e act 8) asks the gesture layer for `hair-touch` from 0.1 s, the cupped
-  fingertips at the side of the head at the tragion, then for `hair-sweep` from
+  (4e act 8) asks the gesture layer for `hair-touch` from 0.1 s, the combing
+  fingertips at the side of the head at the tragion, the palm toward the head
+  where the wrist allows it, then for `hair-sweep` from
   0.8 s, one ear breadth further back, which the arm reaches from the held touch
   without going home, and lets go 0.9 s before the end; the head tilts 4 degrees
   toward the hand. A
