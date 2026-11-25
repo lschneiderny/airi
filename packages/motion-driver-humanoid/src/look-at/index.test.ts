@@ -120,7 +120,8 @@ describe('body turns', () => {
       facingYaw = frame.facingYaw
     }
     expect(started).toBe(1)
-    expect(steps[0]?.startTime).toBeCloseTo(0.5, 8)
+    // Re-pinned from 0.5 s: a home target now dwells 0.15 s, so the closing step overlaps the chest's turn home.
+    expect(steps[0]?.startTime).toBeCloseTo(0.15, 8)
     expect(steps).toHaveLength(4)
     for (const step of steps.slice(0, 3))
       expect(step.yaw).toBeCloseTo(55 / 3 * rad, 12)

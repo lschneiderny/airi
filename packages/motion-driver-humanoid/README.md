@@ -129,8 +129,8 @@ error above 90 degrees starts immediately. Turns finish planted steps, aim for
 15 degrees remaining, stop below 20 degrees, and wait 1.5 seconds before
 restarting. Pass `home: true` when the target is where the body rests facing,
 such as the viewer: a continuous error above 20 degrees then starts a turn after
-the same dwell, and the turn takes equal steps of at most 22.5 degrees that end
-on the target. `turnSteps` contains events emitted once at step start, alternating
+0.15 seconds, so the feet follow a look home closely, and the turn takes equal
+steps of at most 22.5 degrees that end on the target. `turnSteps` contains events emitted once at step start, alternating
 left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed yaw
 (45 degrees per pair). The facing follows each step on a minimum-jerk profile,
 so it starts and ends every step at rest. A turn ends with both feet on the new
@@ -727,9 +727,12 @@ Large unreachable shifts saturate the eyes until head/body turning catches up.
 the adapter combines `max(1 - blinkFactor, lidClose)`.
 `createTurnPlanner().step({ targetYaw, facingYaw, allowTurn, home }, dt)` plans
 the dwell, hysteresis, refractory and planted-step timing of body turns. While
-the gaze is free the performer passes `viewerYaw` as a home target, so after a
-far look the feet step back to face the viewer and a free glance never turns
-them. Its frame and event array are borrowed until the next call.
+the gaze is free, or holds a goal within 8 degrees of the viewer, the performer
+passes `viewerYaw` as a home target, so after a far look the feet step back to
+face the viewer and a free glance never turns them. The gaze trunk takes a share
+of a goal's yaw beyond 25 degrees of the facing, a free goal's too, so on a look
+home the chest turns with the head while the feet come round under it. Its
+frame and event array are borrowed until the next call.
 
 Optional `layers` are performer-owned instances, reset at creation and reset.
 Their order is emotion, act, gesture, cue, reaction after base, gaze and gait.
