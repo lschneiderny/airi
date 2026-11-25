@@ -305,9 +305,9 @@ describe('mmd body performer adapter', () => {
     const offLine = { offset: 0.04, tilt: 5 * Math.PI / 180 }
 
     /** Writes the arms, then runs the fixed-axis and grant solve the frame pipeline runs before physics. */
-    function posed(fixture: ReturnType<typeof bodyFixture>) {
+    function posed(fixture: ReturnType<typeof bodyFixture>, weights = free) {
       const { performer } = performerOf(fixture)
-      performer.applyArms(fixture.pipeline.clean, free, pose)
+      performer.applyArms(fixture.pipeline.clean, weights, pose)
       fixture.mmd.beforePhysics({ grant: true, ik: false, physics: false })
       fixture.mesh.updateMatrixWorld(true)
       return fixture
@@ -340,6 +340,36 @@ describe('mmd body performer adapter', () => {
         // The upper arm keeps only its swing: it differs from the rig without twist bones by about the twist.
         const upper = world(plain, `${prefix}腕`).rotation.invert().multiply(world(twisted, `${prefix}腕`).rotation)
         expect(angle(upper)).toBeCloseTo(twist, 1)
+      }
+    })
+
+    it.each([
+      { name: 'coaxial', twist: {}, owned: 0.5 },
+      { name: 'coaxial', twist: {}, owned: 0.8 },
+      { name: 'off the line', twist: offLine, owned: 0.5 },
+      { name: 'off the line', twist: offLine, owned: 0.8 },
+    ])('blends with a clip before splitting the twist, so the joints match the rig without twist bones ($name, owned $owned)', ({ twist, owned }) => {
+      // A clip pose on the joint bones, part-owned: each joint is the clean pose blended toward the write.
+      const clip = (fixture: ReturnType<typeof bodyFixture>) => {
+        const { clean } = fixture.pipeline
+        for (const [k, name] of ['左腕', '左ひじ', '左手首', '右腕', '右ひじ', '右手首'].entries()) {
+          const index = fixture.mmd.mesh.skeleton.bones.indexOf(fixture.bone(name))
+          clean.quaternions[index].setFromEuler(new Euler(0.2 + 0.05 * k, -0.3 + 0.1 * k, 0.25 - 0.07 * k))
+          fixture.bone(name).quaternion.copy(clean.quaternions[index])
+        }
+        return fixture
+      }
+      const weights = { ...free, leftArm: owned, rightArm: owned }
+      const plain = posed(clip(bodyFixture()), weights)
+      const twisted = posed(clip(bodyFixture(0, Math.PI, { twist })), weights)
+      for (const [, prefix] of sides) {
+        for (const name of joints(prefix)) {
+          const [expected, actual] = [world(plain, name), world(twisted, name)]
+          expect(actual.position.distanceTo(expected.position)).toBeLessThan(2e-4)
+          expect(actual.rotation.angleTo(expected.rotation)).toBeLessThan(1e-5)
+        }
+        expect(angle(twisted.bone(`${prefix}腕捩`).quaternion)).toBeGreaterThan(0.01)
+        expect(angle(twisted.bone(`${prefix}手捩`).quaternion)).toBeGreaterThan(0.01)
       }
     })
 

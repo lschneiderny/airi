@@ -106,8 +106,6 @@ interface TwistWrite {
   /** The twist bone from the joint above it, and the joint below from the twist bone. */
   readonly toTwist: Vector3
   readonly toChild: Vector3
-  /** The bind segment between the two joints, unit: `toTwist + toChild`. */
-  readonly segment: Vector3
 }
 
 interface ArmTargets {
@@ -129,6 +127,19 @@ interface ArmTargets {
 }
 
 const vector = (v: MMDVec3) => new Vector3(v[0], v[1], v[2])
+
+/**
+ * `q` on a bone with the fixed unit `axis`, as the fixed-axis solve before the grants renders it (`@moeru/three-mmd`
+ * `applyAxisLimits`, as MMD does): the same angle, turned about the axis on the side its own axis leans; in place.
+ */
+function onAxis(q: Quaternion, axis: Vector3): Quaternion {
+  const sign = q.w < 0 ? -1 : 1
+  const length = Math.hypot(q.x, q.y, q.z)
+  if (length < 1e-8)
+    return q.identity()
+  const angle = 2 * Math.atan2(length, sign * q.w)
+  return q.setFromAxisAngle(axis, sign * (q.x * axis.x + q.y * axis.y + q.z * axis.z) < 0 ? -angle : angle)
+}
 
 /**
  * The calibrated write of one hand. A finger without its own calibration curls about the palm's knuckle axis from its
@@ -215,6 +226,10 @@ export class MMDBodyPerformer {
   private readonly twistTurn = new Quaternion()
   private readonly keep = new Quaternion()
   private readonly carry = new Quaternion()
+  private readonly part = new Quaternion()
+  private readonly reference = new Quaternion()
+  private readonly twistClean = new Quaternion()
+  private readonly goal = new Vector3()
   private readonly reach = new Vector3()
   private readonly offset = new Vector3()
   private readonly axisZ = new Vector3(0, 0, 1)
@@ -252,7 +267,7 @@ export class MMDBodyPerformer {
         return null
       const toTwist = found.bone.position.clone()
       const toChild = child.bone.position.clone()
-      return { target: found, axis: vector(bone.fixedAxis).normalize(), toTwist, toChild, segment: toTwist.clone().add(toChild).normalize() }
+      return { target: found, axis: vector(bone.fixedAxis).normalize(), toTwist, toChild }
     }
     const arm = (side: BodySide): ArmTargets => {
       const bind = (segment: { x: number, y: number, z: number }) => new Quaternion().setFromUnitVectors(this.down, new Vector3(segment.x, segment.y, segment.z).normalize())
@@ -518,7 +533,9 @@ export class MMDBodyPerformer {
    * its bind roll about that line. Where a side has a usable twist bone (`TwistWrite`), upper-arm twist turns `腕捩`
    * and pronation turns `手捩` instead of the upper arm and the hand, so the mesh between the joints twists along its
    * length (the grant solve spreads each turn over its `捩1..3` children); every joint below keeps its world rotation
-   * and position. Otherwise twist stays on the upper arm and pronation on the hand.
+   * and position. Under a clip that owns part of the arm, the joints are blended with the clip pose first and the twist
+   * split second, so they stay where the write without twist bones puts them at every ownership. Otherwise twist stays
+   * on the upper arm and pronation on the hand.
    */
   applyArms(clean: MMDCleanPose, weights: MMDBodyWeights, channels: ArrayLike<number> = this.display): void {
     for (const side of sides) {
@@ -528,37 +545,43 @@ export class MMDBodyPerformer {
       const group = `${side}Arm` as const
       const clavicle = this.q1.setFromEuler(this.euler.set(0, -sigma * channels[start + 1], sigma * channels[start], 'YXZ'))
       this.write(arm.clavicle, clean, clavicle, owned, group)
+      // The write's share against the clean pose; with a twist bone the joints are blended first and split second.
+      const share = 1 - owned
       // upper = clavicle^-1 * Rx(-flex) Rz(sigma abduct) * Ry(-sigma twist) * upperBind^-1
       this.delta.setFromEuler(this.euler.set(-channels[start + 2], 0, sigma * channels[start + 3], 'YXZ'))
+      this.delta.multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 4], 0, 'YXZ')))
+      this.delta.premultiply(clavicle.invert()).multiply(this.q2.copy(arm.upperBind).invert())
       if (arm.armTwist) {
-        // upper = clavicle^-1 * Rx(-flex) Rz(sigma abduct) * upperBind^-1 * K; the twist T = upperBind Ry upperBind^-1
-        // goes to the twist bone as R, and the forearm starts from (K R)^-1 T, so every joint below lands as before.
-        this.delta.premultiply(clavicle.invert()).multiply(this.q2.copy(arm.upperBind).invert())
+        // The twist T = upperBind Ry(-sigma twist) upperBind^-1, at the write's share, goes to the twist bone: the
+        // upper arm keeps its blended rotation times (share T)^-1 K, and the forearm starts from `carry`.
         this.turn.copy(arm.upperBind).multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 4], 0, 'YXZ'))).multiply(this.q1.copy(arm.upperBind).invert())
-        this.splitTwist(arm.armTwist)
-        this.delta.multiply(this.keep)
-        this.write(arm.upper, clean, this.delta, owned, group)
-        this.write(arm.armTwist.target, clean, this.twistTurn, owned, group)
-        this.carry.copy(this.keep).multiply(this.twistTurn).invert().multiply(this.turn)
+        this.turn.copy(this.q1.identity().slerp(this.turn, share))
+        this.splitTwist(arm.armTwist, clean, true)
+        this.write(arm.upper, clean, this.part.identity().slerp(this.delta, share).multiply(this.keep), 0, group)
+        this.writeTwist(arm.armTwist, clean, group)
       }
       else {
-        this.delta.multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 4], 0, 'YXZ')))
-        this.delta.premultiply(clavicle.invert()).multiply(this.q2.copy(arm.upperBind).invert())
         this.write(arm.upper, clean, this.delta, owned, group)
       }
       // forearm = upperBind * Rx(-elbow) * forearmBind^-1
       this.delta.copy(arm.upperBind).multiply(this.q1.setFromEuler(this.euler.set(-channels[start + 5], 0, 0, 'YXZ'))).multiply(this.q2.copy(arm.forearmBind).invert())
-      if (arm.armTwist)
-        this.delta.premultiply(this.carry)
-      if (arm.wristTwist) {
-        // Pronation T = forearmBind Ry(-sigma pron) forearmBind^-1 goes to the wrist twist bone the same way: the forearm
-        // ends with K, and the hand below starts from (K R)^-1 T.
-        this.turn.copy(arm.forearmBind).multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 6], 0, 'YXZ'))).multiply(this.q1.copy(arm.forearmBind).invert())
-        this.splitTwist(arm.wristTwist)
-        this.delta.multiply(this.keep)
-        this.write(arm.lower, clean, this.delta, owned, group)
-        this.write(arm.wristTwist.target, clean, this.twistTurn, owned, group)
-        this.carry.copy(this.keep).multiply(this.twistTurn).invert()
+      if (arm.armTwist || arm.wristTwist) {
+        this.part.identity().slerp(this.delta, share)
+        if (arm.armTwist)
+          this.carried(this.part, arm.lower!, clean)
+        if (arm.wristTwist) {
+          // Pronation T = forearmBind Ry(-sigma pron) forearmBind^-1 goes to the wrist twist bone the same way, at the
+          // write's share: the forearm ends with K, and the hand starts from `carry`.
+          this.turn.copy(arm.forearmBind).multiply(this.q2.setFromEuler(this.euler.set(0, -sigma * channels[start + 6], 0, 'YXZ'))).multiply(this.q1.copy(arm.forearmBind).invert())
+          this.turn.copy(this.q1.identity().slerp(this.turn, share))
+          this.splitTwist(arm.wristTwist, clean, false)
+          this.part.multiply(this.keep)
+          this.write(arm.lower, clean, this.part, 0, group)
+          this.writeTwist(arm.wristTwist, clean, group)
+        }
+        else {
+          this.write(arm.lower, clean, this.part, 0, group)
+        }
       }
       else {
         this.write(arm.lower, clean, this.delta, owned, group)
@@ -571,8 +594,9 @@ export class MMDBodyPerformer {
       if (arm.calibrated)
         this.delta.multiply(arm.calibrated.align)
       if (arm.wristTwist)
-        this.delta.premultiply(this.carry)
-      this.write(arm.hand, clean, this.delta, owned, group)
+        this.write(arm.hand, clean, this.carried(this.part.identity().slerp(this.delta, share), arm.hand!, clean), 0, group)
+      else
+        this.write(arm.hand, clean, this.delta, owned, group)
       const fingerOwned = weights[`${side}Fingers`]
       const hand = arm.calibrated
       for (let j = 0; j < arm.fingers.length; j++) {
@@ -605,18 +629,43 @@ export class MMDBodyPerformer {
   }
 
   /**
-   * Splits `this.turn`, a joint's twist about its bind segment in the upper joint's frame, between that joint and its
-   * twist bone. `twistTurn` (R) is the turn's part about the bone's fixed axis, so the fixed-axis solve keeps it.
-   * `keep` (K) is the least turn that puts the lower joint back on the bind segment line: the fixed axis may lie off the
-   * segment by a few degrees and the twist bone off the line (3.7 degrees and 4 % of the upper arm on one library rig),
-   * so R alone would move the lower joint.
+   * Moves `this.turn`, a joint's twist about its bind segment at the write's share, onto that segment's twist bone, and
+   * keeps every joint where the write without the twist bone puts it. The twist bone's clean rotation (a clip may key
+   * it) stays under the turn. `twistTurn` is the bone's resulting turn about its fixed axis, as the fixed-axis solve
+   * leaves it. `keep` (K) is the least turn that puts the lower joint back where that write puts it: the fixed axis may
+   * lie off the segment by a few degrees and the twist bone off the line (3.7 degrees and 4 % of the upper arm on one
+   * library rig), so the turn alone would move the lower joint. With `pulled` the turn comes off the joint above
+   * (upper-arm twist), which then ends with turn^-1 K; otherwise the joint above ends with K (pronation, which the hand
+   * holds). `carry` is the rotation the joint below starts from, so its world rotation is that write's.
    */
-  private splitTwist(write: TwistWrite): void {
+  private splitTwist(write: TwistWrite, clean: MMDCleanPose, pulled: boolean): void {
     const { axis } = write
-    const along = this.turn.x * axis.x + this.turn.y * axis.y + this.turn.z * axis.z
-    this.twistTurn.set(axis.x * along, axis.y * along, axis.z * along, this.turn.w).normalize()
+    const source = this.twistClean.copy(clean.quaternions[write.target.index]).normalize()
+    const reference = onAxis(this.reference.copy(source), axis)
+    onAxis(this.twistTurn.copy(this.turn).multiply(source), axis)
     this.reach.copy(write.toChild).applyQuaternion(this.twistTurn).add(write.toTwist).normalize()
-    this.keep.setFromUnitVectors(this.reach, write.segment)
+    this.goal.copy(write.toChild).applyQuaternion(reference).add(write.toTwist)
+    if (pulled)
+      this.goal.applyQuaternion(this.turn)
+    this.keep.setFromUnitVectors(this.reach, this.goal.normalize())
+    this.carry.copy(this.keep).multiply(this.twistTurn).invert()
+    if (pulled) {
+      this.carry.multiply(this.turn)
+      this.keep.premultiply(this.q1.copy(this.turn).invert())
+    }
+    this.carry.multiply(reference)
+  }
+
+  /** Turns the twist bone of the latest `splitTwist` by `this.turn` on its clean rotation. */
+  private writeTwist(write: TwistWrite, clean: MMDCleanPose, group: MMDBodyWriteGroup): void {
+    const source = this.twistClean.copy(clean.quaternions[write.target.index]).normalize()
+    this.write(write.target, clean, this.q2.copy(source).invert().multiply(this.turn).multiply(source), 0, group)
+  }
+
+  /** `local`, a joint's blended rotation on its clean pose, started from `carry` in its parent's frame; in place. */
+  private carried(local: Quaternion, target: Target, clean: MMDCleanPose): Quaternion {
+    const source = this.q2.copy(clean.quaternions[target.index]).normalize()
+    return local.premultiply(source).premultiply(this.carry).premultiply(source.invert())
   }
 
   restChannels(): Float32Array {
