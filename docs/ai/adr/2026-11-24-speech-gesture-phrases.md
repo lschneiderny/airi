@@ -21,3 +21,9 @@ A visual audit of speech found that she gestures in one repeated pose: the elbow
 - Stroke keys clear the settling headroom where they can, because the trunk now moves under them. A segment's minimum duration now counts the velocity it carries, which a corrected transition's second submovement can bring past the followers' input slope.
 - `createGestureLayers` returns three layers; hosts register all three.
 - `lab:motion3d report gesture-timing` still judges the `speak` scenario, whose utterances carry no pauses. The `speak-phrases` scenario carries pauses for visual review; no report judges it.
+
+## Amendment, 2026-11-25
+
+A visual audit of this decision found hands that rose and dropped with nothing stressed, and hands that waited at ready height after their last stroke.
+
+- **A hand rises only to say something.** Past the speaking edge a unit opens only on an onset that strokes. An onset that opens a unit, or that finds the lead hand still preparing, strokes as soon as the preparation lets it, within 0.6 s of the onset, and the unit lowers its hands only after that stroke. Before, the onset that opened a unit passed while the hands rose, and a pause or the end of speech lowered them with no stroke at all. Such a stroke lands up to one preparation after its onset, outside the 200 ms window that `gesture-timing` counts as a hit.

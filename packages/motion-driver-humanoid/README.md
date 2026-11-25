@@ -864,7 +864,8 @@ planner. They follow architecture 4a with plan 3.1, and the
 [speech gesture phrases ADR](../../docs/ai/adr/2026-11-24-speech-gesture-phrases.md).
 Register all three, in order. Gesture liveliness is the drive, the energy
 raised 0.3 x arousal and 0.1 x valence (`gestureDrive`). A unit starts on an
-utterance's speaking edge, or later on an onset, outside a refractory of
+utterance's speaking edge, or later on an onset that strokes (never a weak
+one), outside a refractory of
 2.5 s + 3 s x (1 - drive) after speaking ended, or 0.4 s + 1.2 s x (1 - drive)
 after a unit lowered while speech went on. Below drive 0.4 a unit opens only on
 an emphasis or a loud onset, and a stroke needs a voice level up to 0.5 above
@@ -885,7 +886,10 @@ six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
 1.3 times its preparation, after 0.4 s of quiet, after speaking ends or at the
 unit's caps. From drive 0.6 up the speaker holds the hands through up to
 0.4 s + 0.6 s x drive of quiet instead, and hands at rest in a phrase that has
-stroked go on to the next phrase's place in the pause. A unit's weight ramps out once the arm is home, so the
+stroked go on to the next phrase's place in the pause. A hand rises only to say
+something: an onset that opens a unit, or finds its lead hand still preparing,
+strokes as soon as the preparation lets it, within 0.6 s of the onset, and the
+unit lowers its hands only after that stroke (`RISE`). A unit's weight ramps out once the arm is home, so the
 hang, which the corrector may hold out of the body, takes a resting arm (an
 emotion arm form's arm too). An arm form let go while it still moves (an idle
 behaviour cut short) starts home from where its plan is, with the plan's
