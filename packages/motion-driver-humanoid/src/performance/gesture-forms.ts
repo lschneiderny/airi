@@ -46,6 +46,13 @@ export const GESTURE_FORMS: Readonly<Record<SpeechGestureForm, GestureFormSpec>>
 }
 
 /**
+ * A beat's stroke paths, A: the form's own down and forward, a shallower one further forward, and a diagonal one out
+ * to the arm's side. Each beat of a hand takes the path after the one its last beat took, so consecutive beats differ in
+ * depth or direction; all three are about as long as the form's own, so a beat's amplitude stays where unit A set it.
+ */
+export const BEAT_PATHS: readonly (readonly [number, number, number])[] = [GESTURE_FORMS.beat.stroke, [0.01, -0.035, 0.055], [0.04, -0.045, 0.025]]
+
+/**
  * The held arm forms (4a, 4e): hand shape, palm orientation and the contact anchor they reach for; the thinking hand
  * stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in arm lengths: the
  * hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side. The yawn's hand covers
@@ -256,10 +263,13 @@ export class GestureKeys {
     return { hand: [-0.05 + offset.out, -0.6 + 0.22 * lift + offset.up, 0.42 + offset.forward], swivel: 20 * DEG + offset.swivel, pron: 20 * DEG, wflex: 0, wdev: 0 }
   }
 
-  /** The stroke key of `form` from `ready`, by size factor `size` (gain x scale x amplitude), yawed by `yaw` radians. */
-  strokeKey(ready: ArmKey, form: SpeechGestureForm, size: number, yaw = 0): ArmKey {
+  /**
+   * The stroke key of `form` from `ready`, by size factor `size` (gain x scale x amplitude), yawed by `yaw` radians,
+   * along `path` (the form's stroke unless given: a beat's from `BEAT_PATHS`).
+   */
+  strokeKey(ready: ArmKey, form: SpeechGestureForm, size: number, yaw = 0, path: readonly [number, number, number] = GESTURE_FORMS[form].stroke): ArmKey {
     const spec = GESTURE_FORMS[form]
-    const [x, y, z] = spec.stroke
+    const [x, y, z] = path
     const out = x * Math.cos(yaw) + z * Math.sin(yaw)
     const forward = -x * Math.sin(yaw) + z * Math.cos(yaw)
     return { hand: [ready.hand[0] + size * out, ready.hand[1] + size * y, ready.hand[2] + size * forward], swivel: ready.swivel, pron: spec.pron, wflex: spec.wflex, wdev: spec.wdev }

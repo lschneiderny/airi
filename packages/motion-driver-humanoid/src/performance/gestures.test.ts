@@ -758,6 +758,29 @@ describe('co-speech gestures', () => {
     throw new Error('No two-hand stroke of a shaped form in 200 seeds at energy 0.85')
   })
 
+  it('sends consecutive beats of a hand along different paths', () => {
+    // The speak scenario's peaks; a beat's direction is the wrist's travel over the 0.1 s before its hit. One beat in ten
+    // used to repeat the last one's direction within 1.5 degrees.
+    const speak = [0.8, 1.8, 3.03, 3.98, 5.17, 6.1, 7.2].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
+    let pairs = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 8.5, { seed, traits: chisaTraits })
+      const frameAt = (time: number) => run.frames.findIndex(frame => frame.time >= time)
+      const beats = strokes(run).filter(stroke => stroke.form === 'beat' && stroke.hand !== 'both')
+      for (let k = 1; k < beats.length; k++) {
+        const [a, b] = [beats[k - 1], beats[k]]
+        if (a.hand !== b.hand || run.frames[a.index].gesture.unitSeq !== run.frames[b.index].gesture.unitSeq)
+          continue
+        const path = wristPath(run, a.hand === 'left' ? 'left' : 'right', chisaTraits)
+        const [u, v] = [a, b].map(beat => [0, 1, 2].map(j => path[frameAt(beat.hit)][j] - path[frameAt(beat.hit - 0.1)][j]))
+        const angle = Math.acos(Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / Math.hypot(...u) / Math.hypot(...v)))
+        expect(angle, `seed ${seed}, ${a.hand} beats at ${a.hit.toFixed(2)} and ${b.hit.toFixed(2)}`).toBeGreaterThanOrEqual(8 * DEG)
+        pairs++
+      }
+    }
+    expect(pairs).toBeGreaterThanOrEqual(30)
+  }, 120_000)
+
   it('lands every two-hand stroke of a unit with the second hand 30 to 90 ms behind, its hold as long as the first hand\'s', () => {
     // The gesture-timing rule: the nearest apex of each hand within 200 ms of the stroke's reported apex.
     // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.

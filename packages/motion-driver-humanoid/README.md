@@ -877,7 +877,10 @@ choice; place and theme differ from the phrase before. At a phrase's end the
 hands go on into the next phrase, prepared again from where they are to its
 place, with the other hand taking over or both joining, or below drive 0.4 they
 may lower instead. Each recovery returns to a ready key floated within the
-place, the elbow up or down by turns. A phrase's theme stroke (palm-up, press,
+place, the elbow up or down by turns, the hand back as it rises and forward as
+it falls, so a lowered hand stays out in front of the body. A hand's beats go
+down and forward, then shallower and further forward, then diagonally out to
+its side, by turns (`BEAT_PATHS`), so no two consecutive beats share a path. A phrase's theme stroke (palm-up, press,
 frame) sets its hand: the ready key turns 0.6 of the way to the theme's forearm
 and wrist with the hand half-way to its shape, and the phrase's beats keep that
 palm. The arm prepares to the phrase's ready key, strokes on every onset that passes the gate's S2 voice-peak

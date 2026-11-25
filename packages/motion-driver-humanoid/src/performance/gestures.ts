@@ -11,7 +11,7 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
-import { addOffsets, ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, NO_OFFSET, writeArmFormHand, writeFormHand, writeHandShare } from './gesture-forms'
+import { addOffsets, ARM_FORMS, BEAT_PATHS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, NO_OFFSET, writeArmFormHand, writeFormHand, writeHandShare } from './gesture-forms'
 import { handOrder, ORDER_PEAK_SLOPE, orderedCurve, orderedShare, orderedSlope, writeHandShape } from './hand-shapes'
 import { drawPhrase, GESTURE_PLACES, gestureDrive, nextHands, retractShare } from './phrases'
 
@@ -165,11 +165,12 @@ const RISE = { defer: 0.6, settle: 1, settleDrive: 0.4 } as const
 const SET = { share: 0.6, hand: 0.5, beatFlex: 10 * DEG } as const
 
 /**
- * Each recovery returns to a ready key moved within the phrase's place: the elbow floats up or down by up to `up` A
- * (alternating on each arm), out by up to `out` A and swings by up to `swivel`, so successive beats leave from
- * different elbow heights instead of one parked pose.
+ * Each recovery returns to a ready key moved within the phrase's place: the elbow floats up or down by half to all of
+ * `up` A (alternating on each arm), and the hand by as much of `forward` A back when it rises and forward when it
+ * falls, so a lowered hand stays out in front of the body; it moves out by up to `out` A and the elbow swings by up to
+ * `swivel`. Successive beats leave from different heights and depths instead of one parked pose.
  */
-const FLOAT = { out: 0.04, up: 0.05, swivel: 10 * DEG } as const
+const FLOAT = { out: 0.04, up: 0.05, forward: 0.04, swivel: 10 * DEG } as const
 
 /** During the post-stroke hold the hand eases this share of the way back toward the ready hand before the recovery opens it fully. */
 const HOLD_SOFTEN = 0.35
@@ -279,6 +280,8 @@ class ArmTrack {
   readyKey: ArmKey | null = null
   /** The direction of the next elbow float, up (1) or down (-1); it alternates. */
   floatSign = 1
+  /** The `BEAT_PATHS` entry the arm's last beat took; -1 before its first, which takes the form's own path. */
+  beatPath = -1
   /** Seconds of speech the arm has waited at its ready key with no stroke leaving; too long, and it lets go (`RISE`). */
   waited = 0
   readonly key = pose()
@@ -584,6 +587,7 @@ class ArmTrack {
     this.warm = false
     this.readyKey = null
     this.floatSign = 1
+    this.beatPath = -1
     this.waited = 0
   }
 }
@@ -1216,9 +1220,12 @@ class GesturePerformer {
     for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
       const ready = candidate === 'frame' ? { ...base, hand: [base.hand[0] + 0.1, base.hand[1], base.hand[2]] as const } : base
       const yaw = candidate === 'point' ? this.pointYaw(context.input, track.side) : 0
+      // A beat takes the path after its hand's last beat's (`BEAT_PATHS`).
+      const beatPath = (track.beatPath + 1) % BEAT_PATHS.length
+      const path = candidate === 'beat' ? BEAT_PATHS[beatPath] : GESTURE_FORMS[candidate].stroke
       // Post-stroke hold: the hand drifts 1.5 % A further along the stroke, so the stroke's end is where the arm ends up.
       // That end is the pose cleared against the proxies; the key lies on the cleared path from the ready key, short of it.
-      const drift = AMPLITUDE.drift / Math.hypot(...GESTURE_FORMS[candidate].stroke)
+      const drift = AMPLITUDE.drift / Math.hypot(...path)
       // A set phrase's beat keeps the theme's palm and lands with its full hand (`SET`).
       const setBeat = theme !== null && candidate === 'beat'
       track.drift.set(track.ready)
@@ -1228,7 +1235,7 @@ class GesturePerformer {
         for (let j = 9; j < 26; j++)
           track.drift[j] += AMPLITUDE.nonDominantHand * (relaxedHand[j] - track.drift[j])
       }
-      const strokeKey = keys.strokeKey(ready, candidate, size + drift, yaw)
+      const strokeKey = keys.strokeKey(ready, candidate, size + drift, yaw, path)
       // The path is cleared from where the arm is: a stroke may cut a recovery short, and a recovery now goes to a
       // floated ready key, so the hold it left and the ready key may both lie off the stroke's straight way.
       const aimed = setBeat ? { ...strokeKey, pron: ready.pron, wflex: ready.wflex + SET.beatFlex, wdev: ready.wdev } : strokeKey
@@ -1239,6 +1246,8 @@ class GesturePerformer {
         if (!keys.solve(track.side, aimed, track.drift, from))
           continue
       }
+      if (candidate === 'beat')
+        track.beatPath = beatPath
       track.key.set(track.drift)
       for (let j = 2; j <= 5; j++)
         track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
@@ -1430,7 +1439,9 @@ class GesturePerformer {
     if (track.state === 'hold' && now >= track.holdEnd) {
       // The elbow floats within the phrase's place: each recovery returns to a ready key of its own (`FLOAT`).
       if (this.phrase && unit.active && !unit.retracting) {
-        const float = { out: FLOAT.out * (2 * this.phrases() - 1), up: track.floatSign * FLOAT.up * this.phrases(), forward: 0, swivel: FLOAT.swivel * (2 * this.phrases() - 1) }
+        const out = FLOAT.out * (2 * this.phrases() - 1)
+        const lift = track.floatSign * (0.5 + 0.5 * this.phrases())
+        const float = { out, up: FLOAT.up * lift, forward: -FLOAT.forward * lift, swivel: FLOAT.swivel * (2 * this.phrases() - 1) }
         track.floatSign = -track.floatSign
         this.placeReady(track, unit.drive, addOffsets(this.placeOffset(this.phrase, track.side, unit.twoHand), float), track.planned.slice())
       }
