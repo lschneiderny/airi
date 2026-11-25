@@ -382,8 +382,10 @@ shares. The adapter has four parts:
   where the performer's own forward kinematics (and its arm collision
   corrector) put them. Upper-arm twist turns `腕捩` and pronation turns
   `手捩` where that bone sits directly between its joints and has a PMX fixed
-  axis, and every joint below keeps its world pose; otherwise twist is written
-  on the upper arm and pronation on the hand. Missing and physics-owned
+  axis, and every joint below keeps its world pose, also under a clip that owns
+  part of the arm: the joints are blended with the clip pose first and the twist
+  split after; otherwise twist is written on the upper arm and pronation on the
+  hand. Missing and physics-owned
   bones are skipped. `eyes` aims both eyes from their rendered parents at the
   far end of the performer's gaze line.
 
