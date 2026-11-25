@@ -11,7 +11,7 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
-import { addOffsets, ARM_FORMS, BEAT_PATHS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, NO_OFFSET, writeArmFormHand, writeFormHand, writeHandShare } from './gesture-forms'
+import { addOffsets, ARM_FORMS, BEAT_PATHS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, isArmForm, NO_OFFSET, writeArmFormHand, writeFormHand, writeHandShare } from './gesture-forms'
 import { handOrder, ORDER_PEAK_SLOPE, orderedCurve, orderedShare, orderedSlope, writeHandShape } from './hand-shapes'
 import { drawPhrase, GESTURE_PLACES, gestureDrive, nextHands, retractShare } from './phrases'
 
@@ -78,6 +78,12 @@ const MIN_JERK_PEAK_SLOPE = 1.875
  * them 0.37, 0.17 s apart.
  */
 const CORRECTION = { share: 0.4, landing: 0.72, primary: 0.8, onset: 0.65 } as const
+/**
+ * A reach through a via pose (the hair tuck's, `GestureKeys.tuckVia`), in the reach's time T: a minimum-jerk segment
+ * to the via over `primary` T, and at `onset` T, while it still moves, a second one to the key, ending at T, that
+ * carries the plan's velocity and acceleration (`release`). The hand does not stop at the via.
+ */
+const THROUGH = { primary: 0.75, onset: 0.4 } as const
 /**
  * Seconds over which a prepared arm's wrist-placing joints move from their cascade links to the fed target. The elbow's
  * link still lags a preparation's end by 1.3 to 1.9 degrees and by 0.24 to 0.35 degrees 50 ms later (30 to 90 degrees
@@ -292,6 +298,8 @@ class ArmTrack {
   /** Seconds of speech the arm has waited at its ready key with no stroke leaving; too long, and it lets go (`RISE`). */
   waited = 0
   readonly key = pose()
+  /** Where the hair tuck's reach passes between the rest arm and its key (`GestureKeys.tuckVia`). */
+  readonly tuckVia = pose()
   readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1), order: pose() }
   readonly accents: StrokeAccent[] = []
   state: TrackState = 'rest'
@@ -343,6 +351,8 @@ class ArmTrack {
   readonly correctTo = pose()
   correctAt = Infinity
   correctEnd = Infinity
+  /** Whether the current segment goes to a via pose (`through`), which `aim` leaves in place, not a corrected primary. */
+  private toVia = false
   /** Whether the recovery after this arm's stroke is corrected: drawn with the stroke, a second hand's taken from the first. */
   recoveryCorrected = false
   private readonly primaryTo = pose()
@@ -362,6 +372,7 @@ class ArmTrack {
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
     const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension, this.pose, s.velocity))
     this.correctAt = Infinity
+    this.toVia = false
     s.from.set(this.pose)
     s.to.set(to)
     s.start = now
@@ -386,6 +397,7 @@ class ArmTrack {
     const s = this.segment
     const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension, this.releaseFrom))
     this.correctAt = Infinity
+    this.toVia = false
     s.from.set(this.releaseFrom)
     s.velocity.set(this.releaseVelocity)
     s.acceleration.set(this.releaseAcceleration)
@@ -458,19 +470,51 @@ class ArmTrack {
     return this.move(to, now, duration, tension)
   }
 
-  /** Moves the current transition's end to `to`; a corrected transition's primary keeps aiming its share of the way. */
+  /**
+   * Starts a reach to `to` through `via` (`THROUGH`) in `duration` seconds and returns its duration; `move` when either
+   * segment would ask a follower for more than its input slope in its share of that time. `release` starts the first
+   * segment from where the plan is, with its velocity and acceleration, as a let-go arm form's way home does.
+   */
+  through(via: ArmPose, to: ArmPose, now: number, duration: number, tension: number, release: boolean): number {
+    const total = Math.max(BODY_TICK, duration)
+    const reach = minJerk(THROUGH.onset / THROUGH.primary)
+    for (let j = 0; j < 26; j++)
+      this.onsetPose[j] = this.pose[j] + reach * (via[j] - this.pose[j])
+    if (this.fedForwardFloor(via, tension) > THROUGH.primary * total || this.fedForwardFloor(to, tension, this.onsetPose) > (1 - THROUGH.onset) * total)
+      return release ? this.release(to, now, duration, tension) : this.move(to, now, duration, tension)
+    if (release)
+      this.release(via, now, THROUGH.primary * total, tension)
+    else
+      this.move(via, now, THROUGH.primary * total, tension)
+    this.toVia = true
+    this.correctTo.set(to)
+    this.correctAt = now + THROUGH.onset * total
+    this.correctEnd = now + total
+    return total
+  }
+
+  /**
+   * Moves the current transition's end to `to`; a corrected transition's primary keeps aiming its share of the way, and
+   * a segment to a via pose keeps its via.
+   */
   aim(to: ArmPose): void {
     if (this.correctAt === Infinity) {
       this.segment.to.set(to)
       return
     }
     this.correctTo.set(to)
+    if (this.toVia)
+      return
     for (let j = 0; j < 26; j++)
       this.segment.to[j] = this.segment.from[j] + CORRECTION.landing * (to[j] - this.segment.from[j])
   }
 
   advance(now: number, tension: number): void {
-    if (now >= this.correctAt)
+    // A reach through a via goes on from the plan's velocity and acceleration with its followers' target unbroken
+    // (`release`); a corrective submovement, as measured, continues the velocity alone.
+    if (now >= this.correctAt && this.toVia)
+      this.release(this.correctTo, now, this.correctEnd - now, tension)
+    else if (now >= this.correctAt)
       this.move(this.correctTo, now, this.correctEnd - now, tension)
     this.plannedPrevious.set(this.planned)
     const s = this.segment
@@ -910,7 +954,11 @@ class GesturePerformer {
     for (const side of sides) {
       const track = this.tracks[side]
       this.begin(track, now)
-      track.prepSeconds = track.move(track.key, now, (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level), this.tension)
+      const seconds = (0.25 + 0.35 * travel) / gestureTempo(context.input.energy.level)
+      // The hair tuck's hand comes up in front of the chest on its way to the temple (`GestureKeys.tuckVia`).
+      track.prepSeconds = this.tuckVia(track, request.form)
+        ? track.through(track.tuckVia, track.key, now, seconds, this.tension, false)
+        : track.move(track.key, now, seconds, this.tension)
       track.state = 'form'
       track.form = request.form
       track.phaseEnd = Infinity
@@ -1348,6 +1396,11 @@ class GesturePerformer {
       track.watch = null
   }
 
+  /** Writes the hair tuck's via between `track`'s home and key when `form` is a tuck and its way through clears. */
+  private tuckVia(track: ArmTrack, form: BodyArmForm): boolean {
+    return ARM_FORMS[form].seed === 'tragion' && this.keys !== null && this.keys.tuckVia(track.side, track.home, track.key, track.tuckVia)
+  }
+
   /** Lowers `sides`, hands of the unit that waited at their ready keys (`RISE`), and goes on with the others. */
   private letGo(context: PerformanceContext, now: number, sides: readonly BodySide[]): void {
     const unit = this.unit
@@ -1411,8 +1464,11 @@ class GesturePerformer {
     track.settle = true
     const seconds = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
     // A speech unit's home leg may carry a corrective submovement (`transit`); an emotion arm form's way home stays one
-    // plain segment and draws nothing from the corrections' stream.
-    const duration = track.state === 'form' ? track.release(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
+    // plain segment and draws nothing from the corrections' stream, and the hair tuck's goes back the way it came.
+    const form = track.state === 'form'
+    const duration = form && track.form && isArmForm(track.form) && this.tuckVia(track, track.form)
+      ? track.through(track.tuckVia, track.home, now, seconds, this.tension, true)
+      : form ? track.release(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
     track.state = 'retraction'
     track.pending = null
     track.phaseEnd = now + duration
