@@ -21,6 +21,20 @@ describe('analyseClearanceMesh', () => {
     expect(analysis.counts.worn).toBe(1)
   })
 
+  it('excludes a triangle with secondary arm weight on a corner outside the sleeve radius', () => {
+    const source = testMesh()
+    const corner = source.triangles[0]
+    const skinIndex = Array.from(source.skinIndex)
+    const skinWeight = Array.from(source.skinWeight)
+    skinIndex[corner * 4 + 1] = 4
+    skinWeight.splice(corner * 4, 2, 0.75, 0.25)
+
+    const weighted = analyseClearanceMesh({ ...source, skinIndex, skinWeight })
+
+    expect(weighted.original).not.toContain(0)
+    expect(weighted.counts.worn).toBe(analysis.counts.worn + 1)
+  })
+
   it('measures the sleeve from the arm\'s own vertices, and assumes the guard\'s radius where it has none', () => {
     expect(analysis.sleeve.upper).toBeCloseTo(0.1, 6)
     expect(analysis.sleeve.fore).toBe(0.12)

@@ -36,14 +36,43 @@ describe('clearanceMeasure', () => {
     expect(summary.upperArmDeg.p90).toBeCloseTo(90, 9)
   })
 
-  it('does not count a crossing of her head as pierced', () => {
+  it('counts only deep crossings in the share of all sampled frames', () => {
     const measure = new ClearanceMeasure(analyseClearanceMesh(testMesh()), 2)
+    measure.sample(0, testPose())
+    measure.sample(2, testPose({ 1: [0, 10.5, 0] }))
+    measure.sample(4, testPose(RAISED))
+
+    const summary = measure.finish()
+    expect(summary.piercedShare).toBe(2 / 3)
+    expect(summary.depth.deepShare).toBe(1 / 3)
+  })
+
+  it.each([
+    ['head-rigid', false],
+    ['hair', true],
+  ] as const)('reports a crossing of %s without counting it as pierced', (cls, simulated) => {
+    const source = testMesh()
+    const bones = source.bones.map((bone, i) => i === 2 ? { ...bone, simulated } : bone)
+    const measure = new ClearanceMeasure(analyseClearanceMesh({ ...source, bones }), 2)
     // The forearm reaches forward through the head panel.
     measure.sample(0, testPose({ 4: [0, 15.4, -0.5], 5: [0, 15.4, 1.5] }))
     const summary = measure.finish()
-    expect(summary.byClass['head-rigid']).toBe(1)
+    expect(summary.byClass[cls]).toBe(1)
     expect(summary.piercedShare).toBe(0)
     expect(summary.episodes.count).toBe(0)
+  })
+
+  it('reports a reversal as a share of cloth vertices when a second panel stays still', () => {
+    const source = testMesh()
+    // Move the head panel into upper cloth, on a simulated bone that stays still.
+    const bones = source.bones.map((bone, i) => i === 2 ? { ...bone, simulated: true } : bone)
+    const regionRoots = { ...source.regionRoots, head: [] }
+    const measure = new ClearanceMeasure(analyseClearanceMesh({ ...source, bones, regionRoots }), 2)
+    measure.sample(0, testPose(RAISED))
+    measure.sample(2, testPose({ ...RAISED, 6: [0.1, 9, 0] }))
+    measure.sample(4, testPose(RAISED))
+
+    expect(measure.finish().cloth.reversalMean).toBeCloseTo(0.25, 12)
   })
 
   it('follows the cloth\'s travel apart from the hips, and counts vertices that reverse direction', () => {
