@@ -188,6 +188,21 @@ describe('mmd arm measurement and rest clearance', () => {
     expect(fixture.body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
   })
 
+  it('feeds each arm its own solved rest abduction', () => {
+    const fixture = bodyFixture(0, Math.PI, { arms: true, skin: [{ ...jacket, x: 0.7, halfWidth: 1.2 }] })
+    const rest = fixture.body.bodyModel?.model.rest
+    expect(rest?.left.abduct).toBeGreaterThan(12 * degrees)
+    expect(rest?.right.abduct).toBeCloseTo(12 * degrees, 9)
+
+    const bare = bodyFixture(0, Math.PI, { arms: true, skin: true })
+    hangs(fixture, 60)
+    hangs(bare, 60)
+    const abduction = (rig: ReturnType<typeof bodyFixture>, side: 'left' | 'right') =>
+      rig.body.diagnostics.performance?.arms.deg[side][3] ?? Number.NaN
+    expect(abduction(fixture, 'left') - abduction(bare, 'left')).toBeGreaterThan(1)
+    expect(abduction(fixture, 'right')).toBeCloseTo(abduction(bare, 'right'), 5)
+  })
+
   it('keeps the default hang on a body that stays clear of the arms', () => {
     expect(hangs(bodyFixture(0, Math.PI, { arms: true, skin: true }), 300).every(hang => Math.abs(hang - 78) < 1e-9)).toBe(true)
   })

@@ -79,6 +79,27 @@ describe('buildBodyModel', () => {
     expect(buildBodyModel(cuffed).volumes).toEqual(bare.volumes)
   })
 
+  it('excludes vertices with any arm weight and ignores vertices with no weight', () => {
+    const mesh = bareBody()
+    const bare = buildBodyModel(mesh.build())
+    const from = mesh.build().positions.length / 3
+    mesh.tube('spine', 10.2, 12.6, [1.5, 1])
+    const source = mesh.build()
+    const skinIndices = Array.from(source.skinIndices)
+    const skinWeights = Array.from(source.skinWeights)
+    const count = source.positions.length / 3 - from
+    for (let vertex = from; vertex < from + count; vertex++) {
+      skinIndices[vertex * 4 + 1] = mesh.index('leftUpper')
+      skinWeights[vertex * 4] = vertex % 2 === 0 ? 0.99 : 0
+      skinWeights[vertex * 4 + 1] = vertex % 2 === 0 ? 0.01 : 0
+    }
+    const model = buildBodyModel({ ...source, skinIndices, skinWeights })
+
+    expect(model.volumes).toEqual(bare.volumes)
+    expect(model.report.vertices.arm - bare.report.vertices.arm).toBe(count / 2)
+    expect(model.report.vertices.ignored - bare.report.vertices.ignored).toBe(count / 2)
+  })
+
   it('ignores a vertex whose position is not finite', () => {
     const mesh = bareBody()
     let cloth = 'hips'
@@ -228,6 +249,36 @@ describe('buildBodyModel', () => {
     ])
   })
 
+  it('records a garment below arm reach without adding rest obstacles', () => {
+    const mesh = bareBody()
+    const bare = buildBodyModel(mesh.build())
+    const hem = mesh.bone('hem', 'hips', [0, 5, 0])
+    mesh.simulate(hem, 3, true)
+    mesh.tube(hem, 4, 5, [5, 2])
+    const model = buildBodyModel(mesh.build())
+
+    expect(model.garments).toEqual([expect.objectContaining({ bones: [mesh.index(hem)], silhouette: [], pinched: false })])
+    expect(model.volumes).toEqual(bare.volumes)
+    expect(model.rest).toEqual(bare.rest)
+  })
+
+  it('settles within four degrees when clearance with sway needs seven degrees', () => {
+    const locked = buildBodyModel(skirted(3.04, 0).mesh.build())
+    const swinging = buildBodyModel(skirted(3.04, 3).mesh.build())
+
+    for (const side of SIDES) {
+      expect(locked.rest[side].abduct).toBeCloseTo(16 * DEG, 9)
+      expect(swinging.rest[side].abduct).toBeCloseTo(16 * DEG, 9)
+    }
+  })
+
+  it('marks a skirt as pinched when its centreline would clear one degree past the limit', () => {
+    const model = buildBodyModel(skirted(4.72, 3).mesh.build())
+
+    expect(model.garments[0].pinched).toBe(true)
+    expect(model.rest.left.abduct).toBeCloseTo(16 * DEG, 9)
+  })
+
   it('reports a free-swinging skirt the resting arm cannot leave as pinched, and a locked one as not', () => {
     const wide = buildBodyModel(skirted(6, 3).mesh.build())
     expect(wide.garments[0].pinched).toBe(true)
@@ -369,6 +420,25 @@ describe('buildBodyModel', () => {
     expect(garment.model.garments[0].anchor).toBe('spine0')
     expect(garment.model.report.vertices.flesh).toBe(0)
     expect(depthAt(garment)).toBeCloseTo(bare, 9)
+  })
+
+  it('keeps a two-bone simulated chain hard through half the shoulder span', () => {
+    const waist = (mobility: number) => {
+      const mesh = bareBody()
+      const root = mesh.bone('waist-root', 'spine', [0, 12, 0.6])
+      const tip = mesh.bone('waist-tip', root, [0, 12, 1])
+      mesh.simulate(root, 0)
+      mesh.simulate(tip, mobility)
+      mesh.tube(tip, 11.6, 12.4, [0.7, 0.3], [0.7, 0.3], { z: 1 })
+      return buildBodyModel(mesh.build())
+    }
+    const atLimit = waist(1.2)
+    const overLimit = waist(1.21)
+
+    expect(atLimit.report.vertices.flesh).toBeGreaterThan(0)
+    expect(atLimit.garments).toEqual([])
+    expect(overLimit.report.vertices.flesh).toBe(0)
+    expect(overLimit.garments).toHaveLength(1)
   })
 
   it('keeps a shell wider than the shoulder span inside the shoulder joints, so it never holds the arm', () => {
