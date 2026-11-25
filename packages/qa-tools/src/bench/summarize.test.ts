@@ -97,7 +97,7 @@ function recording(options: { contendedAt?: number, modelLoadAt?: number, window
   return records
 }
 
-const context = { scenario: mmdIdle, run: 2, modelFingerprint: 'f'.repeat(64), measured: { startMs: T0 + 100_000, endMs: T0 + 160_000 } }
+const context = { scenario: mmdIdle, run: 2, modelFingerprint: 'f'.repeat(64), measured: { startMs: T0 + 100_000, endMs: T0 + 160_000 }, powerLimit: null }
 
 describe('summarizeBenchRun', () => {
   let dir: string
@@ -166,6 +166,12 @@ describe('summarizeBenchRun', () => {
     const summary = summarizeBenchRun(await readRawRun(writeRaw(recording({ modelLoadAt: 95_000 }))), context)
 
     expect(summary.ok && summary.record).toMatchObject({ valid: false, invalidReason: 'excluded-window' })
+  })
+
+  it('marks the run invalid with the power limit, also when the host was contended', async () => {
+    const summary = summarizeBenchRun(await readRawRun(writeRaw(recording({ contendedAt: 130_000 }))), { ...context, powerLimit: 'on-battery' })
+
+    expect(summary.ok && summary.record).toMatchObject({ valid: false, invalidReason: 'on-battery' })
   })
 
   it('records each stage per frame over every measured bucket, adding up to the stage sum', async () => {

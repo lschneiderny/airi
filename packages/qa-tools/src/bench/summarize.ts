@@ -1,6 +1,7 @@
 import type { BenchRunRecord, PerfRecord, SampleRecord, WindowRollupRecord } from '@proj-airi/stage-shared/perf/usage'
 
 import type { BenchScenario } from './matrix'
+import type { PowerLimit } from './power'
 
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
@@ -81,6 +82,8 @@ export interface BenchRunContext {
   readonly modelFingerprint: string
   /** The measured span in wall-clock epoch milliseconds, the clock the recorder stamps records with. */
   readonly measured: { readonly startMs: number, readonly endMs: number }
+  /** The host's power limit read at the start or the end of the measured span; null when it ran at full power. */
+  readonly powerLimit: PowerLimit | null
 }
 
 export type BenchRunSummary
@@ -104,7 +107,8 @@ function meanOverSamples(samples: readonly SampleRecord[], role: string, field: 
  * `pnpm perf`. The frame histogram, shares and stage times come from its cells; fps is the measured windows' frames
  * over their time; CPU and memory are the means of the samples whose interval lies inside the span. The run is
  * invalid with `host-contended` when any of those samples is contended, and with `excluded-window` when the reducer
- * excluded a measured window, because then its cells no longer cover the whole span.
+ * excluded a measured window, because then its cells no longer cover the whole span. A host on battery or in Low
+ * Power Mode makes it invalid with that power limit, which takes precedence over the other two reasons.
  */
 export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchRunSummary {
   const { startMs, endMs } = context.measured
@@ -179,7 +183,8 @@ export function summarizeBenchRun(raw: RawRun, context: BenchRunContext): BenchR
     const p95MsApprox = FixedHistogram.approxQuantile(total.histogram.counts, STAGE_BINS_V1.edges, 0.95)
     return p95MsApprox === null ? [] : [[stageId, { msPerFrame: total.sumMs / histogram.count, p95MsApprox, n: total.n }]]
   }))
-  const invalidReason = samples.some(sample => sample.hostContended) ? 'host-contended' : row.excludedWindows > 0 ? 'excluded-window' : undefined
+  // The power limit comes first: it is the reason a person can act on, and it can cause the other two.
+  const invalidReason = context.powerLimit ?? (samples.some(sample => sample.hostContended) ? 'host-contended' : row.excludedWindows > 0 ? 'excluded-window' : undefined)
 
   const record: BenchRunRecord = {
     v: PERF_RECORD_VERSION,
