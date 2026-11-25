@@ -795,7 +795,14 @@ moves no body. A held emotion releases with Natural's held `releaseTau`, so a
 hold that switches emotion at full level crossfades instead of dropping the old
 posture in one step. A surprised pulse that starts within 0.25 s of a poke
 moves its arms and hands at a quarter of their size, so the touch reaction's
-guard leads. Neutral writes nothing, nor does any emotion term reach a group
+guard leads.
+While she walks an emotion is an accent the stride absorbs (`STRIDE`): its arm
+joints hold for 0.3 s, then let go at her next change of stance foot (or 0.6 s
+later) to a fifth of their size through a 1.2 Hz critically damped follower, and
+come back when she stands. Hand shapes, the trunk and the pelvis stay, a held
+form is let go once absorbed, and a surprised pulse dips the pelvis 0.03 leg
+lengths while she walks (`startle`). The step itself does not hitch: that needs
+a locomotion input. Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and
 awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches
 it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a

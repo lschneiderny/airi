@@ -38,3 +38,9 @@ An animation audit of the MMD body reviewed every emotion's peak with the face h
 - The rest pose holds the clavicles about a degree above their lower limit, so the pet's shoulder drop saturates there. The roll-in and the lean carry the near side's give.
 - Natural still owns the head. A strong sad pulse pitches Natural's head back about 13 degrees while the trunk slumps, which reads as a sad body under a lifted head. That is Natural's posture and is reported, not changed here.
 - The hair-touch approach path is the gesture solver's; it is not changed here.
+
+## Amendment (2026-11-25): accents in the stride
+
+A second animation audit reviewed emotions during walks.
+
+1. **During a walk an emotion is an accent the stride absorbs.** Its arm joints hold for 0.3 s, then let go at her next change of stance foot (or 0.6 s later) to a fifth of their size through a 1.2 Hz critically damped follower, and come back when she stands. Hand shapes, the trunk and the pelvis stay. A held form is let go once absorbed, so love does not walk with a hand on the chest. A surprised pulse dips the pelvis 0.03 leg lengths while she walks (`startle`). The stride itself does not hitch: a startle that shortens or catches the next step needs a locomotion input, for example a step-scale or startle hook that the performer feeds the gait from the merged plan. That belongs to the walk and is not built here.

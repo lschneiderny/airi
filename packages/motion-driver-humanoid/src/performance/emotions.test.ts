@@ -61,6 +61,19 @@ function layerEffect(script: Script, seconds: number) {
   return layered.map((trace, channel) => trace.map((v, i) => v - base[channel][i]))
 }
 
+/** The emotion layer's own output channels on every tick of a script, through the whole performer. */
+function layerOutput(script: Script, seconds: number) {
+  const layer = createEmotionLayer()
+  const out: Float64Array[] = []
+  const recorder: PerformanceLayer = { ...layer, step: (context) => {
+    const output = layer.step(context)
+    out.push(Float64Array.from(output.channels))
+    return output
+  } }
+  channelTrace(createBodyPerformer({ traits, seed: 1, layers: [recorder] }), seconds, script)
+  return out
+}
+
 const largest = (traces: number[][], tick: number) => Math.max(...traces.map(trace => Math.abs(trace[tick])))
 const fixtureReachesTuck = createBodyPerformer({ traits, seed: 1 }).step(quietInput(0)).capabilities.hairTouch
 
@@ -110,6 +123,39 @@ describe('emotion posture layer', () => {
     // Added to the walking hand instead, the fist's offset from the rest hand would pass the knuckle's limit. The
     // knuckle leads the closing hand (`orderedShare`): 0.8 of the hand's way is all of the knuckle's.
     expect(trace[c('rightIndex0')].at(-1)! / DEG).toBeCloseTo(knuckle, -1)
+  })
+
+  // Audit of 2026-11-25: happy held its hand out through several strides and the surprise recoiled above a walk that kept
+  // its rhythm. While she walks an emotion is an accent the stride absorbs.
+  it('lets the stride absorb an emotion\'s arms after a step, and gives them back when she stands', () => {
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    // A step every half second; the walk ends at 4 s.
+    const gait = (t: number): BodyPerformanceInput['gait'] => t < 4 ? { mode: 'walking', walkForm: true, weight: 1, support: Math.sin(2 * Math.PI * (t - 0.1)), channels, ankles: null } : null
+    const walk = (emotion: PerformanceEmotion): Script => t => ({ ...pulse(emotion, 0.5)(t), gait: gait(t) })
+    const out = layerOutput(walk('happy'), 7)
+    const abduct = out.map(channels => channels[ARM_START.right + 3])
+    const at = (t: number) => abduct[Math.round(t * 120)]
+    const standing = layerOutput(pulse('happy', 0.5), 7).map(channels => channels[ARM_START.right + 3])
+    // The accent shows as it would standing, then the stride takes the arm back to a fifth of it within two steps.
+    expect(at(0.9)).toBeGreaterThan(0.8 * standing[Math.round(0.9 * 120)])
+    expect(Math.abs(at(3))).toBeLessThan(0.25 * Math.abs(standing[3 * 120]))
+    // Standing again, the pose comes back.
+    expect(at(6.5)).toBeCloseTo(standing[Math.round(6.5 * 120)], 3)
+    // A startle while walking dips the pelvis under the step; standing it does not.
+    const dip = Math.min(...layerOutput(walk('surprised'), 2).map(channels => channels[c('pelvisY')]))
+    const still = Math.min(...layerOutput(pulse('surprised', 0.5), 2).map(channels => channels[c('pelvisY')]))
+    expect(dip).toBeLessThan(still - 0.005)
+  })
+
+  it('lets a contact form go once the stride absorbs the emotion', () => {
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    const walk: Script = t => ({ ...held('love', () => 1)(t), gait: { mode: 'walking', walkForm: true, weight: 1, support: Math.sin(2 * Math.PI * t), channels, ankles: null } })
+    const forms = armForms(walk, 3)
+    expect(forms[Math.round(0.2 * 120)]).toEqual({ side: 'right', form: 'hand-to-chest' })
+    expect(forms.at(-1)).toBeNull()
+    // The host passes a gait at weight 0 while she stands; standing keeps the form.
+    const stand: Script = t => ({ ...held('love', () => 1)(t), gait: { mode: 'idle', walkForm: false, weight: 0, support: Math.sin(2 * Math.PI * t), channels, ankles: null } })
+    expect(armForms(stand, 3).at(-1)).toEqual({ side: 'right', form: 'hand-to-chest' })
   })
 
   it('moves the body for every held emotion except neutral, which writes nothing', () => {
