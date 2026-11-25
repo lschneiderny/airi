@@ -722,7 +722,7 @@ The adapter applies `1 - owned[group]` exactly once at bone writes.
 
 `createPerformanceLayers({ traits, seed })` (`src/performance/layers.ts`) returns
 every layer below in one list, which the MMD body registers: the emotion layer,
-the gesture pair, the cue layer and the reaction layer. Without speech, emotion,
+the gesture layers, the cue layer and the reaction layer. Without speech, emotion,
 cue, touch or arm-form input each stays at weight 0 and the output is
 bit-identical to a performer with no layers. Each tick the performer copies
 `plan.suppressHeadCue` and `plan.suppressHeadEmphasis` to the posture, and feeds the stack's `modulation` (the
@@ -806,14 +806,34 @@ drop those channels; missing twist limits pronation to 60 degrees. In this
 slice, adapters keep pronation on the hand and upper-arm twist on the arm;
 dedicated twist-bone writes belong to the later adapter work.
 
-`createGestureLayers({ traits, seed })` returns the co-speech gesture layer as
-two override layers, one per arm, sharing one planner (architecture 4a with
-plan 3.1). Register both. A unit starts on every utterance, on the speaking
-edge, outside a refractory of 2.5 s + 3 s x (1 - energy): the arm prepares to
-4a's ready key, strokes on every onset that passes the gate's S2 voice-peak
+`createGestureLayers({ traits, seed })` returns the co-speech gesture layers:
+two override layers, one per arm, and an additive body layer, sharing one
+planner. They follow architecture 4a with plan 3.1, and the
+[speech gesture phrases ADR](../../docs/ai/adr/2026-11-24-speech-gesture-phrases.md).
+Register all three, in order. Gesture liveliness is the drive, the energy
+raised 0.3 x arousal and 0.1 x valence (`gestureDrive`). A unit starts on an
+utterance's speaking edge, or later on an onset, outside a refractory of
+2.5 s + 3 s x (1 - drive) after speaking ended, or 0.4 s + 1.2 s x (1 - drive)
+after a unit lowered while speech went on. Below drive 0.4 a unit opens only on
+an emphasis or a loud onset, and a stroke needs a voice level up to 0.5 above
+the S2 rule unless it carries an emphasis, so a calm speaker gestures seldom.
+A unit plays phrases (`src/performance/phrases.ts`): each has its hands, a
+place (`centre`, `low`, `side`, `high`, or two hands' `inner`), a theme and two
+to four strokes, drawn from their own seeded stream with drive weighting each
+choice; place and theme differ from the phrase before. At a phrase's end the
+hands go on into the next phrase, prepared again from where they are to its
+place, with the other hand taking over or both joining, or below drive 0.4 they
+may lower instead. Each recovery returns to a ready key floated within the
+place, the elbow up or down by turns. A phrase's theme stroke (palm-up, press,
+frame) sets its hand: the ready key turns 0.6 of the way to the theme's forearm
+and wrist with the hand half-way to its shape, and the phrase's beats keep that
+palm. The arm prepares to the phrase's ready key, strokes on every onset that passes the gate's S2 voice-peak
 rule (accepted emphases major, others 0.6), at least 0.45 s apart and at most
 six per unit, holds with a 1.5 % A drift, and retracts to where it came from at
-1.3 times its preparation; its weight ramps out once the arm is home, so the
+1.3 times its preparation, after 0.4 s of quiet, after speaking ends or at the
+unit's caps. From drive 0.6 up the speaker holds the hands through up to
+0.4 s + 0.6 s x drive of quiet instead, and hands at rest in a phrase that has
+stroked go on to the next phrase's place in the pause. A unit's weight ramps out once the arm is home, so the
 hang, which the corrector may hold out of the body, takes a resting arm (an
 emotion arm form's arm too). An arm form let go while it still moves (an idle
 behaviour cut short) starts home from where its plan is, with the plan's
@@ -826,10 +846,21 @@ Only paths through the
 ready key are cleared, so a retraction lets a stroke in flight land, and from a
 stroke or hold first goes back to the ready key along the stroke over the
 recovery time (an arm already recovering finishes its recovery), then home on
-the preparation's path. Energy scales size and
-tempo, and selects among forms: the default emphasis form is palm-up at 0.25,
-press at 0.10 + 0.25 x the utterance's energy, and beat otherwise. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
-A's amplitude scale (`GESTURE_FORMS`), keys solved per rig with
+the preparation's path. Drive scales size and
+tempo, and selects among forms: in a phrase without a theme the default emphasis form is palm-up at 0.25,
+press at 0.10 + 0.25 x drive, and beat otherwise. A beat's hand closes 0.45 of
+the way to a cup; through every hold the hand eases 0.35 of the way back toward
+the ready hand, and the recovery opens it fully. The body layer holds the
+phrase: the trunk turns 2 degrees x gain (upper) and 1 (mid) toward a
+one-handed phrase's hand, leans forward 2.4 degrees x (drive - 0.3), the head
+and neck tilt toward the hand, the gesturing shoulder rises by the place (0.3
+to 2.8 degrees x gain) and the free one settles 1.5; each stroke also lifts its
+shoulder 1.5 degrees x gain with the torso pulse, or presses it down by half
+that on a press or chop. Standing, a unit that lowers its hands asks, 0.6 of the
+time, for the weight on the other foot for 1.5 s (`plan.support`), unless an
+earlier layer holds the support. The forms are 4a's beat, palm-up, press, point, chop and frame at unit
+A's amplitude scale (`GESTURE_FORMS`); the chop cuts nearly straight down, so
+it reads apart from a beat's forward fall whatever hand the phrase set. Keys are solved per rig with
 `solveArmKey` and pushed along the proxy gradient until key and path clear;
 a contact on the upper arm swings the elbow out by 5 degrees instead (up to
 the arm forms' 80), since pushing the hand barely moves the upper arm off the
@@ -843,7 +874,10 @@ A unit's preparation, recoveries and retraction legs carry an overlapping
 corrective submovement 40 % of the time, as human arm movements do
 (`CORRECTION`): in the plain transition's time, the primary aims 0.72 of the
 way over 0.8 of it, and from 0.65 of it a second submovement carries on to the
-key, ending when the plain transition would. The draw comes from its own
+key, ending when the plain transition would. A hand carried on into a new
+phrase, or joining one, always takes the corrected transition: it homes in on
+its new place, and the plain moves alone read smoother than the talk reference.
+The draw comes from its own
 seeded stream (`deriveSeed(seed, 141)`), one per transition, and a two-hand
 stroke's second hand takes the first hand's, so forms, hands, lags and holds
 keep their draws. A transition whose submovements the followers could not
@@ -855,11 +889,14 @@ keys were cleared on, without its followers' lag or overshoot. A prepared
 arm's joints take no cascade link, so a stroke lands at 4a's
 duration, or later when the inverse would ask a follower for more than its
 20 rad/s input slope: a segment then lasts the shortest time the followers can
-take. The ready key is cleared along its path from the arm's
-starting pose, as stroke keys are along theirs from the ready key, and it keeps
+take, the velocity it carries from the motion before it included. The ready key is cleared along its path from the arm's
+starting pose, as stroke keys are along theirs from where the arm is (a stroke
+may cut a recovery short), and it keeps
 a headroom of 0.05 of each segment beyond the corrector's margin
 (`KEY_HEADROOM`), because the arm settles and holds there; where no reachable
-ready key clears that headroom, the one that clears the margin is used. A stroke is cleared
+ready key clears that headroom, the one that clears the margin is used. A
+stroke key keeps that headroom too where it can, because the trunk turns and
+leans under the phrase; otherwise it clears the margin. A stroke is cleared
 at its end, the post-stroke hold's 1.5 % A drift included, and its key lies
 on that cleared path. Every other
 channel of a segment also stays within that slope, so a large forearm, wrist or

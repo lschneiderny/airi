@@ -1,7 +1,8 @@
 import type { ArmKey } from './arm-key'
 import type { BodySide } from './channels'
 import type { BodyArmForm, BodyGestureHand, BodyGesturePhase, BodyGestureReport, BodyPerformanceInput, BodyRigTraits } from './contracts'
-import type { ArmPose, SpeechGestureForm } from './gesture-forms'
+import type { ArmPose, ReadyOffset, SpeechGestureForm } from './gesture-forms'
+import type { GesturePhrase } from './phrases'
 import type { LayerOutput, PerformanceContext, PerformanceLayer } from './stack'
 
 import { minJerk } from '../dynamics'
@@ -10,8 +11,9 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, freeShare, SIDES } from './channels'
 import { KEY_HEADROOM } from './collision'
-import { ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, writeArmFormHand } from './gesture-forms'
+import { addOffsets, ARM_FORMS, GESTURE_FORMS, gestureGain, GestureKeys, gestureTempo, NO_OFFSET, writeArmFormHand, writeFormHand, writeHandShare } from './gesture-forms'
 import { handOrder, ORDER_PEAK_SLOPE, orderedCurve, orderedShare, orderedSlope, writeHandShape } from './hand-shapes'
+import { drawPhrase, GESTURE_PLACES, gestureDrive, nextHands, retractShare } from './phrases'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -21,13 +23,22 @@ const TIMING = {
   strokeGap: 0.45,
   unitStrokes: 6,
   unitSeconds: 9,
-  /** Retract after `voice.slow` stays under 0.05 this long, or this long after speaking ends. */
-  quiet: 0.8,
+  /**
+   * `voice.slow` under 0.05 this long ends a thought, and the hands lower. From drive `holdDrive` up the speaker holds
+   * them through `quiet + quietHold x drive` of it instead, and hands at rest in a phrase that has stroked go on to the
+   * next phrase's place in the pause.
+   */
+  quiet: 0.4,
+  holdDrive: 0.6,
+  quietHold: 0.6,
   afterSpeech: 0.3,
   retractionScale: 1.3,
-  /** Refractory after a retraction: base + span x (1 - E). */
+  /** Refractory after a unit that speaking ended: base + span x (1 - drive). */
   refractoryBase: 2.5,
   refractorySpan: 3,
+  /** Refractory after a unit lowered while speech goes on (a pause, a cap, a phrase's end): a livelier speaker comes back sooner. */
+  pauseBase: 0.4,
+  pauseSpan: 1.2,
   /** The same non-beat form does not repeat within this window. */
   formRepeat: 8,
   /** A chop follows two accepted emphases inside this window. */
@@ -107,7 +118,7 @@ const AMPLITUDE = {
   minor: 0.6,
   walking: 0.6,
   nonDominant: 0.85,
-  nonDominantSwivel: 6,
+  nonDominantSwivel: 6 * DEG,
   nonDominantHand: 0.3,
   drift: 0.015,
   torsoYaw: 1.2 * 2.6 * DEG,
@@ -115,7 +126,62 @@ const AMPLITUDE = {
   torsoMidShare: 0.5,
   torsoMidLag: 0.07,
   torsoDecay: 0.5,
+  /**
+   * The gesturing shoulder rises into each stroke with the torso pulse, 1.5 degrees x gain; a stroke that drives down
+   * (press, chop: 0.1 A or more) presses it down by half that instead.
+   */
+  shoulderLift: 1.5 * DEG,
+  shoulderPress: -0.75 * DEG,
 } as const
+
+/**
+ * A calm speaker gestures seldom: below drive 0.4 a unit opens only on an emphasis or a loud onset, and a stroke needs
+ * a voice level up to `floor` above the S2 peak rule (at drive 0) unless it carries an emphasis: 0.55 at drive 0.2, so
+ * Natural's ordinary onsets (0.31 to 0.46) pass by.
+ */
+const CALM = { drive: 0.4, floor: 0.5 } as const
+
+/**
+ * A phrase's theme stroke sets its hand: the ready key turns `share` of the way to the theme's forearm and wrist and
+ * the hand takes `hand` of the theme's shape, so the beats that follow keep the palm the theme showed. A set phrase's
+ * beat keeps that turn and flexes the wrist `beatFlex` further, and lands with the theme's full hand.
+ */
+const SET = { share: 0.6, hand: 0.5, beatFlex: 10 * DEG } as const
+
+/**
+ * Each recovery returns to a ready key moved within the phrase's place: the elbow floats up or down by up to `up` A
+ * (alternating on each arm), out by up to `out` A and swings by up to `swivel`, so successive beats leave from
+ * different elbow heights instead of one parked pose.
+ */
+const FLOAT = { out: 0.04, up: 0.05, swivel: 10 * DEG } as const
+
+/** During the post-stroke hold the hand eases this share of the way back toward the ready hand before the recovery opens it fully. */
+const HOLD_SOFTEN = 0.35
+
+/**
+ * The body's part in a phrase, held from its preparation to its retraction and eased by minimum jerk: the trunk turns
+ * toward a one-handed phrase's hand (degrees x gain, upper and mid), leans forward with drive above 0.3, the head and
+ * neck tilt toward the hand, the gesturing shoulder rises by the place's lift (degrees x gain) and the free shoulder
+ * settles. A two-hand phrase squares the trunk.
+ */
+const BODY = {
+  upperYaw: 2 * DEG,
+  midYaw: 1 * DEG,
+  lean: 2.4 * DEG,
+  leanFrom: 0.3,
+  midLeanShare: 0.5,
+  headRoll: 2 * DEG,
+  neckRoll: 0.8 * DEG,
+  freeShoulder: -1.5 * DEG,
+  placeLift: { centre: 1 * DEG, low: 0.3 * DEG, side: 2.2 * DEG, high: 2.8 * DEG, inner: 1.5 * DEG },
+} as const
+
+/**
+ * Between thoughts the weight moves to the other foot: as a unit lowers its hands while standing, with probability
+ * `share`, the gesture body layer asks for support `magnitude` + `driveMagnitude` x drive on the other side for
+ * `seconds`, unless an emotion or act holds the support.
+ */
+const SHIFT = { share: 0.6, magnitude: 0.5, driveMagnitude: 0.4, seconds: 1.5 } as const
 
 /**
  * The speech head beat (probe option (b), E/g3/speech-head-probe.md): a pitch-down nod of neck and head together, 3
@@ -166,6 +232,8 @@ interface StrokeAccent {
   readonly landing: number
   /** Neck and head pitch together, radians. */
   readonly nod: number
+  /** The gesturing shoulder's elevation, radians, on the torso pulse's course. */
+  readonly lift: number
 }
 
 const pose = (): ArmPose => new Float64Array(26)
@@ -191,6 +259,10 @@ class ArmTrack {
   readonly plannedPrevious = pose()
   readonly home = pose()
   readonly ready = pose()
+  /** The key `ready` was solved from: the phrase's place, its float and its set hand turn. */
+  readyKey: ArmKey | null = null
+  /** The direction of the next elbow float, up (1) or down (-1); it alternates. */
+  floatSign = 1
   readonly key = pose()
   readonly segment: Segment = { from: pose(), velocity: pose(), acceleration: pose(), carried: false, to: pose(), start: 0, durations: pose().fill(1), order: pose() }
   readonly accents: StrokeAccent[] = []
@@ -258,11 +330,11 @@ class ArmTrack {
    */
   move(to: ArmPose, now: number, duration: number, tension: number): number {
     const s = this.segment
-    const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension))
-    this.correctAt = Infinity
-    s.from.set(this.pose)
     for (let j = 0; j < 26; j++)
       s.velocity[j] = this.warm ? (this.planned[j] - this.plannedPrevious[j]) / BODY_TICK : 0
+    const fed = Math.max(BODY_TICK, duration, this.fedForwardFloor(to, tension, this.pose, s.velocity))
+    this.correctAt = Infinity
+    s.from.set(this.pose)
     s.to.set(to)
     s.start = now
     s.carried = false
@@ -401,9 +473,12 @@ class ArmTrack {
   /**
    * The shortest segment from the current target to `to` whose fed-forward channels (flex, abduct, twist, elbow) stay
    * within the follower input slope: their target's slope is `D (s' / T + lead s'' / T^2 + curvature s''' / T^3)` for
-   * minimum jerk `s`. The other channels take their own durations (`move`).
+   * minimum jerk `s`, plus `v0 h'(u)` for a carried plan velocity `velocity` (its decay is not inverted). A corrected
+   * transition's second submovement carries the primary's velocity, which its admission check does not see: a hand
+   * leaving a high place mid-unit turned its elbow 90 degrees in under 0.5 s and the carried velocity took its target
+   * to 20.6 rad/s. The other channels take their own durations (`move`).
    */
-  private fedForwardFloor(to: ArmPose, tension: number, from: ArmPose = this.pose): number {
+  private fedForwardFloor(to: ArmPose, tension: number, from: ArmPose = this.pose, velocity: ArmPose | null = null): number {
     const inverses = [2, 3, 4, 5].map(j => followerInverse(j, tension))
     const slope = (duration: number) => {
       let worst = 0
@@ -414,7 +489,7 @@ class ArmTrack {
         const jerk = 60 * (1 - 6 * u + 6 * u ** 2) / duration ** 3
         for (let j = 2; j <= 5; j++) {
           const [lead, curvature] = inverses[j - 2]
-          worst = Math.max(worst, Math.abs((to[j] - from[j]) * (rate + lead * acceleration + curvature * jerk)))
+          worst = Math.max(worst, Math.abs((to[j] - from[j]) * (rate + lead * acceleration + curvature * jerk) + (velocity ? velocity[j] * decaySlope(u) : 0)))
         }
       }
       return worst
@@ -463,6 +538,7 @@ class ArmTrack {
       this.additive[10] += mid * accent.pitch
       const neckApex = Math.max(accent.start + BODY_TICK, accent.landing - HEAD_BEAT.neckLead)
       this.additive[NECK_PITCH] += head * HEAD_BEAT.neckShare * accent.nod * beatShape(accent.start, neckApex, now)
+      this.additive[ARM_START[this.side]] += upper * accent.lift
       this.additive[HEAD_PITCH] += head * (1 - HEAD_BEAT.neckShare) * accent.nod * beatShape(accent.start, accent.landing, now)
     }
   }
@@ -488,6 +564,58 @@ class ArmTrack {
     this.recoveryCorrected = false
     this.accents.length = 0
     this.warm = false
+    this.readyKey = null
+    this.floatSign = 1
+  }
+}
+
+/** The body channels a phrase holds (`BODY`): mid yaw and pitch, upper yaw and pitch, neck and head roll, both clavicles' elevation. */
+const BODY_CHANNEL_INDEX = [9, 10, 12, 13, 17, 20, ARM_START.left, ARM_START.right] as const
+const HEAD_ROLLS = new Set([4, 5])
+
+/**
+ * The trunk, head and shoulders' hold for the current phrase. Each change eases by minimum jerk from where the pose is,
+ * carrying its velocity (the arm segments' h(u)), so a phrase that cuts the last one's ease short goes on smoothly.
+ */
+class PhrasePose {
+  readonly value = new Float64Array(BODY_CHANNEL_INDEX.length)
+  private readonly previous = new Float64Array(BODY_CHANNEL_INDEX.length)
+  private readonly from = new Float64Array(BODY_CHANNEL_INDEX.length)
+  private readonly velocity = new Float64Array(BODY_CHANNEL_INDEX.length)
+  private readonly to = new Float64Array(BODY_CHANNEL_INDEX.length)
+  private start = 0
+  private duration = 1
+
+  aim(to: ArrayLike<number>, now: number, seconds: number): void {
+    for (let k = 0; k < this.value.length; k++) {
+      this.from[k] = this.value[k]
+      this.velocity[k] = (this.value[k] - this.previous[k]) / BODY_TICK
+      this.to[k] = to[k]
+    }
+    this.start = now
+    this.duration = Math.max(BODY_TICK, seconds)
+  }
+
+  advance(now: number): void {
+    const u = Math.max(0, Math.min(1, (now - this.start) / this.duration))
+    const decay = this.duration * (u - 6 * u ** 3 + 8 * u ** 4 - 3 * u ** 5)
+    for (let k = 0; k < this.value.length; k++) {
+      this.previous[k] = this.value[k]
+      this.value[k] = this.from[k] + (this.to[k] - this.from[k]) * minJerk(u) + this.velocity[k] * decay
+    }
+  }
+
+  /** Writes the hold into `additive`; `head` scales the head and neck roll (a clip owning the head takes it). */
+  write(additive: Float64Array, head: number): void {
+    for (let k = 0; k < this.value.length; k++)
+      additive[BODY_CHANNEL_INDEX[k]] = this.value[k] * (HEAD_ROLLS.has(k) ? head : 1)
+  }
+
+  reset(): void {
+    for (const values of [this.value, this.previous, this.from, this.velocity, this.to])
+      values.fill(0)
+    this.start = 0
+    this.duration = 1
   }
 }
 
@@ -516,13 +644,25 @@ function beatShape(start: number, apex: number, now: number): number {
 class GesturePerformer {
   readonly tracks: Record<BodySide, ArmTrack> = { left: new ArmTrack('left'), right: new ArmTrack('right') }
   readonly report: Mutable<BodyGestureReport> = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null }
+  /** The body's hold for the current phrase, and the additive output of the gesture body layer. */
+  readonly body = new PhrasePose()
+  readonly bodyAdditive = new Float64Array(BODY_CHANNELS.length)
+  /** A weight shift the body layer asks of the posture between thoughts (`SHIFT`). */
+  shift: { readonly support: number, readonly until: number } | null = null
   private random
   /** The corrective submovements' own stream (`CORRECTION`), so the gesture stream's choices keep their order. */
   private corrections
+  /** The phrases' own stream: places, themes, hands, floats and weight shifts, so the gesture stream keeps its order. */
+  private phrases
   private dominant: BodySide = 'right'
   private keys: GestureKeys | null = null
   private tick = -1
-  private unit = { active: false, sides: [] as BodySide[], twoHand: false, energy: 0.5, start: 0, strokes: 0, retracting: false }
+  private unit = { active: false, sides: [] as BodySide[], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false }
+  /** The current phrase, kept past its unit so the next one differs from it; its strokes; whether its theme has set the hand. */
+  private phrase: GesturePhrase | null = null
+  private phraseStrokes = 0
+  private phraseSet = false
+  private readonly bodyTarget = new Float64Array(BODY_CHANNEL_INDEX.length)
   private lastOnset = 0
   private lastEmphasis = 0
   private wasSpeaking = false
@@ -540,6 +680,7 @@ class GesturePerformer {
   constructor(private readonly traits: BodyRigTraits, private readonly seed: number) {
     this.random = createRandomStream(deriveSeed(seed, 140))
     this.corrections = createRandomStream(deriveSeed(seed, 141))
+    this.phrases = createRandomStream(deriveSeed(seed, 142))
     this.reset()
   }
 
@@ -551,10 +692,17 @@ class GesturePerformer {
   reset(): void {
     this.random = createRandomStream(deriveSeed(this.seed, 140))
     this.corrections = createRandomStream(deriveSeed(this.seed, 141))
+    this.phrases = createRandomStream(deriveSeed(this.seed, 142))
     this.dominant = this.random() < 0.85 ? 'right' : 'left'
     this.keys = null
     this.tick = -1
-    this.unit = { active: false, sides: [], twoHand: false, energy: 0.5, start: 0, strokes: 0, retracting: false }
+    this.unit = { active: false, sides: [], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false }
+    this.phrase = null
+    this.phraseStrokes = 0
+    this.phraseSet = false
+    this.body.reset()
+    this.bodyAdditive.fill(0)
+    this.shift = null
     this.lastOnset = this.lastEmphasis = 0
     this.wasSpeaking = false
     this.speechEnded = -Infinity
@@ -596,11 +744,15 @@ class GesturePerformer {
     if (unit.active && !unit.retracting) {
       const ended = !voice.speaking && now - this.speechEnded >= TIMING.afterSpeech
       const capped = (unit.strokes >= TIMING.unitStrokes && now - this.lastStroke >= 0.6) || now - unit.start >= TIMING.unitSeconds
-      if (ended || this.quiet >= TIMING.quiet || capped || !this.performable(input))
-        this.retract(now)
+      const holding = unit.drive >= TIMING.holdDrive
+      if (ended || this.quiet >= TIMING.quiet + (holding ? TIMING.quietHold * unit.drive : 0) || capped || !this.performable(input))
+        this.retract(context, now, ended || !voice.speaking)
+      // Walking keeps its one endless beat phrase.
+      else if (holding && this.quiet >= TIMING.quiet && this.phrase && Number.isFinite(this.phrase.length) && this.phraseStrokes > 0 && unit.sides.every(side => this.tracks[side].state === 'ready'))
+        this.nextPhrase(context, now)
     }
     if (!unit.active && (speakingEdge || (voice.speaking && onset)) && now >= this.refractoryEnd && this.performable(input))
-      this.startUnit(context, now)
+      this.startUnit(context, now, onset, major)
     if (unit.active && !unit.retracting && onset)
       this.stroke(context, now, major)
 
@@ -608,8 +760,14 @@ class GesturePerformer {
       this.step(this.tracks[side], context, now)
     if (unit.active && unit.sides.every(side => !this.tracks[side].active || this.tracks[side].state === 'form')) {
       unit.active = false
-      this.refractoryEnd = now + TIMING.refractoryBase + TIMING.refractorySpan * (1 - unit.energy)
+      this.refractoryEnd = now + (unit.bySpeech
+        ? TIMING.refractoryBase + TIMING.refractorySpan * (1 - unit.drive)
+        : TIMING.pauseBase + TIMING.pauseSpan * (1 - unit.drive))
     }
+    this.body.advance(now)
+    this.body.write(this.bodyAdditive, freeShare(input.owned.head))
+    if (this.shift && now >= this.shift.until)
+      this.shift = null
     this.report.phase = this.phase()
   }
 
@@ -723,54 +881,187 @@ class GesturePerformer {
     return true
   }
 
-  private startUnit(context: PerformanceContext, now: number): void {
+  private startUnit(context: PerformanceContext, now: number, onset: boolean, major: boolean): void {
     const { input } = context
-    const energy = Math.max(0, Math.min(1, input.energy.level))
+    const drive = gestureDrive(input.energy.level, input.mood)
+    // A calm speaker lets most of an utterance pass: the unit waits for an emphasis or a loud onset.
+    const stirred = onset && (major || input.voice.level >= this.peakFloor(drive))
+    if (drive < CALM.drive && !stirred)
+      return
     const walking = input.gait !== null && input.gait.mode !== 'idle'
     const free = SIDES.filter(side => this.free(side, input, context))
     if (!free.length || !this.keys)
       return
-    const twoHand = !walking && free.length === 2 && this.random() < 0.15 + 0.25 * energy
+    const twoHand = !walking && free.length === 2 && this.random() < 0.15 + 0.25 * drive
     const other: BodySide = this.dominant === 'left' ? 'right' : 'left'
     const preferred = this.random() < 0.7 ? this.dominant : other
     const sides = twoHand ? [...SIDES] : [free.includes(preferred) ? preferred : free[0]]
+    // Walking keeps 4a's single beat phrase at the centre; standing, each unit opens a phrase of its own.
+    const phrase = walking ? { sides, place: 'centre' as const, theme: 'beat' as const, length: Infinity } : drawPhrase(this.phrases, drive, sides, this.phrase)
     const started: BodySide[] = []
     for (const side of sides) {
       const track = this.tracks[side]
       this.captureHome(track, context)
-      const swivel = twoHand && side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
-      if (!this.solveReady(track, this.keys.readyKey(energy, 0, swivel)))
+      if (!this.placeAt(track, drive, phrase, sides.length === 2, null))
         continue
       this.begin(track, now)
-      track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(energy), this.tension, this.correct())
+      track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(drive), this.tension, this.correct())
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
       started.push(side)
     }
     if (!started.length)
       return
-    this.unit = { active: true, sides: started, twoHand: started.length === 2, energy, start: now, strokes: 0, retracting: false }
+    this.unit = { active: true, sides: started, twoHand: started.length === 2, drive, start: now, strokes: 0, retracting: false, bySpeech: false }
+    this.phrase = phrase
+    this.phraseStrokes = 0
+    this.phraseSet = false
     // 4a's quiet rule reads the utterance, not the silence before it: Natural's slow envelope rises after the edge.
     this.quiet = 0
     this.report.unitSeq++
     this.report.form = null
     this.report.plannedHit = null
     this.report.hand = started.length === 2 ? 'both' : started[0]
+    this.aimBody(context, now, Math.max(...started.map(side => this.tracks[side].prepSeconds)))
   }
 
   /**
-   * Solves the ready key from the arm's home with the headroom of a key the arm settles on. Where no reachable key
-   * clears it (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the key that clears the
-   * margin is used, so the unit still starts.
+   * At the end of a phrase in continuous speech: a calm speaker may lower the hands (`retractShare`); otherwise the
+   * next phrase takes its hands (`nextHands`) to a new place with a new theme. A hand that goes on prepares again from
+   * where it is, a joining hand from its rest, a hand that leaves retracts; the unit goes on without a new marker.
    */
-  private solveReady(track: ArmTrack, key: ArmKey): boolean {
+  private nextPhrase(context: PerformanceContext, now: number): void {
+    const { input } = context
+    const unit = this.unit
+    const current = this.phrase
+    if (!current || this.phrases() < retractShare(unit.drive)) {
+      this.retract(context, now, false)
+      return
+    }
+    const free = SIDES.filter(side => unit.sides.includes(side) || this.free(side, input, context))
+    const drawn = nextHands(this.phrases, unit.drive, unit.sides, free, this.dominant)
+    const phrase = drawPhrase(this.phrases, unit.drive, drawn, current)
+    const twoHand = drawn.length === 2
+    const tempo = gestureTempo(unit.drive)
+    // The new phrase's ready keys take no set hand until its own theme stroke.
+    this.phraseSet = false
+    // A joining hand first needs a clear ready key on this rig; where none solves, the hands that gestured go on.
+    const joining = drawn.filter(side => !unit.sides.includes(side)).filter((side) => {
+      const track = this.tracks[side]
+      this.captureHome(track, context)
+      return this.placeAt(track, unit.drive, phrase, twoHand, null)
+    })
+    const going = drawn.filter(side => unit.sides.includes(side))
+    const sides = going.length || joining.length ? [...going, ...joining] : [...unit.sides]
+    for (const side of SIDES) {
+      const track = this.tracks[side]
+      if (!sides.includes(side)) {
+        if (unit.sides.includes(side) && track.active && track.state !== 'retraction' && track.state !== 'form')
+          this.retractTrack(track, now)
+        continue
+      }
+      if (unit.sides.includes(side)) {
+        track.pending = null
+        const from = track.planned.slice()
+        const placed = this.placeAt(track, unit.drive, phrase, twoHand, from)
+        const seconds = placed ? (0.25 + 0.35 * this.travel(side, from, track.ready)) / tempo : TIMING.recovery / tempo
+        // A hand carried on into a new phrase homes in on its new place: a corrected transition whenever the followers
+        // take it, so the stream's draw is kept for the hands that open a unit.
+        track.prepSeconds = track.transit(track.ready, now, seconds, this.tension, placed)
+        track.state = placed ? 'preparation' : 'recovery'
+      }
+      else {
+        this.begin(track, now)
+        track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / tempo, this.tension, true)
+        track.state = 'preparation'
+      }
+      track.phaseEnd = now + track.prepSeconds
+    }
+    unit.sides = sides
+    unit.twoHand = sides.length === 2
+    this.phrase = { ...phrase, sides }
+    this.phraseStrokes = 0
+    this.report.hand = sides.length === 2 ? 'both' : sides[0]
+    this.aimBody(context, now, Math.max(...sides.map(side => this.tracks[side].prepSeconds)))
+  }
+
+  /** A side's ready offset in `phrase`: its place, and the second hand of a two-hand phrase swung out a little further (4a). */
+  private placeOffset(phrase: GesturePhrase, side: BodySide, twoHand: boolean): ReadyOffset {
+    const place = GESTURE_PLACES[phrase.place]
+    return twoHand && side !== this.dominant ? addOffsets(place, { ...NO_OFFSET, swivel: AMPLITUDE.nonDominantSwivel }) : place
+  }
+
+  /** Places the ready key at the phrase's place, or at the centre where that place has no clear key on this rig. */
+  private placeAt(track: ArmTrack, drive: number, phrase: GesturePhrase, twoHand: boolean, via: ArmPose | null): boolean {
+    return this.placeReady(track, drive, this.placeOffset(phrase, track.side, twoHand), via)
+      || (phrase.place !== 'centre' && this.placeReady(track, drive, this.placeOffset({ ...phrase, place: 'centre' }, track.side, twoHand), via))
+  }
+
+  /**
+   * Solves the ready key at `offset` from the arm's home with the headroom of a key the arm settles on, the phrase's set
+   * hand turn applied (`SET`), and with `via` also the path from there. Where no reachable key clears the headroom
+   * (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the key that clears the margin is used,
+   * so the unit still starts. False, with the ready key unchanged, when neither clears.
+   */
+  private placeReady(track: ArmTrack, drive: number, offset: ReadyOffset, via: ArmPose | null): boolean {
+    const keys = this.keys
+    if (!keys)
+      return false
+    const theme = this.setTheme()
+    const base = keys.readyKey(drive, offset)
+    const spec = theme ? GESTURE_FORMS[theme] : null
+    const key: ArmKey = spec ? { ...base, pron: base.pron + SET.share * (spec.pron - base.pron), wflex: SET.share * spec.wflex, wdev: SET.share * spec.wdev } : base
+    const candidate = this.scratch
     for (const headroom of [KEY_HEADROOM, 0]) {
-      track.ready.set(track.home)
-      writeHandShape('relaxed', track.ready)
-      if (this.keys?.solve(track.side, key, track.ready, track.home, headroom))
+      candidate.set(track.home)
+      if (spec)
+        writeHandShare(spec.shape, SET.hand * spec.shapeShare, candidate)
+      else
+        writeHandShape('relaxed', candidate)
+      if (keys.solve(track.side, key, candidate, track.home, headroom) && (!via || keys.pathDepth(track.side, via, candidate) === 0)) {
+        track.ready.set(candidate)
+        track.readyKey = key
         return true
+      }
     }
     return false
+  }
+
+  /** The theme that has set the current phrase's hand, or null before its theme stroke and in a beat phrase. */
+  private setTheme(): SpeechGestureForm | null {
+    return this.phraseSet && this.phrase && this.phrase.theme !== 'beat' ? this.phrase.theme : null
+  }
+
+  /** A calm speaker's stroke threshold (`CALM`): the S2 peak rule raised toward `VOICE.peak + CALM.floor` as drive falls to 0. */
+  private peakFloor(drive: number): number {
+    return VOICE.peak + CALM.floor * Math.max(0, CALM.drive - drive) / CALM.drive
+  }
+
+  /**
+   * Aims the body's phrase hold (`BODY`) over `seconds`: the current phrase's while a unit gestures standing, rest
+   * otherwise.
+   */
+  private aimBody(context: PerformanceContext, now: number, seconds: number): void {
+    const target = this.bodyTarget.fill(0)
+    const unit = this.unit
+    const walking = context.input.gait !== null && context.input.gait.mode !== 'idle'
+    if (unit.active && !unit.retracting && !walking && this.phrase) {
+      const gain = gestureGain(unit.drive)
+      const toward = unit.twoHand ? 0 : unit.sides[0] === 'left' ? 1 : -1
+      const lean = BODY.lean * (unit.drive - BODY.leanFrom)
+      const lively = 0.5 + 0.5 * unit.drive
+      target[0] = toward * BODY.midYaw * gain
+      target[1] = BODY.midLeanShare * lean
+      target[2] = toward * BODY.upperYaw * gain
+      target[3] = lean
+      target[4] = toward * BODY.neckRoll * lively
+      target[5] = toward * BODY.headRoll * lively
+      const lift = BODY.placeLift[this.phrase.place] * gain
+      SIDES.forEach((side, k) => {
+        target[6 + k] = unit.sides.includes(side) ? lift : BODY.freeShoulder * gain
+      })
+    }
+    this.body.aim(target, now, seconds)
   }
 
   private stroke(context: PerformanceContext, now: number, major: boolean): void {
@@ -778,10 +1069,12 @@ class GesturePerformer {
     const unit = this.unit
     if (input.voice.level < VOICE.peak || input.voice.level - input.voice.slow < VOICE.prominence)
       return
+    if (!major && input.voice.level < this.peakFloor(unit.drive))
+      return
     if (now - this.lastStroke < TIMING.strokeGap || unit.strokes >= TIMING.unitStrokes)
       return
-    const energy = unit.energy
-    const tempo = gestureTempo(energy)
+    const drive = unit.drive
+    const tempo = gestureTempo(drive)
     const lead = unit.twoHand ? this.dominant : unit.sides[0]
     const leadTrack = this.tracks[lead]
     const form = this.chooseForm(input, now, major, unit.twoHand)
@@ -790,13 +1083,15 @@ class GesturePerformer {
       return
     const walking = input.gait !== null && input.gait.mode !== 'idle'
     const amplitude = (major ? 1 : AMPLITUDE.minor) * (walking ? AMPLITUDE.walking : 1)
-    const size = gestureGain(energy) * GESTURE_FORMS[form].scale * amplitude
-    const both = unit.twoHand && GESTURE_FORMS[form].hands !== 'one'
+    const size = gestureGain(drive) * GESTURE_FORMS[form].scale * amplitude
+    const lagging = this.tracks[lead === 'left' ? 'right' : 'left']
+    // A hand that joined at a phrase change may still be on its way from rest: it joins the strokes once prepared, so
+    // a two-hand stroke keeps its second hand's lag.
+    const both = unit.twoHand && GESTURE_FORMS[form].hands !== 'one' && this.strokeReady(lagging, now, seconds)
     const performed = this.strokeTrack(leadTrack, context, now, form, size)
     if (!performed)
       return
     if (both) {
-      const lagging = this.tracks[lead === 'left' ? 'right' : 'left']
       if (lagging.active && lagging.state !== 'retraction' && lagging.state !== 'form') {
         const lag = TIMING.lagRange[0] + (TIMING.lagRange[1] - TIMING.lagRange[0]) * this.random()
         // The second hand plays the same stroke (4a), hold included: with a hold of its own it would recover at another
@@ -806,10 +1101,14 @@ class GesturePerformer {
     }
     const sign = lead === 'left' ? 1 : -1
     const forward = GESTURE_FORMS[performed].stroke[2] > 0
-    const gain = gestureGain(energy) * amplitude
+    const down = GESTURE_FORMS[performed].stroke[1] <= -0.1
+    const gain = gestureGain(drive) * amplitude
     const nod = HEAD_BEAT.degrees * amplitude * (input.gaze.kind === 'free' ? 1 : HEAD_BEAT.heldGaze)
-    leadTrack.accents.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0, landing: leadTrack.phaseEnd, nod })
+    leadTrack.accents.push({ start: now, hit: now + GESTURE_FORMS[performed].strokeSeconds / tempo, yaw: sign * AMPLITUDE.torsoYaw * gain, pitch: forward ? AMPLITUDE.torsoPitch * gain : 0, landing: leadTrack.phaseEnd, nod, lift: (down ? AMPLITUDE.shoulderPress : AMPLITUDE.shoulderLift) * gain })
     unit.strokes++
+    this.phraseStrokes++
+    if (performed === this.phrase?.theme)
+      this.phraseSet = true
     this.lastStroke = now
     if (major)
       this.majors.push(now)
@@ -833,28 +1132,42 @@ class GesturePerformer {
     const keys = this.keys
     if (!keys)
       return null
-    const energy = this.unit.energy
-    const tempo = gestureTempo(energy)
+    const tempo = gestureTempo(this.unit.drive)
     const second = this.unit.twoHand && track.side !== this.dominant
-    const swivel = second ? AMPLITUDE.nonDominantSwivel : 0
+    const theme = this.setTheme()
+    const base = track.readyKey ?? keys.readyKey(this.unit.drive)
     for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
-      const ready = keys.readyKey(energy, candidate === 'frame' ? 0.1 : 0, swivel)
+      const ready = candidate === 'frame' ? { ...base, hand: [base.hand[0] + 0.1, base.hand[1], base.hand[2]] as const } : base
       const yaw = candidate === 'point' ? this.pointYaw(context.input, track.side) : 0
       // Post-stroke hold: the hand drifts 1.5 % A further along the stroke, so the stroke's end is where the arm ends up.
       // That end is the pose cleared against the proxies; the key lies on the cleared path from the ready key, short of it.
       const drift = AMPLITUDE.drift / Math.hypot(...GESTURE_FORMS[candidate].stroke)
+      // A set phrase's beat keeps the theme's palm and lands with its full hand (`SET`).
+      const setBeat = theme !== null && candidate === 'beat'
       track.drift.set(track.ready)
-      writeHandShape(GESTURE_FORMS[candidate].shape, track.drift)
+      writeFormHand(setBeat ? theme : candidate, track.drift)
       // A share of the way as a static mix of the two shapes, not a moment on the closing path (`blendHand`).
       if (second) {
         for (let j = 9; j < 26; j++)
           track.drift[j] += AMPLITUDE.nonDominantHand * (relaxedHand[j] - track.drift[j])
       }
-      if (!keys.solve(track.side, keys.strokeKey(ready, candidate, size + drift, yaw), track.drift, track.ready))
-        continue
+      const strokeKey = keys.strokeKey(ready, candidate, size + drift, yaw)
+      // The path is cleared from where the arm is: a stroke may cut a recovery short, and a recovery now goes to a
+      // floated ready key, so the hold it left and the ready key may both lie off the stroke's straight way.
+      const aimed = setBeat ? { ...strokeKey, pron: ready.pron, wflex: ready.wflex + SET.beatFlex, wdev: ready.wdev } : strokeKey
+      const from = track.state === 'ready' ? track.ready : track.planned
+      const start = track.drift.slice()
+      if (!keys.solve(track.side, aimed, track.drift, from, KEY_HEADROOM)) {
+        track.drift.set(start)
+        if (!keys.solve(track.side, aimed, track.drift, from))
+          continue
+      }
       track.key.set(track.drift)
       for (let j = 2; j <= 5; j++)
         track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
+      // Through the hold the fingers ease part of the way back toward the ready hand; the recovery opens them fully.
+      for (let j = 9; j < 26; j++)
+        track.drift[j] += HOLD_SOFTEN * (track.ready[j] - track.drift[j])
       const seconds = GESTURE_FORMS[candidate].strokeSeconds / tempo
       const [low, high] = GESTURE_FORMS[candidate].hold
       // A second hand draws as well, so the stream's later choices (forms, hands, lags) do not depend on its hold.
@@ -881,18 +1194,23 @@ class GesturePerformer {
     while (this.majors.length && now - this.majors[0] > TIMING.chopWindow)
       this.majors.shift()
     const r = this.random()
+    const pick = this.random()
     const candidates: SpeechGestureForm[] = []
-    if (this.unit.strokes === 0 && r < 0.5)
+    // A themed phrase opens with its theme and then beats in the hand the theme set; chops and points still break in.
+    const theme = this.phrase?.theme ?? 'beat'
+    const themed = theme !== 'beat'
+    if (themed && !this.phraseSet && (theme !== 'frame' || twoHand))
+      candidates.push(theme)
+    if (!themed && this.phraseStrokes === 0 && r < 0.5)
       candidates.push('palm-up')
     if (major && this.majors.length >= 1)
       candidates.push('chop')
     if (input.gaze.kind === 'sustained')
       candidates.push('point')
-    if (twoHand && this.unit.energy > 0.6 && r < 0.5)
+    if (!themed && twoHand && this.unit.drive > 0.6 && r < 0.5)
       candidates.push('frame')
-    const pick = this.random()
-    const press = FORM_SHARE.press + FORM_SHARE.pressEnergy * this.unit.energy
-    candidates.push(pick < FORM_SHARE.palmUp ? 'palm-up' : pick < FORM_SHARE.palmUp + press ? 'press' : 'beat')
+    const press = FORM_SHARE.press + FORM_SHARE.pressEnergy * this.unit.drive
+    candidates.push(themed ? 'beat' : pick < FORM_SHARE.palmUp ? 'palm-up' : pick < FORM_SHARE.palmUp + press ? 'press' : 'beat')
     return candidates.find(form => form === 'beat' || fresh(form)) ?? 'beat'
   }
 
@@ -937,13 +1255,27 @@ class GesturePerformer {
       track.watch = null
   }
 
-  private retract(now: number): void {
-    this.unit.retracting = true
-    for (const side of this.unit.sides) {
+  /**
+   * Lowers the unit's hands. `bySpeech`: speaking ended (or the unit could not go on), so the long refractory follows;
+   * otherwise speech goes on and the next unit may start sooner (`TIMING.pauseBase`). Standing, the weight may move to
+   * the other foot as the hands come down (`SHIFT`).
+   */
+  private retract(context: PerformanceContext, now: number, bySpeech: boolean): void {
+    const unit = this.unit
+    unit.retracting = true
+    unit.bySpeech = bySpeech
+    for (const side of unit.sides) {
       const track = this.tracks[side]
       if (track.active && track.state !== 'retraction' && track.state !== 'form' && track.state !== 'stroke')
         this.retractTrack(track, now)
     }
+    const seconds = Math.max(...unit.sides.map(side => TIMING.retractionScale * this.tracks[side].prepSeconds), TIMING.exit)
+    this.aimBody(context, now, seconds)
+    const standing = context.input.directive.stance === 'stand' && (context.input.gait === null || context.input.gait.mode === 'idle')
+    const shift = this.phrases()
+    const away = context.previous.support === 0 ? (this.phrases() < 0.5 ? 1 : -1) : -Math.sign(context.previous.support)
+    if (standing && shift < SHIFT.share)
+      this.shift = { support: away * (SHIFT.magnitude + SHIFT.driveMagnitude * unit.drive), until: now + SHIFT.seconds }
   }
 
   /**
@@ -961,7 +1293,7 @@ class GesturePerformer {
       // A recovery is already the way back to the ready key: it goes on. Restarted as a new segment of full recovery
       // time, the plan's velocity carried the arm past the key, off the path the key was cleared on.
       if (track.state !== 'recovery')
-        track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension, this.correct())
+        track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(this.unit.drive), this.tension, this.correct())
       track.state = 'retraction'
       track.pending = null
       track.viaReady = true
@@ -997,9 +1329,23 @@ class GesturePerformer {
         this.retractTrack(track, now)
     }
     this.observe(track, context, now)
+    const unit = this.unit
+    const lead = unit.twoHand ? this.dominant : unit.sides[0]
+    // A phrase ends at its lead's hold end. A second hand still in its stroke would leave its feedforward behind if cut
+    // there (a step in its followers' target), so the phrase then plays one stroke more and ends at the next hold.
+    const settled = unit.sides.every(side => this.tracks[side].state === 'hold' || this.tracks[side].state === 'ready')
+    if (track.state === 'hold' && now >= track.holdEnd && unit.active && !unit.retracting && track.side === lead && settled && this.phrase && this.phraseStrokes >= this.phrase.length) {
+      this.nextPhrase(context, now)
+    }
     if (track.state === 'hold' && now >= track.holdEnd) {
+      // The elbow floats within the phrase's place: each recovery returns to a ready key of its own (`FLOAT`).
+      if (this.phrase && unit.active && !unit.retracting) {
+        const float = { out: FLOAT.out * (2 * this.phrases() - 1), up: track.floatSign * FLOAT.up * this.phrases(), forward: 0, swivel: FLOAT.swivel * (2 * this.phrases() - 1) }
+        track.floatSign = -track.floatSign
+        this.placeReady(track, unit.drive, addOffsets(this.placeOffset(this.phrase, track.side, unit.twoHand), float), track.planned.slice())
+      }
       track.state = 'recovery'
-      track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(this.unit.energy), this.tension, track.recoveryCorrected)
+      track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(unit.drive), this.tension, track.recoveryCorrected)
     }
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
       track.state = 'ready'
@@ -1044,6 +1390,8 @@ class GesturePerformer {
     track.weight = 1
     track.exitSeconds = TIMING.exit
     track.dropAt = Infinity
+    // A hand joining at a phrase change may have written its last tick already; its target starts from home this tick.
+    track.write()
   }
 
   private captureHome(track: ArmTrack, context: PerformanceContext): void {
@@ -1086,11 +1434,15 @@ export interface GestureLayerOptions {
 }
 
 /**
- * The co-speech gesture layer (architecture 4a, plan 3.1): one override layer per arm, sharing one planner, so each
- * arm has its own weight ramp and activation. Register both, in this order. With no speech and no requested arm form
- * both stay at weight 0 and the performer's output is bit-identical to having no layers.
+ * The co-speech gesture layers (architecture 4a, plan 3.1): one override layer per arm, sharing one planner, so each
+ * arm has its own weight ramp and activation, and one additive body layer for the phrase's trunk, head and shoulder
+ * hold. Register all three, in this order. With no speech and no requested arm form the arm layers stay at weight 0
+ * and the body layer adds zero, so the performer's output is bit-identical to having no layers.
  *
- * - A unit starts on every utterance (plan D3), on the speaking edge so the preparation ends before the first peak.
+ * - Speech is gestured in phrases (`phrases.ts`): each unit opens a phrase with its own place, theme, hands and length;
+ *   at a phrase's end the hands lower or go on into the next phrase from a new place. A pause in speech, the end of
+ *   speech, or the unit caps lower the hands. A unit starts on an utterance's speaking edge, or later on an onset; a
+ *   calm speaker's only on an emphasis or a loud onset.
  *   Every onset passing the gate's S2 voice-peak rule strokes, at least 0.45 s apart; accepted emphases are major.
  * - The report's `strokeSeq` and `plannedHit` change when the lead arm's wrist reaches its apex on the arm's actual
  *   output (the first speed minimum after the stroke's peak, at most half of it). `plannedHit` is that apex, a tick or
@@ -1098,8 +1450,10 @@ export interface GestureLayerOptions {
  * - `plan.armForm` (hand to chest, thinking hand) is held on the requested arm. Whichever performance holds an arm
  *   keeps it: a speech unit then uses the other hand, and a requested form waits for a unit to retract.
  * - A clip claiming a performing arm takes it within 90 ms; no unit starts on an arm with any ownership.
+ * - Standing, the body layer may ask the posture for a weight shift as a unit lowers its hands (`SHIFT`), unless an
+ *   earlier layer holds the support.
  */
-export function createGestureLayers(options: GestureLayerOptions): readonly [PerformanceLayer, PerformanceLayer] {
+export function createGestureLayers(options: GestureLayerOptions): readonly [PerformanceLayer, PerformanceLayer, PerformanceLayer] {
   const performer = new GesturePerformer(options.traits, options.seed)
   const layer = (side: BodySide): PerformanceLayer => {
     const track = performer.tracks[side]
@@ -1123,5 +1477,18 @@ export function createGestureLayers(options: GestureLayerOptions): readonly [Per
       reset: () => performer.reset(),
     }
   }
-  return [layer('left'), layer('right')]
+  const none = new Float64Array(BODY_CHANNELS.length)
+  const body: PerformanceLayer = {
+    id: 'gesture-body',
+    order: 'gesture',
+    mode: 'additive',
+    mask: none,
+    plan: context => performer.shift && context.plan.support === null ? { support: performer.shift.support } : {},
+    step: (context) => {
+      performer.update(context)
+      return { channels: none, additive: performer.bodyAdditive, weight: 1, sequence: 0 }
+    },
+    reset: () => performer.reset(),
+  }
+  return [layer('left'), layer('right'), body]
 }
