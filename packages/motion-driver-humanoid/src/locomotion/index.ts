@@ -377,19 +377,42 @@ const listLead = 0.3
 /** The pelvis's forward speed swings by this share of the walking speed about its mean, fastest 0.2 step after a heel strike. */
 const speedRipple = 0.2
 const rippleLag = 0.2
-/** The trunk's fore-aft nod at a full stride, most forward `nodLag` step after a heel strike. */
-const trunkNod = 1.2 * radians
+/**
+ * The trunk's fore-aft nod at a full stride, most forward `nodLag` step after a heel strike, and the chest's share of it
+ * `chestNodLag` steps later still: the upper trunk answers the load the pelvis takes rather than pitching with it as one
+ * block. The trunk pitches twice a stride by a few degrees in walking adults (Thorstensson, Nilsson, Carlson and
+ * Zomlefer 1984, Acta Physiol Scand 121:9); at 1.2 degrees in one piece the chest held the same profile through the
+ * stride (independent visual audit, 2026-11-24), so 2 degrees, the chest 0.06 step behind the spine, judged on stills.
+ */
+const trunkNod = 2 * radians
 const nodLag = 0.08
+const chestNodLag = 0.06
+/**
+ * The chest's roll against the pelvis list, as a share of the list, `chestRollLag` steps behind it: the thorax bends
+ * sideways against the pelvis's obliquity in walking (Crosbie, Vachalathiti and Smith 1997, Gait Posture 5:6), so the
+ * spine curves through each step and the shoulders ride nearer level than the hips. The share and lag are judged on
+ * stills: the shoulder line rolled 4 degrees a step against the hips' 9 before (reference rig, walk scenario).
+ */
+const chestCounterShare = 0.35
+const chestRollLag = 0.06
+/**
+ * The head's nod at a full stride, carried by the bounce, `headNodLag` steps behind the trunk's: the head rides the body
+ * a little late instead of holding one pitch, an 80 ms lag at the reference step rate, the head-stabilisation latency
+ * (`headCounterLag`). Judged on stills; it stays under the trunk's own nod.
+ */
+const headNod = 1.5 * radians
+const headNodLag = 0.12
 /** Swing height at a full stride, in leg lengths. */
 const swingHeightShare = 0.13
 /** The performer's head-stabilisation latency (`STEADY_LAG` in `performance/index.ts`), seconds. */
 const headCounterLag = 0.08
 /**
- * The elbow's swing lags the shoulder's by the human walk reference's median, 200.9 ms (bands-v5 walk
- * `chain.upperArm-lowerArm.lagMs` p50, 100STYLE forward walks): at a 1.1 s stride its zero-lag correlation is the
- * reference's own (cos 65 deg = 0.42 against p50 0.44).
+ * The elbow's swing lags the shoulder's, seconds, before the performer's followers add their own lag. The human walk
+ * reference's median is 200.9 ms (bands-v5 walk `chain.upperArm-lowerArm.lagMs` p50, 100STYLE forward walks); at 0.03 s
+ * the posed forearm trailed the upper arm by 67 ms (`walk-form` wrist-lags, reference rig, 2026-11-24) and the arm swung
+ * as one stiff piece. At 0.1 s the forearm still bends as the arm starts back and still opens as it comes forward.
  */
-const elbowLag = 0.03
+const elbowLag = 0.1
 /**
  * The right arm's swing as a share of the left's, a fixed trait: adults walking overground at a comfortable pace swing
  * the left arm more, mean directional arm swing asymmetry index 21.9 (Killeen et al. 2018, Scientific Reports, n = 334,
@@ -403,11 +426,13 @@ const rightSwingShare = 1 - 0.219
 const upperArmLag = 0.0259
 /**
  * The upper arm's angle out from the chest's vertical at the back and at the front of its swing, degrees: walking adults
- * hold it 11 to 14 degrees out behind and 13 to 23 in front (same clips); 14 behind kept the arm off the body colliders. It is a floor on the arm's own hang, which
+ * hold it 11 to 14 degrees out behind and 13 to 23 in front (same clips). 14 and 19 kept the arm off the body colliders
+ * before the body proxies were fitted to the rest hang; 12 and 16 sit inside the human range and keep it off them on ten rigs
+ * (2026-11-24). It is a floor on the arm's own hang, which
  * the performer applies: a rig that already stands with its arms wider keeps its own.
  */
-const armOutBack = 14
-const armOutForward = 19
+const armOutBack = 12
+const armOutForward = 16
 /**
  * The forearm's forward rise (shoulder flexion plus elbow flexion, degrees from hanging) at which the walk starts to ease
  * the elbow's swing, and the rise it never reaches. Walking adults' fast arms carry the hand forward to about chest
@@ -1750,7 +1775,9 @@ class Locomotion {
     // Architecture 5.2's lags, in steps at the current rate, as links of 3a's lag chain: each torso segment follows the
     // one below it, and the head counters the torso 80 ms late.
     const rate = this.stepRate(this.speed)
-    const nod = (this.walkForm ? trunkNod : 0) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag))
+    const nodAt = (lag: number) => (this.walkForm ? trunkNod : 0) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - lag))
+    const nod = nodAt(nodLag)
+    const chestNod = nodAt(nodLag + chestNodLag)
     const [lowerLink, midLink, upperLink, headLink] = this.twistLinks
     const [[lowerShare, lowerLag], [midShare, midLag], [upperShare, upperLag]] = this.walkForm ? torsoTwist : sidestepTorsoTwist
     // The shoulder girdle reaches its counter-rotation before the pelvis reaches its twist, so the chain follows the twist
@@ -1828,11 +1855,11 @@ class Locomotion {
         lowerBodyRoll: this.walkForm ? -pelvisList * this.style.pelvisList * strideScale * this.support(this.phase + listLead) : -3 * radians * strideScale * support,
         lowerBodyYaw,
         upperBodyRoll: 1.5 * radians * strideScale * support + (this.walkForm ? this.turnRoll : 0),
-        chestCounterRoll: 0,
+        chestCounterRoll: this.walkForm ? chestCounterShare * pelvisList * this.style.pelvisList * strideScale * this.support(this.phase + listLead - chestRollLag) : 0,
         spinePitch: 0.6 * (this.lean.y + nod),
-        chestPitch: 0.4 * (this.lean.y + nod),
-        // The head keeps half of a forward-leaning style's lean off its line of sight.
-        neckPitch: this.walkForm ? this.style.head - 0.5 * this.style.lean : 0,
+        chestPitch: 0.4 * (this.lean.y + chestNod),
+        // The head keeps half of a forward-leaning style's lean off its line of sight, and nods a little after the trunk.
+        neckPitch: this.walkForm ? this.style.head - 0.5 * this.style.lean + headNod * Math.sqrt(this.style.bounce) * Math.min(1, strideScale) * Math.cos(2 * Math.PI * (this.phase - nodLag - headNodLag)) : 0,
         chestCounterYaw: -0.5 * lowerBodyYaw,
         twist: { lower, mid, upper, head },
       },
