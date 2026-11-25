@@ -345,7 +345,7 @@ local yaw in radians.
 Under the Natural driver the whole body is posed by the pure performer of
 `@proj-airi/motion-driver-humanoid/performance`, seeded with FNV-1a over the
 model key; no stage maps Natural's head and body channels onto bones in fixed
-shares. The adapter has five parts:
+shares. The adapter has six parts:
 
 - `MMDBodyClock` (`body/clock.ts`): one 120 Hz clock. For each tick the
   `locomotion` stage steps the gait, then the performer with that tick's gait
@@ -369,6 +369,13 @@ shares. The adapter has five parts:
   chain, arm segments, feet and the kinematic arm-test and head bodies, each
   re-expressed in its nearest canonical ancestor's frame. A rig without hips,
   a spine, neck, head, two full arms or a leg length gets no performer.
+- `prepareMMDSecondaryMotion` (`body/secondary-motion.ts`): runs once before
+  `mmd.setPhysics`, in the animation manager and in the headless loader. For
+  each garment of which the author already lets some body collide with some
+  arm body, it lets every arm body collide with every body of the garment and
+  changes no other pair: the arm's bone-following bodies move to an unused
+  collision group. Pinched garments, garments kept apart from every arm
+  body, hair, sleeves and bodies with an empty mask stay as authored.
 - `MMDBodyIntent` (`body/intent.ts`): maps `NaturalBodyIntent`, the gaze goal,
   the director's stance, the gait and clip ownership into
   `BodyPerformanceInput`. Natural head terms are 30 degrees per unit; pep's
