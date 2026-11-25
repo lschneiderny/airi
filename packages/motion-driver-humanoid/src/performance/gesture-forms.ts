@@ -584,16 +584,20 @@ export class GestureKeys {
         pairs.push({ touch: touch.pose, sweep: sweep.pose, change, facing: touch.facing && sweep.facing })
       }
     }
-    pairs.sort((a, b) => Number(b.facing) - Number(a.facing) || a.change - b.change)
-    for (const { touch, sweep } of pairs) {
-      // The arm travels from touch to sweep while still settling on the touch and swings past the sweep as it lands,
-      // so the path keeps the key's headroom and the sweep keeps twice it.
-      if (this.deepest(side, sweep, touch, 2 * KEY_HEADROOM, KEY_HEADROOM) !== null)
-        continue
-      this.tucked.set(`${side}:hair-touch`, touch.slice(2, 9))
-      this.tucked.set(`${side}:hair-sweep`, sweep.slice(2, 9))
-      pose.set((form === 'hair-sweep' ? sweep : touch).subarray(2, 9), 2)
-      return true
+    pairs.sort((a, b) => a.change - b.change)
+    // The arm reaches the sweep from the held touch and swings a little past it as it lands, so among the pairs of
+    // one facing, a sweep that keeps twice the key's headroom goes first; a rig with none keeps the plain headroom.
+    for (const facing of [true, false]) {
+      for (const headroom of [2 * KEY_HEADROOM, KEY_HEADROOM]) {
+        for (const pair of pairs) {
+          if (pair.facing !== facing || this.deepest(side, pair.sweep, pair.touch, headroom) !== null)
+            continue
+          this.tucked.set(`${side}:hair-touch`, pair.touch.slice(2, 9))
+          this.tucked.set(`${side}:hair-sweep`, pair.sweep.slice(2, 9))
+          pose.set((form === 'hair-sweep' ? pair.sweep : pair.touch).subarray(2, 9), 2)
+          return true
+        }
+      }
     }
     return false
   }
@@ -845,11 +849,11 @@ export class GestureKeys {
    * The outward normal at the deepest contact of `pose` or of the path to it from `from`, and whether that sample is on
    * the forearm and hand, or null when all is clear.
    */
-  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0, pathHeadroom = 0): { nx: number, ny: number, nz: number, forearm: boolean } | null {
+  private deepest(side: BodySide, pose: ArmPose, from: ArmPose | null, headroom = 0): { nx: number, ny: number, nz: number, forearm: boolean } | null {
     let best: { depth: number, nx: number, ny: number, nz: number, forearm: boolean } | null = null
     for (let sample = from ? 0 : PATH_SAMPLES; sample <= PATH_SAMPLES; sample++) {
       this.load(side, from ?? pose, pose, sample / PATH_SAMPLES)
-      const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : pathHeadroom)
+      const d = this.collision.measure(side, this.scratch, sample === PATH_SAMPLES ? headroom : 0)
       if (d.depth > 0 && (!best || d.depth > best.depth))
         best = { depth: d.depth, nx: d.nx, ny: d.ny, nz: d.nz, forearm: d.forearm }
     }
