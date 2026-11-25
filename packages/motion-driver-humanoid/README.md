@@ -818,8 +818,9 @@ the arm forms' 80), since pushing the hand barely moves the upper arm off the
 trunk, so a downward chop's elbow flares past the body's side instead of
 leaving the chop unperformed.
 A two-hand stroke's second hand plays the same stroke 40 to 70 ms later at
-0.85 amplitude and holds as long as the lead hand, so both hands recover
-together and every two-hand stroke of a unit keeps that lag.
+0.85 amplitude, its hand shape 0.3 of the way back toward the relaxed hand so
+the two hands do not mirror, and holds as long as the lead hand, so both hands
+recover together and every two-hand stroke of a unit keeps that lag.
 A unit's preparation, recoveries and retraction legs carry an overlapping
 corrective submovement 40 % of the time, as human arm movements do
 (`CORRECTION`): in the plain transition's time, the primary aims 0.72 of the

@@ -99,13 +99,16 @@ const VOICE = { peak: 0.3, prominence: 0.15, quiet: 0.05 } as const
 /**
  * Amplitudes (unit A `amplitude-sources.md`). Minor beats are plan D3's 0.6; the post-stroke drift is 4a's 1.5 % A,
  * unscaled; the torso terms are plan 3.1's 1.2 and 0.8 degrees x gain, scaled 2.6 so a stroke's trunk turn clears the
- * goal-2 speak runs' largest same-run placebo p95 (2.37 degrees) by 1.25 at the lowest speak energy.
+ * goal-2 speak runs' largest same-run placebo p95 (2.37 degrees) by 1.25 at the lowest speak energy. A two-hand
+ * stroke's second hand takes its form's shape `nonDominantHand` of the way back toward the relaxed hand, so the two
+ * hands do not mirror each other exactly: the non-dominant hand is the less articulated one.
  */
 const AMPLITUDE = {
   minor: 0.6,
   walking: 0.6,
   nonDominant: 0.85,
   nonDominantSwivel: 6,
+  nonDominantHand: 0.3,
   drift: 0.015,
   torsoYaw: 1.2 * 2.6 * DEG,
   torsoPitch: 0.8 * 2.6 * DEG,
@@ -166,6 +169,8 @@ interface StrokeAccent {
 }
 
 const pose = (): ArmPose => new Float64Array(26)
+const relaxedHand = pose()
+writeHandShape('relaxed', relaxedHand)
 
 /** Slope and curvature (per unit progress) of a segment's carried-velocity term, h(u) = u - 6u^3 + 8u^4 - 3u^5. */
 const decaySlope = (u: number) => 1 - 18 * u ** 2 + 32 * u ** 3 - 15 * u ** 4
@@ -830,7 +835,8 @@ class GesturePerformer {
       return null
     const energy = this.unit.energy
     const tempo = gestureTempo(energy)
-    const swivel = this.unit.twoHand && track.side !== this.dominant ? AMPLITUDE.nonDominantSwivel : 0
+    const second = this.unit.twoHand && track.side !== this.dominant
+    const swivel = second ? AMPLITUDE.nonDominantSwivel : 0
     for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
       const ready = keys.readyKey(energy, candidate === 'frame' ? 0.1 : 0, swivel)
       const yaw = candidate === 'point' ? this.pointYaw(context.input, track.side) : 0
@@ -839,6 +845,11 @@ class GesturePerformer {
       const drift = AMPLITUDE.drift / Math.hypot(...GESTURE_FORMS[candidate].stroke)
       track.drift.set(track.ready)
       writeHandShape(GESTURE_FORMS[candidate].shape, track.drift)
+      // A share of the way as a static mix of the two shapes, not a moment on the closing path (`blendHand`).
+      if (second) {
+        for (let j = 9; j < 26; j++)
+          track.drift[j] += AMPLITUDE.nonDominantHand * (relaxedHand[j] - track.drift[j])
+      }
       if (!keys.solve(track.side, keys.strokeKey(ready, candidate, size + drift, yaw), track.drift, track.ready))
         continue
       track.key.set(track.drift)

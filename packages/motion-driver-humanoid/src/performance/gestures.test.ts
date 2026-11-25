@@ -443,6 +443,36 @@ describe('co-speech gestures', () => {
     throw new Error('No two-hand stroke in 200 seeds at energy 0.85')
   })
 
+  it('holds a two-hand stroke\'s shape less fully on the second hand, so the hands do not mirror', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const run = perform({ utterances: [utterance(0.3, 0.85, peaks(0.3))] }, 6.5, { seed })
+      const both = strokes(run).find(stroke => stroke.hand === 'both' && stroke.form !== 'beat')
+      if (!both)
+        continue
+      const landed = SIDES.map(side => apexes(run, side).find(time => time >= both.onset + 0.06) ?? Number.NaN)
+      const frame = run.frames[Math.round((Math.max(...landed) + 0.1) / BODY_TICK)]
+      const shape = new Float64Array(26)
+      const relaxed = new Float64Array(26)
+      writeHandShape(GESTURE_FORMS[both.form as keyof typeof GESTURE_FORMS].shape, shape)
+      writeHandShape('relaxed', relaxed)
+      // Each hand's summed finger curl away from the form's shape, in degrees, against the shape's own way from relaxed.
+      const off = SIDES.map((side) => {
+        let sum = 0
+        for (let j = 12; j < 24; j++)
+          sum += Math.abs(frame.channels[ARM_START[side] + j] - shape[j]) / DEG
+        return sum
+      })
+      let span = 0
+      for (let j = 12; j < 24; j++)
+        span += Math.abs(relaxed[j] - shape[j]) / DEG
+      const first = landed[0] < landed[1] ? 0 : 1
+      // The second hand sits a share of the way back toward relaxed; the first holds the shape.
+      expect(off[1 - first] - off[first]).toBeGreaterThan(0.2 * span)
+      return
+    }
+    throw new Error('No two-hand stroke of a shaped form in 200 seeds at energy 0.85')
+  })
+
   it('lands every two-hand stroke of a unit with the second hand 30 to 90 ms behind, its hold as long as the first hand\'s', () => {
     // The gesture-timing rule: the nearest apex of each hand within 200 ms of the stroke's reported apex.
     // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.
