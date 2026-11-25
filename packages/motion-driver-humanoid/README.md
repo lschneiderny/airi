@@ -769,7 +769,11 @@ it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a
 held form comes in smoothly between weights 0.3 and 0.6. `support` is a
 multiple of the emotion's side: happy, sad, angry and surprised centre the
 weight, think and sleepy stand on the side foot and curious half on it, and
-awkward, question, love and flustered retreat onto the far one. The layer's
+awkward, question, love and flustered retreat onto the far one. The shift is
+full from a clear pulse up; below that the support lies between the emotion's
+side and the stance she had when the emotion first asked for it, so a release
+ends on her own stance. (The posture keeps the last planned support until its
+own next shift, 4 to 75 s later.) The layer's
 `modulation` exposes 4c's tempo, amplitude, tension and breath depth for the
 generators, and `sighSeq` counts sighing onsets. The posture's `tempo` and
 `amplitude` and the breath's `depth` and `sigh()` are the hooks the performer feeds from that modulation; each is exact at its neutral
@@ -803,7 +807,8 @@ Natural's 2 s dedupe window flinches at 0.6. A head poke raises the poked side's
 guard, requests the hair touch on that side for 1.4 s where the rig reaches it,
 and lets the upper torso follow 30 % of Natural's head pulse, 90 ms late. A pet
 leans the trunk into the hand, rolls the near shoulder in, drops both shoulders,
-pulls the support to the hand's side above half level, eases the finger curl,
+pulls the support to the hand's side with the give (fully once it is half in)
+and back to the stance she had as the give lets go, eases the finger curl,
 and lets the trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). The lean
 and the shoulders give with a 0.25 s time constant and relax with 0.7 s, so they
 let go slowly after the hand leaves; the shoulder drop saturates a degree below

@@ -87,6 +87,8 @@ export function createReactionLayer(): PerformanceLayer {
   /** The shoulders' give and the hand's side in the body's sign (+1 her right), which outlast the pet level by `PET_GIVE.out`. */
   let give = 0
   let giveSide = 0
+  /** The posture's target when the pet's weight shift began; null while it plans none. */
+  let petResume: number | null = null
   let time = 0
 
   function createPetLinks() {
@@ -238,15 +240,20 @@ export function createReactionLayer(): PerformanceLayer {
     // Every term starts at zero through its own response or level, so the stack adds no entry ramp.
     enterSeconds: 0,
     plan(context: PerformanceContext): PerformancePlan {
-      const { pet } = context.input.events
       const { owned } = context.input
       const plan: { support?: number, armForm?: PerformancePlan['armForm'] } = {}
       // A head poke's hand to the spot; it waits for an arm a clip or gesture holds, as every arm form does.
       if (headTouch && time < headTouch.until && owned[`${headTouch.side}Arm`] <= 0.5)
         plan.armForm = { side: headTouch.side, form: 'hair-touch' }
-      // 4d: the support is pulled toward the petting hand while the pet is more than half in.
-      if (pet.level > 0.5 && pet.x !== 0 && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5)
-        plan.support = pet.x > 0 ? -1 : 1
+      // 4d: the support follows the give toward the petting hand, fully once it is half in, and back to the stance she
+      // had: the posture keeps the last planned support until its own next shift.
+      if (give > 0 && giveSide !== 0 && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
+        petResume ??= context.previous.diagnostics.shiftTarget
+        plan.support = petResume + (Math.sign(giveSide) - petResume) * Math.min(1, 2 * give)
+      }
+      else {
+        petResume = null
+      }
       return plan
     },
     step(context: PerformanceContext) {
@@ -276,6 +283,7 @@ export function createReactionLayer(): PerformanceLayer {
       petMoving = false
       petLinks = createPetLinks()
       give = giveSide = 0
+      petResume = null
       time = 0
       Object.assign(report, { seq: 0, kind: null })
     },
