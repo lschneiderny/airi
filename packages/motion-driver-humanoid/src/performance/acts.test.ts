@@ -213,19 +213,28 @@ describe('the act layer', () => {
     }
   })
 
-  it('rolls one shoulder at a time: the leading clavicle lifts and goes back with its arm trailing, the other follows small and the head only tilts', () => {
+  // Tightened for the stand-life pass: the roll draws a circle, forward, up, back and down, and carries the upper arm
+  // forward and out with it; it was an up-and-back that the front view read as sway.
+  it('rolls one shoulder at a time in a circle that carries the upper arm: the leading clavicle goes forward, up and back with its arm trailing, the other follows small and the head rides along', () => {
     const still = run(chisaTraits, quietInput, START + 4)
     const acted = run(chisaTraits, playing(record('shoulder-roll', 3.2, { count: 1, side: 1 })), START + 4)
     const diff = (channel: Parameters<typeof c>[0]) => acted.channels.map((frame, k) => (frame[c(channel)] - still.channels[k][c(channel)]) / DEG)
     const peak = (values: number[]) => Math.max(...values.map(Math.abs))
     // Side 1 leads with the right shoulder.
-    expect(Math.max(...diff('rightClavElev'))).toBeGreaterThan(10)
+    expect(Math.max(...diff('rightClavElev'))).toBeGreaterThan(16)
     expect(Math.min(...diff('rightClavProt'))).toBeLessThan(-8)
-    expect(peak(diff('leftClavElev'))).toBeLessThan(0.35 * peak(diff('rightClavElev')))
+    const forward = diff('rightClavProt').indexOf(Math.max(...diff('rightClavProt')))
     const back = diff('rightClavProt').indexOf(Math.min(...diff('rightClavProt')))
+    expect(diff('rightClavProt')[forward]).toBeGreaterThan(4)
+    expect(forward).toBeLessThan(back)
+    expect(peak(diff('leftClavElev'))).toBeLessThan(0.35 * peak(diff('rightClavElev')))
+    // The upper arm goes forward and out with the shoulder, then back after it.
+    expect(Math.max(...diff('rightFlex'))).toBeGreaterThan(2)
+    expect(Math.max(...diff('rightAbduct'))).toBeGreaterThan(2)
     const arm = diff('rightFlex').indexOf(Math.min(...diff('rightFlex')))
     expect(diff('rightFlex')[arm]).toBeLessThan(-3)
     expect(arm).toBeGreaterThan(back)
+    expect(peak(diff('headRoll')) + peak(diff('neckRoll'))).toBeGreaterThan(0.5)
     expect(peak(diff('headRoll')) + peak(diff('neckRoll'))).toBeLessThan(3.5)
   })
 
