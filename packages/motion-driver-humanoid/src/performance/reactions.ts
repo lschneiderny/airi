@@ -9,16 +9,20 @@ import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG,
 /** 4d flinch: a step through the 3a response at 3.5 Hz and damping 0.45, released after 0.25 s; it peaks near 80 ms and rings once. */
 const FLINCH = { response: secondOrderCoefficients({ f: 3.5, zeta: 0.45, r: 0 }, BODY_TICK), release: 0.25 }
 /**
- * The poked side's guard: the arm clamps in and the forearm comes across the spot as fast as the trunk recoils, and is
- * held a little longer before it lets go; the far arm follows `delay` later at `share` of it, through a slower response.
+ * The poked side's guard: the forearm comes across the spot as fast as the trunk recoils, and is held a little longer
+ * before it lets go; the far arm follows `delay` later at `share` of it, through a slower response.
  */
 const GUARD = {
   response: secondOrderCoefficients({ f: 3, zeta: 0.6, r: 0 }, BODY_TICK),
   release: 0.6,
   far: { response: secondOrderCoefficients({ f: 1.6, zeta: 0.8, r: 0 }, BODY_TICK), delay: 0.12, share: 0.35 },
 }
-/** Degrees of a body poke's guard on the poked arm, in arm channel order: clavicle elevation, protraction, flexion, abduction, elbow. */
-const BODY_GUARD = [6, 4, 12, -10, 55] as const
+/**
+ * Degrees of a body poke's guard on the poked arm, in arm channel order: clavicle elevation, protraction, flexion,
+ * abduction, elbow. The elbow stays a little out so the forearm crosses in front of the side: a guard that clamped the
+ * arm in (abduction -10) ran it into a slim rig's torso proxy, and the collision projection stopped it in one frame.
+ */
+const BODY_GUARD = [6, 4, 12, 10, 45] as const
 /** A head poke hunches the poked side's shoulder toward the ear, and the far one less. */
 const HEAD_GUARD = [10, 2, 6, 0, 15] as const
 /**
