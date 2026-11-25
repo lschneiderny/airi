@@ -8,47 +8,66 @@ import type { PerformanceContext, PerformanceLayer, PerformancePlan } from './st
 
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { advanceSecondOrder, secondOrderCoefficients, softLimit } from '../dynamics'
+import { advanceSecondOrder, minJerk, secondOrderCoefficients, softLimit } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 import { addHandShape } from './hand-shapes'
 
 /**
- * Architecture 4c posture columns at weight 1: degrees, pelvis in leg lengths. Pitch is forward-positive. `lowerRoll`
- * leans toward the emotion's side, `midYaw` turns away from it, and `sideClavElev` lifts only the side's shoulder.
+ * One arm's posture terms, degrees, in `BODY_CHANNELS` arm order: clavicle elevation and protraction, shoulder flexion
+ * (forward), abduction (out), upper-arm twist (inward, which swings a bent forearm across the body), elbow flexion,
+ * forearm pronation (palm down and back; negative turns the palm forward and up) and wrist flexion (palmar; negative
+ * extends the wrist).
+ */
+export interface BodyEmotionArm {
+  readonly clavElev?: number
+  readonly clavProt?: number
+  readonly flex?: number
+  readonly abduct?: number
+  readonly twist?: number
+  readonly elbow?: number
+  readonly pron?: number
+  readonly wflex?: number
+}
+
+/**
+ * An emotion's posture at weight 1 (a held emotion at full strength): degrees, pelvis in leg lengths. Pitch is
+ * forward-positive. Each roll leans toward the emotion's side and each yaw turns the trunk away from it. `arms` reach
+ * both arms, `sideArm` adds to the side's arm and `farArm` to the other; an arm a held form takes keeps none of them.
+ * Beside a held form the far arm completes the form's pose (the arm folded under the thinking hand, the hand drawn in
+ * under the hand on the heart), so it comes in with the form, over `FORM_COMPANION`, instead of in proportion.
+ * A clear pulse (0.6) shows 0.6 of the row and a strong one (0.9) 0.9 of it, so a weaker emotion is the same pose
+ * smaller (2026-11-24 emotion silhouettes ADR).
  */
 export interface BodyEmotionPosture {
-  /** Total forward trunk pitch of a slump, spread over the three torso controls by `SLUMP_SHARES`. */
+  /** Total forward trunk curl, spread over the three torso controls by `SLUMP_SHARES`. */
   readonly slump?: number
+  readonly hipsPitch?: number
   readonly lowerPitch?: number
   readonly midPitch?: number
+  readonly upperPitch?: number
   readonly lowerRoll?: number
+  readonly midRoll?: number
+  readonly hipsYaw?: number
+  readonly lowerYaw?: number
   readonly midYaw?: number
-  readonly clavElev?: number
-  readonly sideClavElev?: number
-  readonly clavProt?: number
-  readonly elbow?: number
-  readonly abduct?: number
+  readonly upperYaw?: number
   readonly pelvisY?: number
   readonly pelvisZ?: number
+  readonly arms?: BodyEmotionArm
+  readonly sideArm?: BodyEmotionArm
+  readonly farArm?: BodyEmotionArm
 }
 
 export interface BodyEmotionSpec {
   readonly posture: BodyEmotionPosture
-  /**
-   * Multiple of the posture row, from `E/g3/b/amplitude-sources.md`: the size at which the pose held at a clear pulse's
-   * weight (0.6) clears neutral and placebo by 2.4 SD on the FK proxy, capped at 4. Awkward, love and think need more
-   * than 4 and ship at the cap without reaching that bar. Question (6, 1.5 times its capped 4) and surprised (1.52, 1.6
-   * times its 0.95) are enlarged past that source by the owner's decision of 2026-11-12 ("Small poses: Enlarge both"),
-   * sized in `E/g3/e/notes.md`.
-   */
-  readonly scale: number
   /** A hand shape blended in at the emotion's weight (never scaled), or a finger-curl factor. */
   readonly hands: { readonly shape: Extract<HandShape, 'open' | 'fist'>, readonly amount: number, readonly spread?: number } | { readonly curl: number } | null
-  /** Second-order response of the posture weight (3a); null for the baseline. */
+  /** Second-order response of the posture weight (3a): its tempo, anticipation and overshoot. Null for the baseline. */
   readonly response: SecondOrderParameters | null
   /** Share of a held level the posture keeps; surprise is a startle and settles to 35 % while held. */
   readonly heldShare: number
-  readonly support: 'centre' | 'side' | null
+  /** The support it plans while it is the strongest, as a multiple of its side: 0 centres the weight, -1 loads the far foot. */
+  readonly support: number | null
   /** An emotion-requested arm form for the gesture layer, on the emotion's side, while the weight exceeds 0.5. */
   readonly armForm: BodyArmForm | null
   readonly tempo: number
@@ -59,25 +78,45 @@ export interface BodyEmotionSpec {
   readonly sigh: boolean
 }
 
-/** Architecture 4c, the body half of each emotion; Natural keeps the head and face. A missing emotion fails to compile. */
+/**
+ * Architecture 4c's emotions, the body half; Natural keeps the head and face. Each has its own silhouette, so that with
+ * the face hidden no two emotions share a pose: a line of action through the trunk, where the weight sits, how open and
+ * how high the chest and arms are, how asymmetric, and a tempo of arrival, hold and release (2026-11-24 emotion
+ * silhouettes ADR, which replaces 4c's rows and their scales). A missing emotion fails to compile.
+ *
+ * - happy lifts and opens: the chest arches up, the shoulders go back, the arms open forward and out with the palms
+ *   forward, and the pose anticipates, overshoots and quickens the sway, a bounce.
+ * - sad sinks and closes: the trunk curls, the shoulders round forward and down, the knees soften, the arms hang in
+ *   and the hands curl; slow to come, slow to go, with a sigh.
+ * - angry squares up and drops the weight forward: the trunk hinges forward over bent knees with the chest broad, the
+ *   shoulders rise and come forward, the arms stay in by the sides with the elbows bent and held back, the fists set.
+ * - surprised snaps back and up: the trunk arches back over retreating hips, the shoulders jump, both open hands come
+ *   up in front with the wrists back; an underdamped startle that settles to a third.
+ * - think stands on one leg, leans toward the thinking hand at the chin, and folds the other arm across the belly.
+ * - question bends sideways in a C, the weight on the far foot, with a one-sided shrug and palms turned up.
+ * - curious leans in from the hips and tilts, the shoulders and arms drawn back behind her.
+ * - awkward retreats onto the far foot and turns away, hunched, with a self-touch to the hair on the side.
+ * - love softens: the chest opens, the trunk curves toward the hand on the heart, the other hand draws in, and the
+ *   sway slows and widens.
+ * - flustered turns away and guards: the trunk twists away and hunches, the weight retreats, both forearms come up in
+ *   front of the chest with loose fists; quick and jittery.
+ * - sleepy sags and lists: the hips slide forward under a trunk that leans back and curls at the chest, the knees
+ *   soften, the shoulders drop, the arms dangle, and the sway grows slow and wide.
+ */
 export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>> = {
-  happy: { posture: { lowerPitch: -2, midPitch: -2.5, clavElev: 1.5, clavProt: -2, elbow: 6, abduct: 3 }, scale: 2.4, hands: { shape: 'open', amount: 1 }, response: { f: 1.4, zeta: 0.55, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.15, amplitude: 1.2, tension: 0.45, breath: 1.1, sigh: false },
-  // Sad, curious and sleepy carry 4c's lower plus mid pitch as one slump total: 5 + 4, 3.5 + 2 and 4 + 3.
-  sad: { posture: { slump: 9, clavElev: -2, clavProt: 4, elbow: -4, pelvisY: -0.004 }, scale: 2.1, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
-  angry: { posture: { lowerPitch: 2, midPitch: -1, clavElev: 3, clavProt: 3, elbow: 10, abduct: 5 }, scale: 1.9, hands: { shape: 'fist', amount: 0.8 }, response: { f: 2.2, zeta: 0.7, r: -0.25 }, heldShare: 1, support: 'centre', armForm: null, tempo: 1.1, amplitude: 0.75, tension: 0.9, breath: 1.3, sigh: false },
-  think: { posture: { lowerRoll: 2 }, scale: 4, hands: null, response: { f: 0.8, zeta: 0.9, r: 0 }, heldShare: 1, support: 'side', armForm: 'thinking-hand', tempo: 0.8, amplitude: 0.7, tension: 0.4, breath: 1, sigh: false },
-  surprised: { posture: { lowerPitch: -4, midPitch: -3, clavElev: 6, elbow: 15, abduct: 8, pelvisZ: -0.006, pelvisY: 0.003 }, scale: 1.52, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4, zeta: 0.45, r: 0 }, heldShare: 0.35, support: null, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
-  // Awkward and question add a bilateral signature to 4c's one-sided shoulder: a random side cancels in the mean, a
-  // person still shows them on both sides (awkward hunches, question gives the small shrug of uncertainty), at the
-  // note's own shoulder magnitude.
-  awkward: { posture: { sideClavElev: 2, clavElev: 2, midPitch: 1.5, lowerRoll: 1.5, elbow: 5 }, scale: 4, hands: null, response: { f: 1.2, zeta: 0.7, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1.25, amplitude: 0.9, tension: 0.6, breath: 1, sigh: false },
-  question: { posture: { lowerPitch: 2, clavElev: 1.5, sideClavElev: 1.5 }, scale: 6, hands: null, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
-  // 4c's neck +4 and head -4 are left to Natural: the body never adds a second head posture (plan 3.2).
-  curious: { posture: { slump: 5.5, pelvisZ: 0.006 }, scale: 3.6, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: null, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
-  neutral: { posture: {}, scale: 0, hands: null, response: null, heldShare: 0, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.4, breath: 1, sigh: false },
-  love: { posture: { lowerRoll: 2, clavElev: -1, clavProt: 2 }, scale: 4, hands: null, response: { f: 0.7, zeta: 0.85, r: -0.15 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 0.85, amplitude: 0.9, tension: 0.25, breath: 1.1, sigh: false },
-  flustered: { posture: { clavElev: 4, clavProt: 3, elbow: 12, midYaw: 3 }, scale: 1.7, hands: null, response: { f: 2, zeta: 0.5, r: -0.1 }, heldShare: 1, support: null, armForm: 'hand-to-chest', tempo: 1.4, amplitude: 1.05, tension: 0.7, breath: 1.2, sigh: false },
-  sleepy: { posture: { slump: 7, clavElev: -2, pelvisY: -0.006 }, scale: 3.5, hands: null, response: { f: 0.35, zeta: 1, r: 0 }, heldShare: 1, support: null, armForm: null, tempo: 0.55, amplitude: 0.6, tension: 0.1, breath: 1.4, sigh: false },
+  happy: { posture: { lowerPitch: -3, midPitch: -5, upperPitch: -3, pelvisZ: 0.004, arms: { clavElev: 4, clavProt: -5, flex: 12, abduct: 14, twist: -10, elbow: 35, pron: -25, wflex: -8 } }, hands: { shape: 'open', amount: 1 }, response: { f: 1.6, zeta: 0.42, r: -0.3 }, heldShare: 1, support: 0, armForm: null, tempo: 1.2, amplitude: 1.3, tension: 0.45, breath: 1.1, sigh: false },
+  sad: { posture: { slump: 18, hipsPitch: -3, pelvisY: -0.016, pelvisZ: 0.003, arms: { clavElev: -6, clavProt: 10, flex: 4, abduct: -5, twist: 10, elbow: 6 } }, hands: { curl: 1.25 }, response: { f: 0.45, zeta: 1, r: 0 }, heldShare: 1, support: 0, armForm: null, tempo: 0.7, amplitude: 0.6, tension: 0.2, breath: 0.7, sigh: true },
+  angry: { posture: { lowerPitch: 6, midPitch: -1, upperPitch: -2, hipsPitch: 2, pelvisY: -0.008, pelvisZ: 0.006, arms: { clavElev: 7, clavProt: 5, flex: -8, abduct: 6, twist: 10, elbow: 35 } }, hands: { shape: 'fist', amount: 0.9 }, response: { f: 2.2, zeta: 0.7, r: -0.25 }, heldShare: 1, support: 0, armForm: null, tempo: 1.1, amplitude: 0.75, tension: 0.9, breath: 1.3, sigh: false },
+  think: { posture: { lowerRoll: 6, midPitch: 2, pelvisZ: -0.003, farArm: { flex: 16, abduct: -4, twist: 40, elbow: 80 } }, hands: null, response: { f: 0.8, zeta: 0.9, r: 0 }, heldShare: 1, support: 1, armForm: 'thinking-hand', tempo: 0.8, amplitude: 0.7, tension: 0.4, breath: 1, sigh: false },
+  surprised: { posture: { lowerPitch: -5, midPitch: -6, upperPitch: -3, pelvisY: 0.002, pelvisZ: -0.01, arms: { clavElev: 12, clavProt: -2, flex: 12, abduct: 10, twist: -10, elbow: 75, pron: -30, wflex: -30 } }, hands: { shape: 'open', amount: 1, spread: 1.3 }, response: { f: 4.5, zeta: 0.4, r: 0 }, heldShare: 0.35, support: 0, armForm: null, tempo: 1.2, amplitude: 1.1, tension: 0.75, breath: 1.3, sigh: false },
+  awkward: { posture: { midPitch: 3, upperPitch: 2, lowerRoll: -3, lowerYaw: 4, midYaw: 4, pelvisZ: -0.006, arms: { clavElev: 3 }, sideArm: { clavElev: 4 }, farArm: { flex: 8, abduct: -4, elbow: 20 } }, hands: null, response: { f: 1.2, zeta: 0.7, r: -0.2 }, heldShare: 1, support: -1, armForm: 'hair-touch', tempo: 1.25, amplitude: 0.9, tension: 0.6, breath: 1, sigh: false },
+  question: { posture: { lowerPitch: 2, lowerRoll: 7, midRoll: 6, arms: { clavElev: 3, flex: 6, abduct: 2, twist: -15, elbow: 45, pron: -60, wflex: -10 }, sideArm: { clavElev: 5 } }, hands: { shape: 'open', amount: 0.8 }, response: { f: 1.6, zeta: 0.65, r: -0.2 }, heldShare: 1, support: -1, armForm: null, tempo: 1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
+  // Natural keeps the head; the body never adds a second head posture (plan 3.2).
+  curious: { posture: { lowerPitch: 10, midPitch: 5, upperPitch: 1, midRoll: 4, pelvisZ: 0.003, arms: { clavProt: -6, flex: -18, elbow: 15, abduct: 4 } }, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: 0.5, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
+  neutral: { posture: {}, hands: null, response: null, heldShare: 0, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.4, breath: 1, sigh: false },
+  love: { posture: { midPitch: -5, upperPitch: -3, lowerRoll: 4, midRoll: -2, pelvisZ: 0.002, arms: { clavProt: -4 }, farArm: { flex: 20, abduct: -4, twist: 30, elbow: 70, pron: 20 } }, hands: null, response: { f: 0.6, zeta: 0.95, r: -0.1 }, heldShare: 1, support: -1, armForm: 'hand-to-chest', tempo: 0.8, amplitude: 1.4, tension: 0.25, breath: 1.15, sigh: false },
+  flustered: { posture: { midPitch: 4, upperPitch: 2, lowerRoll: -3, hipsYaw: 4, lowerYaw: 5, midYaw: 5, pelvisZ: -0.006, arms: { clavElev: 8, clavProt: 5, flex: 20, abduct: -6, twist: 25, elbow: 105, wflex: 10 } }, hands: { shape: 'fist', amount: 0.8 }, response: { f: 2.4, zeta: 0.5, r: -0.1 }, heldShare: 1, support: -1, armForm: null, tempo: 1.4, amplitude: 1.1, tension: 0.7, breath: 1.2, sigh: false },
+  sleepy: { posture: { slump: 8, lowerPitch: -6, lowerRoll: 8, midRoll: 3, pelvisY: -0.012, pelvisZ: 0.014, arms: { clavElev: -8, abduct: -2, elbow: -6 } }, hands: { curl: 0.85 }, response: { f: 0.35, zeta: 1, r: 0 }, heldShare: 1, support: 1, armForm: null, tempo: 0.55, amplitude: 1.5, tension: 0.1, breath: 1.4, sigh: false },
 }
 
 /**
@@ -95,6 +134,16 @@ const SLUMP_CAP = 20
 
 /** Arm forms engage above "slight", at a clear pulse and above (lead ruling R3). */
 const ARM_FORM_WEIGHT = 0.5
+/**
+ * The weights over which the far arm beside a held form comes in, smoothly, around the form's own threshold: a part
+ * of a contact pose such as an arm folded across the belly reads as an arm held out when it is only partly there.
+ */
+const FORM_COMPANION = [0.3, 0.6] as const
+/**
+ * Natural startles at every poke. A surprised pulse that starts this soon after a poke (seconds) moves its arms and hands
+ * at `arms` of their size, so the reaction layer's guard of the touched side leads instead of both hands presenting.
+ */
+const TOUCH_STARTLE = { within: 0.25, arms: 0.25 }
 /**
  * A held emotion's weight rises with its command, which Natural's held level already eases in, and releases with
  * Natural's held release time constant (`stage-shared` `held.releaseTau`; `motion-driver-natural` `hold.ts` `step`).
@@ -163,6 +212,7 @@ export interface EmotionLayer extends PerformanceLayer {
 }
 
 const c = channelIndex
+const companion = (w: number) => minJerk((w - FORM_COMPANION[0]) / (FORM_COMPANION[1] - FORM_COMPANION[0]))
 const sideIndex = (side: number): BodySide => side < 0 ? 'left' : 'right'
 
 interface Track {
@@ -178,6 +228,8 @@ interface Track {
   episode: Episode | null
   /** The episode weight of the last tick. */
   episodeLevel: number
+  /** The share of the arm and hand terms, set when a pulse starts from rest; a touch startle's is `TOUCH_STARTLE.arms`. */
+  armShare: number
 }
 
 /**
@@ -192,9 +244,11 @@ export function createEmotionLayer(): EmotionLayer {
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
-    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0 }
+    return { emotion, spec, state: { y: 0, v: 0, x: 0 }, coefficients: spec.response && secondOrderCoefficients(spec.response, BODY_TICK), target: 0, commanded: 0, held: 0, side: 1, episode: null, episodeLevel: 0, armShare: 1 }
   })
   let impulseSeq: number | null = null
+  let pokeSeq: number | null = null
+  let pokedAt = Number.NEGATIVE_INFINITY
   let time = 0
   /** The tick's summed slump in radians, spread over the torso after every track has added its share. */
   let slump = 0
@@ -205,6 +259,10 @@ export function createEmotionLayer(): EmotionLayer {
   }
 
   function retarget(input: BodyPerformanceInput) {
+    const poke = input.events.poke?.seq ?? 0
+    if (pokeSeq !== null && poke !== pokeSeq)
+      pokedAt = time
+    pokeSeq = poke
     const impulse = input.events.impulse
     const seq = impulse?.seq ?? 0
     // The first tick only latches: a record that predates this layer (a reset performer) is not replayed.
@@ -227,6 +285,9 @@ export function createEmotionLayer(): EmotionLayer {
         }
         if (track.commanded === 0)
           track.side = impulse.side
+        // Only from rest, so a share never changes under a held pose.
+        if (Math.abs(track.state.y) < REST)
+          track.armShare = track.emotion === 'surprised' && time - pokedAt <= TOUCH_STARTLE.within ? TOUCH_STARTLE.arms : 1
         // Natural's held face releases the previous emotion when the hold switches; the body lets go of it from where
         // it stands, with the same release.
         for (const other of tracks) {
@@ -287,25 +348,46 @@ export function createEmotionLayer(): EmotionLayer {
     }
   }
 
+  function addArm(start: number, k: number, arm: BodyEmotionArm | undefined) {
+    if (!arm)
+      return
+    channels[start] += k * (arm.clavElev ?? 0)
+    channels[start + 1] += k * (arm.clavProt ?? 0)
+    channels[start + 2] += k * (arm.flex ?? 0)
+    channels[start + 3] += k * (arm.abduct ?? 0)
+    channels[start + 4] += k * (arm.twist ?? 0)
+    channels[start + 5] += k * (arm.elbow ?? 0)
+    channels[start + 6] += k * (arm.pron ?? 0)
+    channels[start + 7] += k * (arm.wflex ?? 0)
+  }
+
   function addPosture(track: Track, rest: Float32Array) {
     const w = track.state.y
-    const { posture: p, scale, hands } = track.spec
-    const k = w * scale * DEG
+    const { posture: p, hands } = track.spec
+    const k = w * DEG
     const s = track.side
     slump += k * (p.slump ?? 0)
+    channels[c('hipsPitch')] += k * (p.hipsPitch ?? 0)
     channels[c('lowerPitch')] += k * (p.lowerPitch ?? 0)
     channels[c('midPitch')] += k * (p.midPitch ?? 0)
+    channels[c('upperPitch')] += k * (p.upperPitch ?? 0)
     channels[c('lowerRoll')] += k * s * (p.lowerRoll ?? 0)
+    channels[c('midRoll')] += k * s * (p.midRoll ?? 0)
+    channels[c('hipsYaw')] += k * s * (p.hipsYaw ?? 0)
+    channels[c('lowerYaw')] += k * s * (p.lowerYaw ?? 0)
     channels[c('midYaw')] += k * s * (p.midYaw ?? 0)
-    channels[c('pelvisY')] += w * scale * (p.pelvisY ?? 0)
-    channels[c('pelvisZ')] += w * scale * (p.pelvisZ ?? 0)
-    const hand = Math.max(0, Math.min(1, w))
+    channels[c('upperYaw')] += k * s * (p.upperYaw ?? 0)
+    channels[c('pelvisY')] += w * (p.pelvisY ?? 0)
+    channels[c('pelvisZ')] += w * (p.pelvisZ ?? 0)
+    const hand = Math.max(0, Math.min(1, w)) * track.armShare
+    const arms = k * track.armShare
     for (const arm of SIDES) {
       const start = ARM_START[arm]
-      channels[start] += k * ((p.clavElev ?? 0) + (arm === sideIndex(s) ? p.sideClavElev ?? 0 : 0))
-      channels[start + 1] += k * (p.clavProt ?? 0)
-      channels[start + 3] += k * (p.abduct ?? 0)
-      channels[start + 5] += k * (p.elbow ?? 0)
+      addArm(start, arms, p.arms)
+      if (arm === sideIndex(s))
+        addArm(start, arms, p.sideArm)
+      else
+        addArm(start, track.spec.armForm ? companion(w) * DEG : arms, p.farArm)
       if (!hands)
         continue
       if ('curl' in hands) {
@@ -334,13 +416,14 @@ export function createEmotionLayer(): EmotionLayer {
       let armForm: PerformancePlan['armForm']
       let strongest = 0
       for (const track of tracks) {
-        if (track.spec.support && track.commanded > strongest && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
+        if (track.spec.support !== null && track.commanded > strongest && owned.lowerBody <= 0.5 && owned.upperBody <= 0.5) {
           strongest = track.commanded
-          support = track.spec.support === 'centre' ? 0 : track.side
+          support = track.spec.support * track.side
         }
         const form = track.spec.armForm
         const side = sideIndex(track.side)
-        if (form && track.commanded > ARM_FORM_WEIGHT && owned[`${side}Arm`] <= 0.5)
+        // The hair touch needs a rig that reaches it; a key that never solves would be asked for on every tick.
+        if (form && track.commanded > ARM_FORM_WEIGHT && owned[`${side}Arm`] <= 0.5 && (form !== 'hair-touch' || context.capabilities.hairTouch))
           armForm = { side, form }
       }
       return { ...(support === undefined ? {} : { support }), ...(armForm === undefined ? {} : { armForm }) }
@@ -391,10 +474,12 @@ export function createEmotionLayer(): EmotionLayer {
         track.state.y = track.state.v = track.state.x = 0
         track.target = track.commanded = track.held = track.episodeLevel = 0
         track.episode = null
+        track.armShare = 1
       }
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
-      impulseSeq = null
+      impulseSeq = pokeSeq = null
+      pokedAt = Number.NEGATIVE_INFINITY
       time = 0
     },
   }
