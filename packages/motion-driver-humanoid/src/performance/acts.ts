@@ -594,8 +594,11 @@ export function createActLayer(): PerformanceLayer {
         channels[c('pelvisZ')] += w * forward
         // 5.1: the feet follow onto their balls as the pelvis goes forward over them, by the lean of a leg of length
         // L that carries the pelvis `forward` leg lengths ahead (asin(0.012), 0.7 deg at the peak); going back the
-        // soles stay flat, because the performer's foot pitch output turns a foot about its ball only.
-        const pitch = -Math.asin(Math.max(0, forward))
+        // soles stay flat, because the performer's foot pitch output turns a foot about its ball only. The lean is
+        // squared on its way to the peak, so the soles set down flat with no pitch left moving: the plain lean reached
+        // zero at full speed and the foot stage's ball pivot handed over to the flat one mid-motion.
+        const lean = Math.max(0, forward)
+        const pitch = -Math.asin(lean * lean / CLASP.rock)
         channels[c('leftFootPitch')] += w * pitch
         channels[c('rightFootPitch')] += w * pitch
         break
