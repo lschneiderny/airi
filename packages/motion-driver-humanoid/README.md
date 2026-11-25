@@ -5,6 +5,8 @@ deterministic motion algorithms for reusable character motion drivers.
 
 ## Entry points
 
+- `./body-model`: `buildBodyModel`, which fits her hard volumes, soft garments, limb radii and rest arm clearance to a
+  skinned mesh in its bind pose, and the `BodyMeshSource` and `BodyModel` contracts.
 - `./clip-mask`: `buildClipBoneMask`, which reports which bone groups a clip animates.
 - `./clip-meta`: `deriveClipMeta`, `effectiveLayer` and `slugLabel`, which turn a clip bone mask, duration and name into a layer, kind, loop flag and label.
 - `./director` exports the pure stance, locomotion, clip, and look-request director. It also issues
@@ -939,6 +941,9 @@ trunk sways, so the gesture layer's path from that arm starts clear. A proxy
 whose scale reaches 0 is left out, since the arm's own sampling radius round
 its centre would still repel the arm. The MMD adapter scales its own copies of
 the bodies by the same factors and leaves out the same ones.
+`new BodyCollision(traits, rest, false)` keeps every proxy as given, for a
+caller that asks where an arm clears a set of volumes, as the
+[body model](#body-model)'s rest solve does.
 Corrections persist and decay. When gradient steps leave more than half the
 margin (0.015 of a segment), a continuous guard weight moves the arm toward
 the guard pose: it follows the smallest clearing weight (16 samples, because
@@ -973,6 +978,87 @@ start a head turn; slow pursuit beyond it recruits the head with a gentle
 creep. These resolve the note's unspecified upper roll and its conflicting
 small-shift creep/zero-head descriptions. All tuning remains private; tests
 assert signs, ordering, bounds, clearance, replay and response shape.
+
+## Body model
+
+```ts
+import { buildBodyModel } from '@proj-airi/motion-driver-humanoid/body-model'
+
+const model = buildBodyModel(source)
+const traits: BodyRigTraits = { ...skeleton, colliders: [...model.volumes, ...headBodies] }
+```
+
+`buildBodyModel` tells every part of the character where her body is. An adapter fills a `BodyMeshSource` once at
+load: the bind-pose vertex positions, four bone indices and weights a vertex, the triangles, each bone's parent and
+bind position, the canonical bones (hips, one to four spine bones, neck, head, both arms, both legs), and the simulated bones, each
+with its mobility and whether the simulator collides it with an arm. The source names no renderer type. The build is
+pure and deterministic.
+
+| Part | Meaning |
+| --- | --- |
+| `volumes` | Hard obstacles as `BodyCollider`s on the hips and the spine bones, from the hips to the shoulders, and on the thighs: her body, her rigid clothing, and flesh on simulated bones. A thigh volume keeps the hips as its bone and carries `leg`, so the corrector turns it with the gait. The neck and the head have none (rule 4). |
+| `garments` | Simulated geometry that hangs from the hips or the spine, one entry a piece: its bones, the canonical bone it hangs from, its rest shape as colliders, the mobility of most of its cloth, and `pinched`. |
+| `limbs` | Each arm segment's measured radius as a share of its length. |
+| `rest` | Per arm: the rest abduction in radians, and what limited it: a volume that had to shrink, by its index, or by a null index when the solve dropped it; or a garment the arm still overlaps. |
+| `report` | Vertex counts by kind, and every volume that was narrowed, shrunk or dropped with its reason. |
+
+The rules, in the order the build applies them:
+
+1. No volume, garment shape or radius of the model comes from the author's physics rig: the model reads no rigid
+   body's shape, size or rotation. An adapter reads five things from the rig of the secondary-motion simulator for
+   it, and nothing else: which bones are simulated; each joint's limits and its position; the centre of each
+   simulated body; and the collision groups and masks. The limits act on the distance from the joint to the body's
+   centre, which gives the bone's `mobility`, so that centre is the lever of rule 3. The collision filter says only
+   which simulated bones collide with an arm. The model ends at the shoulders (rule 4), so the head and the neck are
+   the one place where a host still hands the performer bodies of its own, which may be the author's.
+2. A vertex belongs to the arm when an arm bone weighs on it, or when it lies within 1.25 measured limb radii of the
+   bind-pose arm from the middle of the upper arm down. Arm vertices never form an obstacle.
+3. A simulated bone is flesh when its chain is at most two bones deep and moves at most half the shoulder span. Its
+   vertices join the hard volumes. A deeper chain is a garment whatever its mobility, because rigs that lock every
+   cloth joint still let the cloth trail on soft joints. A garment is one piece: chains that hang from the same
+   unsimulated bone and that the mesh or the skeleton ties. Under the hips or a spine bone, which carry everything,
+   two chains are one garment when a triangle has corners on both, where a corner sits on the chain of its vertex's
+   dominant bone. The strips of a skirt are then one garment, and a bow that hangs from the same bone is another, so
+   a host that lets the arms push the skirt does not push the bow with it, and each has a rest shape, a mobility and
+   a `pinched` flag of its own. Under any other bone all the chains are one garment, because the author gave them a
+   bone of their own. Chains under different bones never join. A chain that carries no vertex is a garment without a
+   rest shape.
+4. The trunk is fitted in height slices below the shoulders, one capsule a slice, as wide and as deep as the slice, on
+   the canonical bone that carries most of it. The capsule lies along the longer of the two extents, so a slice that
+   is deeper than it is wide keeps its depth. Each thigh gets a capsule along the bone. The neck and the head get no
+   volume. The hands go to the head for the thinking hand, the hair tuck and the covered mouth, which need the
+   skull, the jaw and the face; one sphere on the head serves none of them (the body model ADR has the
+   measurements), and a head fitted to the mesh is a later reader of the model. Until then a host adds the bodies it
+   has for the head and the neck after the model's volumes.
+5. Beside the upper arm, from the shoulders down to an upper arm's length below them, a hard volume ends inside the
+   shoulder joints. An upper arm that hangs or rises straight from its joint therefore clears the trunk, and neither
+   a wide shoulder shell nor the rim of an armhole holds or lifts an arm. A garment's rest shape is narrowed down to
+   the armpit only, because a coat does hang outside the shoulder joints.
+6. The resting arm clears the hard volumes: the solve takes the smallest abduction from the default 12 degrees up to
+   22 at which the performer's own arm test (`BodyCollision.measure`) clears them. A volume no such abduction clears
+   shrinks until one does, and `report.adjustments` names it.
+7. Garments add up to `REST_GARMENT_CLEARANCE_MAX` (6 degrees) to bring the arm's capsule clear of their rest
+   shapes, and clear of a free-swinging garment by 3 degrees more, because loose cloth settles and sways outside its
+   bind shape. When no abduction in that range clears them, the arm settles at most 4 degrees out, where it overlaps
+   them least. An arm whose centreline still lies inside a free-swinging garment then opens, to at most 28 degrees,
+   to the smallest abduction that takes it out of them all, or else leaves it inside the fewest. The garments are
+   tested together, as in rule 8, so the arm does not open out of one into another when an abduction clears both.
+   Where none does, and where rule 8 opens the arm for a colliding garment, it can end inside one. A free-swinging garment that
+   still holds the centreline of either arm at its final rest, after rule 8, is `pinched`; a host must not let it
+   collide with the arms. A garment with locked joints (mobility of 0.05 of the shoulder span or less) is never
+   pinched.
+8. A garment the simulator collides with the arm is a body to the arm. When the arm's capsule still overlaps the rest
+   shape of one and the arm's centreline is out of it, the arm opens to the smallest abduction that clears every such
+   garment with the clearance a hard volume gets, up to 30 degrees, the widest rest the runtime hang solver before
+   the body model allowed. The garments are tested together, so the arm never opens past one of them into another,
+   and the result does not depend on their order. An arm that leans on the edge of such a garment keeps it moving,
+   because the simulator pushes the garment off the arm on every step. A garment that holds the arm's centreline is
+   left out of the test, because the simulator drapes its cloth around the arm; the arm can still open to clear the
+   others. An arm that no abduction up to 30 degrees clears of all of them stays where rule 7 left it.
+
+A host hands `volumes` to the performer as the first entries of `BodyRigTraits.colliders`, before the bodies it has
+for the head and the neck, so the corrector keeps the arms clear of them. The rest solve measures the volumes unfitted.
+The head, the neck, hair, sleeves, what hangs from a leg, the shins and the feet are not fitted.
 
 ## Checks
 

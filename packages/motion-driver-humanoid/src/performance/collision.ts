@@ -164,7 +164,12 @@ export class BodyCollision {
   /** The depth each contact may keep in this projection (`project`), by contact id; NaN until the contact is first seen. */
   private readonly keep: Float64Array
 
-  constructor(private readonly traits: BodyRigTraits, rest: Float32Array) {
+  /**
+   * `rest` is the rig's rest pose (the performer's `restChannels`), which every proxy is fitted to (`fit`). With `fitted`
+   * false every proxy stays as given: a caller that asks where an arm clears a set of volumes, as the body model's rest
+   * solve does, must measure them whole.
+   */
+  constructor(private readonly traits: BodyRigTraits, rest: Float32Array, fitted = true) {
     this.skeleton = new BodySkeleton(traits)
     const skin = (side: BodySide) => {
       const { upperArm, forearm } = traits.arms[side]
@@ -177,7 +182,7 @@ export class BodyCollision {
     this.contacts = { count: 0, id: new Int32Array(slots), depth: new Float64Array(slots), at: new Float64Array(3 * slots), normal: new Float64Array(3 * slots), forearm: new Uint8Array(slots) }
     this.keep = new Float64Array(slots)
     this.prepare(rest)
-    this.fit = this.colliders.map((_, i) => this.fitToRest(i, rest))
+    this.fit = this.colliders.map((_, i) => fitted ? this.fitToRest(i, rest) : 1)
     // A proxy fitted to nothing would still repel an arm sample within the arm's own radius of its centre: leave it
     // out of every query. `fit` keeps one entry per rig proxy, so the host's copies stay aligned with it.
     for (let i = this.colliders.length - 1; i >= 0; i--) {
