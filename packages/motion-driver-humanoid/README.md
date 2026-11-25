@@ -329,7 +329,13 @@ layer keeps her on the new leg, so over a long rest she stands on each in turn. 
 two; a rig that cannot reach the anchor keeps them hanging. The rest's
 tension is 4f's 0.2 and the doze's 0.1 on 4c's K scale, read as an offset from
 its neutral 0.40 (`followerK`, below), so her arms hang looser while she rests
-and looser still while she dozes.
+and looser still while she dozes. So that a rest or a doze reads apart from
+standing in one still, both round the chest and bring the shoulders forward.
+The rest also drops the free hip further and lifts the free heel. The doze
+droops the head between nods and sinks the pelvis a further 0.002 L, and each
+nod's sink takes the chest and the knees with it. The settling rolls down
+from the pelvis through the chest to a later head dip. On waking, the trunk
+lets go within 0.8 s, before the head and gaze come back.
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,

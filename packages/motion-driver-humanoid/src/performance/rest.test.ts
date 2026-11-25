@@ -87,10 +87,46 @@ describe('the rest layer', () => {
     const still = run(quietInput, 40)
     const doze = run(resting('doze', 2, 40, quietInput), 40)
     const head = doze.map((frame, k) => (frame.channels[c('headPitch')] + frame.channels[c('neckPitch')] - still[k].channels[c('headPitch')] - still[k].channels[c('neckPitch')]) / DEG)
-    // The first sink starts after the 1.5 s entry and reaches 4f's 18 degrees within its 4 to 9 s, then recovers.
+    // The first sink starts after the 1.5 s entry and reaches 4f's 18 degrees on the 5 degree droop within its 4 to
+    // 9 s, then recovers to the droop past its 3 degree overshoot.
     const first = head.slice(at(3.5), at(13))
-    expect(Math.max(...first)).toBeGreaterThan(15)
-    expect(Math.min(...head.slice(at(13), at(40)))).toBeLessThan(2)
-    expect((doze[at(20)].channels[c('pelvisY')] - still[at(20)].channels[c('pelvisY')])).toBeCloseTo(-0.012, 3)
+    expect(Math.max(...first)).toBeGreaterThan(20)
+    expect(Math.min(...head.slice(at(13), at(40)))).toBeLessThan(5)
+    expect(Math.min(...head.slice(at(13), at(40)))).toBeGreaterThan(0)
+    // The pelvis drops 4f's 0.012 L and the stand-life pass's 0.002 L, and further while a nod sinks (the knees give).
+    // Re-pinned from 4f's -0.012: the doze sinks on softer knees so it reads apart from standing (stand-life rank 8).
+    const pelvis = doze.map((frame, k) => frame.channels[c('pelvisY')] - still[k].channels[c('pelvisY')])
+    expect(Math.max(...pelvis.slice(at(13), at(40)))).toBeCloseTo(-0.014, 3)
+  })
+
+  it('takes the knees and chest down with each doze nod and straightens them on its catch', () => {
+    const still = run(quietInput, 40)
+    const doze = run(resting('doze', 2, 40, quietInput), 40)
+    const delta = (k: number, channel: Parameters<typeof c>[0]) => doze[k].channels[c(channel)] - still[k].channels[c(channel)]
+    const head = doze.map((_, k) => delta(k, 'headPitch'))
+    const deepest = at(3.5) + head.slice(at(3.5), at(13)).indexOf(Math.max(...head.slice(at(3.5), at(13))))
+    const after = deepest + at(2)
+    // At the bottom of the nod the pelvis is 0.005 L lower and the chest rounder than once the head has caught itself.
+    expect(delta(after, 'pelvisY') - delta(deepest, 'pelvisY')).toBeGreaterThan(0.005)
+    expect((delta(deepest, 'upperPitch') - delta(after, 'upperPitch')) / DEG).toBeGreaterThan(1)
+  })
+
+  it('settles a rest from the pelvis up, the head last, and on waking lifts the chest before the head', () => {
+    const still = run(quietInput, 30)
+    const rest = run(resting('rest', 2, 20, quietInput), 30)
+    const delta = (channel: Parameters<typeof c>[0]) => rest.map((frame, k) => frame.channels[c(channel)] - still[k].channels[c(channel)])
+    const parts = { pelvis: delta('lowerPitch'), chest: delta('midPitch'), head: delta('headPitch') }
+    const crossing = (values: number[], from: number, rising: boolean) => {
+      const half = values[at(15)] / 2
+      return (values.slice(from).findIndex(v => rising ? v >= half : v <= half)) * BODY_TICK
+    }
+    const entry = Object.fromEntries(Object.entries(parts).map(([part, values]) => [part, crossing(values, at(2), true)]))
+    expect(entry.pelvis).toBeLessThan(entry.chest - 0.15)
+    expect(entry.chest).toBeLessThan(entry.head - 0.15)
+    const wake = { chest: crossing(parts.chest, at(20), false), head: crossing(parts.head, at(20), false) }
+    expect(wake.chest).toBeLessThan(wake.head - 0.2)
+    // Settled, the chest is rounded and the shoulders forward, so a still tells her from standing.
+    expect((parts.chest[at(15)] + delta('upperPitch')[at(15)]) / DEG).toBeGreaterThan(3)
+    expect(delta('leftClavProt')[at(15)] / DEG).toBeGreaterThan(2)
   })
 })

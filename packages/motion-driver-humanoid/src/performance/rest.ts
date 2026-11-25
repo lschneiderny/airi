@@ -5,6 +5,7 @@ import { minJerk } from '../dynamics'
 import { deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
 import { ARM_START, BODY_CHANNELS, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
+import { unloaded } from './posture'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -29,6 +30,45 @@ const c = channelIndex
 const REST = { ramp: 1.5, lower: 3, clavicle: -2, head: 3, breath: 1.3, sway: 1.4, tempo: 0.6, lateralGain: 1.25, clasped: 0.5, tension: 0.2 } as const
 const DOZE = { lower: 3, pelvis: 0.012, sink: [4, 9], head: 18, recovery: 0.35, overshoot: 3, settle: 1.3, pause: [9, 25], breath: 1.5, sway: 1.5, tempo: 0.5, tension: 0.1 } as const
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
+/**
+ * What the stand-life pass adds to 4f, so a rest or a doze reads apart from standing in one still (stand-life audit
+ * rank 8). Both round the chest (`mid` and `upper` pitch, degrees) and bring the shoulders forward (`protraction`); the
+ * rest drops the free hip a quarter further, as its lateral gain takes the pelvis (`hipRoll`, a share of the
+ * posture's 4.5 deg), and lifts the free heel further (`heel`, degrees on the posture's); the doze droops the head
+ * between nods (`head`), sinks the pelvis further on softer knees (`pelvis`, leg lengths on 4f's) and its knees give
+ * with each sink and catch it (`nodPelvis`, leg lengths at the full sink).
+ * The sizes are the layer's: the smallest that the default camera tells from a standing one-leg stance.
+ */
+const SETTLED = {
+  rest: { mid: 2, upper: 1.5, protraction: 3, hipRoll: 0.25, heel: 3 },
+  doze: { mid: 2.5, upper: 2, protraction: 4, head: 5, pelvis: 0.002, nodPelvis: 0.006, nodUpper: 0.08 },
+} as const
+/**
+ * The order of the settling: each part's share of the pose rises over `[delay, seconds]` from the start of a rest or
+ * doze, under the stack's 1.5 s ramp, so the pelvis settles first, the chest rolls down after it and the head dips
+ * last. On waking the trunk lets go over `wake` seconds, faster than the stack's ramp that the head keeps, so her chest
+ * is up before her head and gaze have come back. A doze entered from a rest starts settled.
+ */
+const STAGES = { pelvis: [0, 0.8], chest: [0.3, 1.2], head: [0.7, 1.5], wake: 0.8 } as const
+type Stage = 'pelvis' | 'chest' | 'head'
+const STAGE_OF: Partial<Record<number, Stage>> = {}
+for (const channel of ['pelvisX', 'pelvisY', 'pelvisZ', 'hipsRoll', 'lowerPitch', 'leftFootPitch', 'rightFootPitch'] as const)
+  STAGE_OF[c(channel)] = 'pelvis'
+for (const channel of ['midPitch', 'upperPitch', 'leftClavElev', 'leftClavProt', 'rightClavElev', 'rightClavProt'] as const)
+  STAGE_OF[c(channel)] = 'chest'
+for (const channel of ['neckPitch', 'headPitch'] as const)
+  STAGE_OF[c(channel)] = 'head'
+
+/** The share of `stage` shown `age` seconds into a rest (`STAGES`); 1 for a layer that started settled. */
+export function settledShare(stage: Stage, age: number): number {
+  const [delay, seconds] = STAGES[stage]
+  return minJerk(Math.max(0, Math.min(1, (age - delay) / seconds)))
+}
+
+/** The trunk's share left `since` seconds after the wake (`STAGES.wake`); the head keeps the stack's ramp. */
+export function wakingTrunkShare(since: number): number {
+  return 1 - minJerk(Math.max(0, Math.min(1, since / STAGES.wake)))
+}
 
 export interface RestLayerOptions {
   readonly seed: number
@@ -53,6 +93,8 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let episodes = 0
   let side = 1
   let clasped = false
+  /** Whether this episode settles in stages (`STAGES`): not when it follows another one still shown. */
+  let staged = true
   let nods: { at: number, sink: number }[] = []
   let tick = -1
 
@@ -69,6 +111,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
         // Each rest or doze episode draws its own side or nod times from a stream of its own count.
         episodes++
         const random = createRandomStream(deriveSeed(options.seed, 300 + episodes))
+        staged = shown === null
         shown = rest
         since = time
         side = random() < 0.5 ? -1 : 1
@@ -87,16 +130,29 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       return
     const age = time - since
     const free = (group: 'lowerBody' | 'upperBody') => input.owned[group] <= 0.5
+    const { legIk } = context.traits
+    const support = context.previous.support
     if (shown === 'rest') {
+      const settled = SETTLED.rest
       channels[c('lowerPitch')] = REST.lower * DEG
+      channels[c('midPitch')] = settled.mid * DEG
+      channels[c('upperPitch')] = settled.upper * DEG
       channels[c('headPitch')] = 0.65 * REST.head * DEG
       channels[c('neckPitch')] = 0.35 * REST.head * DEG
-      for (const arm of SIDES)
+      for (const arm of SIDES) {
         channels[ARM_START[arm]] = REST.clavicle * DEG
-      // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter.
-      const { feet, legIk, legLength } = context.traits
-      if (legIk)
-        channels[c('pelvisX')] = -(REST.lateralGain - 1) * 0.38 * Math.abs(feet.left.ankle.x - feet.right.ankle.x) / (2 * legLength) * context.previous.support
+        channels[ARM_START[arm] + 1] = settled.protraction * DEG
+      }
+      // The posture's lateral gain (`posture.ts`), scaled to 4f's 1.25 by the remaining quarter, and its free-hip drop
+      // and free heel with it.
+      const { feet, legLength } = context.traits
+      if (legIk) {
+        channels[c('pelvisX')] = -(REST.lateralGain - 1) * 0.38 * Math.abs(feet.left.ankle.x - feet.right.ankle.x) / (2 * legLength) * support
+        channels[c('hipsRoll')] = -settled.hipRoll * 4.5 * DEG * support
+        // Positive support stands her on the right foot, so the left heel lifts, shaped as the posture's free heel.
+        channels[c('leftFootPitch')] = -settled.heel * DEG * unloaded(support)
+        channels[c('rightFootPitch')] = -settled.heel * DEG * unloaded(-support)
+      }
       if (state === 'rest' && free('lowerBody') && free('upperBody'))
         plan.support = side
       if (state === 'rest' && clasped)
@@ -119,19 +175,30 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
         else
           pitch = -DOZE.overshoot * (1 - minJerk((local - nod.sink - DOZE.recovery) / DOZE.settle))
       }
-      channels[c('headPitch')] = NOD.head * pitch * DEG
-      channels[c('neckPitch')] = NOD.neck * pitch * DEG
-      channels[c('midPitch')] = NOD.mid * pitch * DEG
+      const settled = SETTLED.doze
+      // The head rests forward between nods; a nod's sink takes the chest and the knees with it, and its catch
+      // straightens them, so the knees do not hold one bend through a long nod.
+      const sunk = Math.max(0, pitch) / DOZE.head
+      channels[c('headPitch')] = NOD.head * (pitch + settled.head) * DEG
+      channels[c('neckPitch')] = NOD.neck * (pitch + settled.head) * DEG
+      channels[c('midPitch')] = (NOD.mid * pitch + settled.mid) * DEG
+      channels[c('upperPitch')] = (settled.nodUpper * pitch + settled.upper) * DEG
       channels[c('lowerPitch')] = DOZE.lower * DEG
-      channels[c('pelvisY')] = -DOZE.pelvis
+      channels[c('pelvisY')] = -DOZE.pelvis - settled.pelvis - (legIk ? settled.nodPelvis * sunk : 0)
+      for (const arm of SIDES)
+        channels[ARM_START[arm] + 1] = settled.protraction * DEG
       modulation.tempo = DOZE.tempo
       modulation.amplitude = DOZE.sway
       modulation.breath = DOZE.breath
       modulation.followerK = DOZE.tension
     }
     output.modulation = modulation
-    for (let channel = 0; channel < channels.length; channel++)
-      channels[channel] *= freeShare(input.owned[CHANNEL_GROUPS[channel]])
+    const waking = state === 'none' ? wakingTrunkShare(time - endedAt) : 1
+    for (let channel = 0; channel < channels.length; channel++) {
+      const stage = STAGE_OF[channel]
+      const share = stage === undefined ? 1 : (staged ? settledShare(stage, age) : 1) * (stage === 'head' ? 1 : waking)
+      channels[channel] *= share * freeShare(input.owned[CHANNEL_GROUPS[channel]])
+    }
   }
 
   return {
@@ -159,6 +226,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
     reset() {
       state = 'none'
       shown = null
+      staged = true
       episodes = 0
       clasped = false
       nods = []
