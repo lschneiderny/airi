@@ -946,7 +946,7 @@ and adds a `clearance` block to `summary.json`. The module is
 classes each triangle by the dominant bones of its corners: upper or lower body,
 rigid or simulated cloth (two corners on bones that a simulated rigid body
 drives), head, or hair. A triangle leaves the test when the arm wears it: when
-a corner carries arm-bone weight, when a corner lies within 1.25 measured
+a corner carries more than 2 % arm-bone weight, when a corner lies within 1.25 measured
 sleeve radii of the bind-pose arm from the middle of the upper arm down, or
 when the arm's centreline crosses it after the copy has stood 3 s in the bind
 pose with physics on. A triangle with a corner on a bone outside the body's regions,

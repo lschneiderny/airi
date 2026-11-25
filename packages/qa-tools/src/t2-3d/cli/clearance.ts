@@ -64,6 +64,10 @@ async function parseOptions(args: readonly string[], cwd: string): Promise<Optio
   const parallel = Number(values.parallel)
   if (!(seconds > 0) || !Number.isSafeInteger(seed) || !Number.isSafeInteger(parallel) || parallel < 1 || parallel > MAX_PARALLEL)
     throw new Refusal(`--seconds must be positive, --seed an integer, and --parallel 1 to ${MAX_PARALLEL}`)
+  // The runner's own cap, checked here so a length it refuses is a refusal of the sweep and not a failed run of every model.
+  const tooLong = scenarios.filter(id => seconds > (motion3dScenarios.find(scenario => scenario.id === id)?.maxSeconds ?? 120))
+  if (tooLong.length)
+    throw new Refusal(`--seconds ${seconds} is longer than the runner allows for: ${tooLong.join(', ')}`)
   const claimed = scenarios.filter(id => motion3dScenarios.some(scenario => scenario.id === id && clipClaimsAnArm(scenario, seed, seconds)))
   if (claimed.length)
     throw new Refusal(`the measure does not judge clip-driven arms, and a clip claims an arm in: ${claimed.join(', ')}`)
@@ -77,7 +81,7 @@ async function parseOptions(args: readonly string[], cwd: string): Promise<Optio
     const dir = resolve(cwd, values.models)
     if (!existsSync(dir) || !statSync(dir).isDirectory())
       throw new Refusal(`--models must name a folder: ${dir}`)
-    models = modelsFromPaths((await readdir(dir, { recursive: true })).map(path => join(dir, path)))
+    models = modelsFromPaths((await readdir(dir, { recursive: true })).map(path => join(dir, path)).filter(path => statSync(path).isFile()))
   }
   else {
     const list = resolve(cwd, values.list ?? '')
