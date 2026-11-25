@@ -795,8 +795,8 @@ earlier one from where it stands, as the held face switches. A slight pulse
 moves no body. A held emotion releases with Natural's held `releaseTau`, so a
 hold that switches emotion at full level crossfades instead of dropping the old
 posture in one step. A surprised pulse that starts within 0.25 s of a poke
-moves its arms and hands at a quarter of their size, so the touch reaction's
-guard leads.
+moves its arms and hands at a quarter of their size after a head poke and not at
+all after a body poke, so the touch reaction's guard leads.
 While she walks an emotion is an accent the stride absorbs (`STRIDE`): its arm
 joints hold for 0.3 s, then let go at her next change of stance foot (or 0.6 s
 later) to a fifth of their size through a 1.2 Hz critically damped follower, and
@@ -838,24 +838,32 @@ owned groups receive none.
 
 `createReactionLayer()` (`src/performance/reactions.ts`) adds
 architecture 4d's touch reactions. The stage reports touch `x` from the
-viewer's side, so `+x` is her left. A body poke turns, rolls and shifts the
-trunk away from the point (and bends the belly in on a low poke) through a
-3.5 Hz, 0.45-damped step released after 0.25 s, which peaks at 0.16 s and rings
-once. The poked side's arm guards first (3 Hz, released after 0.6 s): the
+viewer's side, so `+x` is her left. A body poke curls the trunk round the
+point: the hips shift and the chest turns away from it while the waist leans
+away and the chest bends back toward it, so the poked flank closes in a C (and
+the belly bends in on a low poke), through a 3.5 Hz, 0.45-damped step released
+after 0.25 s, which peaks at 0.16 s and rings once. From 0.15 s she looks down
+at the spot through the neck for 0.8 s (12 degrees down, further for a low poke,
+12 degrees turned and 6 tilted toward it), after Natural's poke nudge has thrown
+the head away. The poked side's arm guards first (3 Hz, released after 0.6 s): the
 forearm comes across in front of the side with the elbow a little out, because
 an arm clamped in ran into a slim rig's torso proxy and stopped in one frame.
-The far arm follows 0.12 s later through a softer response, at 0.35 of the guard for a
-poke fully to one side and equal to it for a central one. A poke within
+The far arm follows 0.3 s later through a softer response, at 0.35 of the guard for a
+poke fully to one side and equal to it for a central one; toward a side it
+takes its own low shape (`FAR_GUARD`), the shoulder drawn in and the hand low,
+so the poked side stays the focus. A poke within
 Natural's 2 s dedupe window flinches at 0.6. A head poke raises the poked side's
 guard, requests the hair touch on that side for 1.4 s where the rig reaches it,
 and lets the upper torso follow 30 % of Natural's head pulse, 90 ms late. A pet
-leans the trunk into the hand, rolls the near shoulder in, drops both shoulders,
+leans the trunk into the hand, inclines the head into it through the neck
+(8 degrees of roll and a 3 degree bow), lifts and rolls in the near shoulder
+and drops the far one,
 pulls the support to the hand's side with the give (fully once it is half in)
 and back to the stance she had as the give lets go, eases the finger curl,
 and lets the trunk follow Natural's stroke rock (0.35 upper, 0.18 mid). The lean
 and the shoulders give with a 0.25 s time constant and relax with 0.7 s, so they
-let go slowly after the hand leaves; the shoulder drop saturates a degree below
-the rest pose, at the clavicle's limit. Arm terms yield to an arm a gesture
+let go slowly after the hand leaves; the far shoulder's drop saturates a degree
+below the rest pose, at the clavicle's limit. Arm terms yield to an arm a gesture
 layer moves; owned groups receive none. Drag is not realised yet.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override

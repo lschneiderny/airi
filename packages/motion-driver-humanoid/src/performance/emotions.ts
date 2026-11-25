@@ -164,9 +164,11 @@ const SUPPORT_FULL = 0.6
 const FORM_COMPANION = [0.3, 0.6] as const
 /**
  * Natural startles at every poke. A surprised pulse that starts this soon after a poke (seconds) moves its arms and hands
- * at `arms` of their size, so the reaction layer's guard of the touched side leads instead of both hands presenting.
+ * at `arms` of their size for that poke's region, so the reaction layer's guard of the touched side leads instead of
+ * both hands presenting. A body poke leaves the arms to the guard alone: at a quarter, both hands still opened low into
+ * one generic recoil after the near forearm (audit of 2026-11-25).
  */
-const TOUCH_STARTLE = { within: 0.25, arms: 0.25 }
+const TOUCH_STARTLE = { within: 0.25, arms: { head: 0.25, body: 0 } } as const
 /**
  * A held emotion's weight rises with its command, which Natural's held level already eases in, and releases with
  * Natural's held release time constant (`stage-shared` `held.releaseTau`; `motion-driver-natural` `hold.ts` `step`).
@@ -302,6 +304,7 @@ export function createEmotionLayer(): EmotionLayer {
   let impulseSeq: number | null = null
   let pokeSeq: number | null = null
   let pokedAt = Number.NEGATIVE_INFINITY
+  let pokedRegion: 'head' | 'body' = 'body'
   let time = 0
   /** The tick's summed slump in radians, spread over the torso after every track has added its share. */
   let slump = 0
@@ -313,8 +316,10 @@ export function createEmotionLayer(): EmotionLayer {
 
   function retarget(input: BodyPerformanceInput) {
     const poke = input.events.poke?.seq ?? 0
-    if (pokeSeq !== null && poke !== pokeSeq)
+    if (pokeSeq !== null && poke !== pokeSeq && input.events.poke) {
       pokedAt = time
+      pokedRegion = input.events.poke.region
+    }
     pokeSeq = poke
     const impulse = input.events.impulse
     const seq = impulse?.seq ?? 0
@@ -342,7 +347,7 @@ export function createEmotionLayer(): EmotionLayer {
         track.absorbed = false
         // Only from rest, so a share never changes under a held pose.
         if (Math.abs(track.state.y) < REST)
-          track.armShare = track.emotion === 'surprised' && time - pokedAt <= TOUCH_STARTLE.within ? TOUCH_STARTLE.arms : 1
+          track.armShare = track.emotion === 'surprised' && time - pokedAt <= TOUCH_STARTLE.within ? TOUCH_STARTLE.arms[pokedRegion] : 1
         // Natural's held face releases the previous emotion when the hold switches; the body lets go of it from where
         // it stands, with the same release.
         for (const other of tracks) {
@@ -592,6 +597,7 @@ export function createEmotionLayer(): EmotionLayer {
       Object.assign(report, { seq: 0, emotion: null, phase: null })
       impulseSeq = pokeSeq = null
       pokedAt = Number.NEGATIVE_INFINITY
+      pokedRegion = 'body'
       time = 0
     },
   }

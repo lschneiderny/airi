@@ -66,22 +66,30 @@ const peak = (values: readonly number[]) => values.reduce((best, v) => Math.abs(
 const trunk = ['lowerYaw', 'lowerPitch', 'lowerRoll', 'midYaw', 'midPitch', 'midRoll', 'upperYaw', 'upperPitch', 'upperRoll'] as const
 
 describe('touch reaction layer', () => {
-  // The stage reports x from the viewer's side: +x is her left, where Natural turns the head away from. Re-pinned: the
-  // layer read +x as her right and flinched toward the poke with the far arm.
-  it('flinches away from a body poke, guarding the poked side first, and returns to rest', () => {
+  // The stage reports x from the viewer's side: +x is her left, where Natural turns the head away from. Re-pinned twice:
+  // the layer read +x as her right and flinched toward the poke with the far arm; then the whole trunk leaned away and
+  // the head recoiled as for a head poke, so a body poke on either side read as one generic recoil (audit of
+  // 2026-11-25). Now the hips jump away while the poked flank closes over the spot and she looks down at it.
+  it('curls around a body poke, guarding the poked side first, looks at it, and returns to rest', () => {
     for (const x of [-1, 1]) {
       const d = layerEffect(poking([{ at: 0.5, region: 'body', x, y: 0 }]), 4)
       // +roll leans her toward her right, +yaw turns her chest to her left and +X is her left.
-      expect(Math.sign(peak(d[c('midRoll')]))).toBe(x)
+      expect(Math.sign(peak(d[c('midRoll')]))).toBe(-x)
+      expect(Math.sign(peak(d[c('lowerRoll')]))).toBe(x)
       expect(Math.sign(peak(d[c('midYaw')]))).toBe(-x)
       expect(Math.sign(peak(d[c('pelvisX')]))).toBe(-x)
+      expect(Math.sign(peak(d[c('neckYaw')]))).toBe(x)
+      expect(peak(d[c('neckPitch')])).toBeGreaterThan(8 * DEG)
+      // The look comes after the flinch.
+      expect(d[c('neckPitch')].indexOf(peak(d[c('neckPitch')]))).toBeGreaterThan(d[c('midYaw')].indexOf(peak(d[c('midYaw')])))
       const [poked, far] = x > 0 ? ['leftElbow', 'rightElbow'] as const : ['rightElbow', 'leftElbow'] as const
       const pokedPeak = peak(d[c(poked)])
       const farPeak = peak(d[c(far)])
       expect(pokedPeak).toBeGreaterThan(20 * DEG)
       expect(farPeak).toBeGreaterThan(2 * DEG)
-      expect(farPeak).toBeLessThan(0.5 * pokedPeak)
-      expect(d[c(far)].indexOf(farPeak)).toBeGreaterThan(d[c(poked)].indexOf(pokedPeak))
+      expect(farPeak).toBeLessThan(0.3 * pokedPeak)
+      // The far arm comes late, once the guard has arrived.
+      expect(d[c(far)].indexOf(farPeak) - d[c(poked)].indexOf(pokedPeak)).toBeGreaterThan(0.2 * 120)
       expect(Math.max(...d.map(trace => Math.abs(trace.at(-1) ?? 0)))).toBeLessThan(1e-3 * DEG)
     }
   })
@@ -140,14 +148,17 @@ describe('touch reaction layer', () => {
     expect(trunkPeak(twice, 240, 480) / trunkPeak(twice, 0, 240)).toBeCloseTo(0.6, 1)
   })
 
-  // Re-pinned with the side fix: a hand at +x pets her left.
-  it('gives the near shoulder more the more she is petted, and leans toward the hand', () => {
-    const drop = [0.25, 0.5, 1].map(level => layerEffect(petting(level, 1), 3)[c('leftClavElev')].at(-1) ?? 0)
-    expect(drop[0]).toBeLessThan(0)
-    expect(drop[1]).toBeLessThan(drop[0])
-    expect(drop[2]).toBeLessThan(drop[1])
+  // Re-pinned with the side fix: a hand at +x pets her left. Re-pinned again: both shoulders dropped and the head kept
+  // its relation to the near shoulder, so a held pet read as standing sway (audit of 2026-11-25). Now she inclines her
+  // head into the hand and the near shoulder comes up to meet it.
+  it('inclines the head into the hand and lifts the near shoulder the more she is petted, and leans toward the hand', () => {
+    const lift = [0.25, 0.5, 1].map(level => layerEffect(petting(level, 1), 3)[c('leftClavElev')].at(-1) ?? 0)
+    expect(lift[0]).toBeGreaterThan(0)
+    expect(lift[1]).toBeGreaterThan(lift[0])
+    expect(lift[2]).toBeGreaterThan(lift[1])
     const full = layerEffect(petting(1, 1), 3)
-    expect(full[c('rightClavElev')].at(-1)).toBeGreaterThan(drop[2])
+    expect(full[c('rightClavElev')].at(-1)).toBeLessThanOrEqual(0)
+    expect(full[c('neckRoll')].at(-1)).toBeLessThan(-6 * DEG)
     expect(full[c('leftClavProt')].at(-1)).toBeGreaterThan(2 * DEG)
     expect(full[c('rightClavProt')].at(-1)).toBe(0)
     expect(full[c('midRoll')].at(-1)).toBeLessThan(-2 * DEG)

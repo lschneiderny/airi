@@ -39,9 +39,9 @@ An animation audit of the MMD body reviewed every emotion's peak with the face h
 - Natural still owns the head. A strong sad pulse pitches Natural's head back about 13 degrees while the trunk slumps, which reads as a sad body under a lifted head. That is Natural's posture and is reported, not changed here.
 - The hair-touch approach path is the gesture solver's; it is not changed here.
 
-## Amendment (2026-11-25): accents in the stride, sharper silhouettes
+## Amendment (2026-11-25): accents in the stride, touch that answers the spot, sharper silhouettes
 
-A second animation audit reviewed emotions during speech and walks, and the weaker bands.
+A second animation audit reviewed emotions during speech and walks, the touch sides, and the weaker bands.
 
 1. **During a walk an emotion is an accent the stride absorbs.** Its arm joints hold for 0.3 s, then let go at her next change of stance foot (or 0.6 s later) to a fifth of their size through a 1.2 Hz critically damped follower, and come back when she stands. Hand shapes, the trunk and the pelvis stay. A held form is let go once absorbed, so love does not walk with a hand on the chest. A surprised pulse dips the pelvis 0.03 leg lengths while she walks (`startle`). The stride itself does not hitch: a startle that shortens or catches the next step needs a locomotion input, for example a step-scale or startle hook that the performer feeds the gait from the merged plan. That belongs to the walk and is not built here.
 2. **The silhouettes are sharpened where the audit could not name them.**
@@ -53,5 +53,8 @@ A second animation audit reviewed emotions during speech and walks, and the weak
    - Flustered's fists sit a little wider and lower in front of the chest. Fists pulled into the chest met the bust proxy, and the projection stepped the upper arm.
    - The hand to chest anchor goes 0.15 arm lengths up from the chest seed, onto the upper chest above the bust, where at 0.05 it stopped on the front of the bust.
 3. **During speech love ties its lift to the line.** While she speaks the chest lifts 4 degrees and the trunk turns 5 degrees toward the far, speaking hand, eased in and out over about half a second.
+4. **A poke startle leaves the arms to the guard by region.** After a body poke a surprised pulse moves no arm or hand; after a head poke it keeps a quarter, as before.
+5. **A body poke answers where it landed.** The trunk curls round the spot: the hips shift and the chest turns away while the waist leans away and the chest bends back toward the spot, so the poked flank closes in a C instead of the whole trunk leaning away. From 0.15 s she looks down at the spot through the neck for 0.8 s, further for a low poke. The far arm follows 0.3 s after the guard, not 0.12 s, in its own low shape, so the poked side stays the focus.
+6. **A held pet inclines the head into the hand.** The neck rolls 8 degrees toward the hand with a small bow, and the near shoulder lifts to meet it while the far one drops, replacing the drop of both shoulders.
 
-Sad now writes a neck channel. It adds to Natural's head through the performer like every other layer term, and owned groups still receive none. The test that pinned the surprised held elbow was re-pinned.
+The touch reaction and sad now write neck channels. They add to Natural's head through the performer like every other layer term, and owned groups still receive none. Tests that pinned the earlier touch signs, the poke startle's arm share and the surprised held elbow were re-pinned.
