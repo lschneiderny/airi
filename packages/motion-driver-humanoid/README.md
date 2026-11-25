@@ -682,8 +682,7 @@ head cue to the cue layer, and `suppressHeadEmphasis`, which hands the speech
 emphasis nod to the gesture layers' head beat. A step may also return its `gesture`, `cue`,
 `emotion` or `reaction` report; the frame's diagnostics carry the latest one
 of each kind, and `diagnostics.gesture.activation` is the weight the stack
-applied to each arm through gesture-order layers; `diagnostics.actActivation` is
-the same for act-order layers (an idle behaviour's form, the clip-free rest). Hosts turn report sequence
+applied to each arm through gesture-order layers. Hosts turn report sequence
 changes into trace events. `HAND_SHAPES` holds architecture 4a's hand shapes
 as data, each digit written out: `relaxed` is the rest hand (a curl cascade
 toward the little finger and a soft fan), `open` the presenting hand (palm-up,
