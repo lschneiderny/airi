@@ -1,6 +1,6 @@
 # natural-pep - Work Plan
 
-Status: in progress, 2026-11-24. Decision record: [Natural pep ADR](../../docs/ai/adr/2026-11-24-natural-pep.md), written in slice NP7.
+Status: implemented on `luke/feat/natural-pep`, 2026-11-24; not visually reviewed. Decision record: [Natural pep ADR](../../docs/ai/adr/2026-11-24-natural-pep.md).
 
 ## TL;DR (For humans)
 
@@ -38,7 +38,7 @@ Further findings:
 - The tilt spectrum is flat to about 1 Hz and rolls off above it; vertical motion reaches about 2 Hz. Natural keeps half of its tilt power below 0.1 Hz.
 - The reference holds a closed-eye smile about 4 times a minute, median 0.74 s.
 - At the maximum user energy setting Natural's tilt SD rises from 2.8° to 3.4°, so no existing setting reaches the reference.
-- In karaoke the reference bounces at the song's tempo and repeats 48 bars later (correlation 0.85 to 0.91). Natural's groove is not yet measured (slice NP6).
+- In karaoke the reference bounces at the song's tempo and repeats 48 bars later (correlation 0.85 to 0.91). Natural's groove was measured in NP6; the ADR records it.
 
 Limits: one talk segment and one song; tilt is the only channel compared in degrees; the Natural side is the commanded head angle, not rendered pixels; mouth tracking failed, so lip sync is not compared.
 
