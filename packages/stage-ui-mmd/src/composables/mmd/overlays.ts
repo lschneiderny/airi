@@ -26,6 +26,8 @@ export interface MMDOverlaySource {
   mesh: SkinnedMesh
   rig: Pick<MMDRigProfile, 'legIk' | 'bones'>
   colliders: readonly MMDTouchCollider[]
+  /** The volumes the arms clear, as the arm gate measures them (`MMDBody.armVolumes`), read when the collider overlay turns on, so the fit can be reviewed by eye. */
+  volumes: () => readonly MMDTouchCollider[]
   createIkHelper: () => Object3D & { dispose: () => void }
   /** World-space look-at target, `null` while the body is not looking at anything. */
   lookAtTarget: () => { x: number, y: number, z: number } | null
@@ -162,13 +164,17 @@ export class MMDOverlays {
     if (flags.colliders && !this.colliders) {
       const group = new Group()
       group.name = 'mmd-overlay-colliders'
-      const items = this.source.colliders.map((collider) => {
-        const mesh = new Mesh(colliderGeometry(collider), wireframe(collider.region === 'head' ? mmdOverlayColors.colliderHead : mmdOverlayColors.colliderBody))
+      const draw = (collider: MMDTouchCollider, color: number) => {
+        const mesh = new Mesh(colliderGeometry(collider), wireframe(color))
         mesh.matrixAutoUpdate = false
         mesh.renderOrder = 1000
         group.add(mesh)
         return { mesh, collider }
-      })
+      }
+      const items = [
+        ...this.source.colliders.map(collider => draw(collider, collider.region === 'head' ? mmdOverlayColors.colliderHead : mmdOverlayColors.colliderBody)),
+        ...this.source.volumes().map(collider => draw(collider, mmdOverlayColors.armVolume)),
+      ]
       this.colliders = { group, items }
       this.scene.add(group)
     }

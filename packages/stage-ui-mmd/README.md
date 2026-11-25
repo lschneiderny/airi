@@ -366,9 +366,12 @@ shares. The adapter has six parts:
   deform bone that copies a leg bone's whole rotation through an append
   transform moves with that leg bone.
 - `buildBodyRigTraits` (`body/rig-traits.ts`): the rig's bind positions, spine
-  chain, arm segments, feet and the kinematic arm-test and head bodies, each
-  re-expressed in its nearest canonical ancestor's frame. A rig without hips,
-  a spine, neck, head, two full arms or a leg length gets no performer.
+  chain, arm segments, feet and leg IK joints, with the colliders the arms
+  clear and the body model's rest abduction as each arm's `restAbduct`. The
+  colliders are the body model's hard volumes, from the hips to the shoulders
+  and on the thighs, followed by the author's kinematic head and neck bodies
+  (`buildMMDHeadColliders`), because the model fits no head. A rig without
+  hips, a spine, neck, head, two full arms or a leg length gets no performer.
 - `prepareMMDSecondaryMotion` (`body/secondary-motion.ts`): runs once before
   `mmd.setPhysics`, in the animation manager and in the headless loader. For
   each garment of which the author already lets some body collide with some
@@ -485,29 +488,30 @@ the upper body still stops the gait. `body.performing()` returns the clip the
 animation manager reports on its layer (`MMDBodyInput.layerClip`) and its
 captured weight, or `null` once that weight is 0. Diagnostics publish `arms` (`weight`, `owned`, `penetration`, `clothContact`,
 `hangDeg`, `handBelowHip`, `headPenetration` and `correctionDeg`). `penetration` per side is the gate and must be 0: the overlap, in model units, of the
-arm capsules (radius 0.12 of the segment, the hand reaching 0.65 of the forearm beyond the wrist) with the KINEMATIC
-rigid bodies, those that follow a bone (torso, hips, legs, kinematic skirt roots). `clothContact` per side is
-information only: the centerline overlap with DYNAMIC (physics) bodies such as skirt plates, belts and wings, which the
-simulation resolves. The test skips the first half of the upper arm, because the shoulder joint sits inside the chest
-bodies by construction. It ignores collision masks, because a rig's own torso, hip and leg bodies turn off collision
-with their group, and skips only a body wider than 0.65 of the shoulder span (a coat shell such as Chisa's radius-2
-body). The gate and the hang solver measure each kinematic and head body at the scale the performer's corrector fits it
-to the rest hang (`BodyCollision.fit`, `scaleMMDTouchCollider`), and leave out a body fitted to nothing, so a hair or
-bust body that reaches past the shoulders or thighs neither holds the arms away from their rest nor counts their rest
-hang as penetration. While both arms are free, no gesture layer, idle behaviour form or clip-free rest moves either arm (the performer's
-`diagnostics.gesture.activation` and `diagnostics.actActivation` are 0), and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
-60-frame warm-up, at the default 78 degree hang gets a
-per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60, until the overlap is 0 (the hang is the
-angle below horizontal, so a larger one swings the arm into the hips). The lift reaches the performer as `armLift`, added
-to its rest abduction; the default hang restates that abduction (12 degrees from vertical). The performer's own
-collision corrector already keeps the arms clear of the same bodies, so the solver acts only where its model and the
-rendered pose differ. `buildBodyRigTraits` gives the corrector the leg IK chains' joints and tags each body on a leg bone,
-or on a deform (D) bone that copies a leg bone's whole rotation through an append transform, with its thigh or shin;
-while the gait carries the feet the body passes the same ankle targets the foot stage reaches (`meshAnkleTarget`), so
-the corrector sees the thighs swing instead of holding them where they hang at bind. `hangDeg` reports the value in effect. `headPenetration` measures the same capsules against the
-kinematic head and neck bodies, and `correctionDeg` is the performer's arm collision correction in effect.
-`setDebugFlag` with `{ flag: 'armRestHangDeg', value }` (0-90, `null` restores the default) overrides the hang for QA
-and switches the solver off. The desktop stage measures its placement rect from the REST-POSED hands and fingertips
+arm capsules (radius 0.12 of the segment, the hand reaching 0.65 of the forearm beyond the wrist) with the hard volumes
+of the body model from the hips to the chest and the thighs: her body, her rigid clothing, and flesh on simulated bones,
+fitted to the mesh. No rigid body of the author is in this gate. `clothContact` per side is
+information only: the centerline overlap with the author's DYNAMIC (physics) bodies such as skirt plates, belts and
+wings, which the simulation resolves; a body wider than 0.65 of the shoulder span is skipped. The test skips the first
+half of the upper arm, because the shoulder joint sits beside the chest volumes by construction. The arms rest at the
+abduction the body model solved at load (`BodyModel.rest`, per side), which reaches the performer as a rig trait
+(`BodyArmTraits.restAbduct`): its seeded rest pose, the reference its corrector fits the volumes to and the pose every
+arm form starts from all carry it, and nothing lifts the arms while frames run. The gate measures each volume and each
+head body at the scale the performer's corrector fits it to that rest hang (`BodyCollision.fit`,
+`fitMMDTouchColliders`), and leaves out one fitted to nothing, so the gate and the corrector agree on what the arm
+clears. The model's rest solve already clears every hard volume, so among them the fit finds only what the seed's own
+rest pose leans on; a head body that reaches past the shoulders is shrunk until the rest hang clears it. While the gait
+carries the feet the body passes the corrector the ankle targets the foot stage reaches (`meshAnkleTarget`), so it
+sees the model's thigh volumes swing instead of holding them where they hang at bind. `hangDeg` reports the hang in
+effect, in degrees below horizontal: the mean of the two rest hangs, or the override. `headPenetration` measures the
+same capsules against the author's kinematic head and neck bodies, which the body model does not replace: a body
+wider than 0.65 of the shoulder span and every simulated (hair) body is skipped. `correctionDeg` is the performer's
+arm collision correction in effect. `bodyModel` (appended) summarises the model: its volume and garment counts, the pinched garments, the rest
+abduction and what limited it per side, the volumes the rest solve shrank, and the status of the arm collision setup
+(`armCollisions`, null until the model gets its physics).
+`setDebugFlag` with `{ flag: 'armRestHangDeg', value }` (0-90, `null` restores the body model's rest) overrides the
+hang on both sides for QA: the body hands the performer the difference from each side's rest as `armLift`, which moves
+the arm only and leaves the rest reference, the fitted volumes and the arm forms as they are. The desktop stage measures its placement rect from the REST-POSED hands and fingertips
 (`body.restPositions`, passed as `reachBones` of `resolveFrameBounds`) plus `ARM_SWING_REACH` of each one's
 distance from the shoulder for the walking swing, so her hands stay inside the click-through rect without widening it to
 the bind A-pose.
@@ -534,7 +538,7 @@ state from the same store. Overlay toggles also travel as the Eventa event
 `mmdOverlaySetEvent` on the same channel, and the snapshot's `overlays` field
 reports the flags the stage draws, so a lab opened after a toggle starts with
 the stage's state; the scene adds the IK helper,
-touch-collider wireframes, foot anchors, and look-at marker
+touch-collider wireframes with the volumes the arms clear in a third colour (the body model's hard volumes and the author's head and neck bodies, at the size the arm gate measures them, `MMDBody.armVolumes`), foot anchors, and look-at marker
 (`src/composables/mmd/overlays.ts`) to its scene only while each flag is on
 and disposes them when it turns off. The stage-mode overlays `floorLine`
 (`y = 0` across the work area at `z = 0`), `groundLine` (`ground.minX` to
@@ -568,7 +572,7 @@ running (no model, the Classic driver, or the classic window).
 | `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
 | `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip, originX, reach }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). `originX` is the world x of the work area's left edge; it changes when the stage window has moved to another display. `reach` lists every display's ground line while she can walk between displays, and is `null` otherwise. |
 | `locomotion { mode, position { x, z }, yaw, goalX, reason, urgency, speed, phase, weight, skate, leashClamps, enabled, skateContact, skateContactPeak }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and urgency (0 to 1), the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). `skateContact` (appended) is `skate` measured at each planted foot's contact point: the ankle while the foot is flat (then it equals `skate` bit for bit), or the rig's heel or ball point when the foot stage's `measure(pivot)` names that kind: the ball is the toe bone (つま先), the heel lies under the ankle at the toe bone's height, both read from the bind skeleton (a rig without a toe bone reads the ankle). Only the pivot kind is the performer's report: the body passes each foot's gait roll pivot (`LocomotionFoot.roll`) while the gait weight is above 0, and the foot stage rolls the foot about the same heel and ball points (`MMDFootContact.rollGeometry`, on rigs with toe bones and toe IK bones). `qa:stage gate` judges it when present (owner decision O6), and `qa:stage measure` records it. `skateContactPeak` (appended) is the largest per-frame `skateContact` since the previous diagnostics snapshot (model units per frame): the scene resets it after each 10 Hz snapshot it publishes, so the stage measure sees a one-frame slide between snapshots. |
-| `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip, headPenetration { left, right }, correctionDeg { left, right } }` | The arm measurement: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect, `handBelowHip` whether both hands sit below the hips bone, `headPenetration` the same overlap with the kinematic head and neck bodies, and `correctionDeg` the performer's arm collision correction in degrees. |
+| `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip, headPenetration { left, right }, correctionDeg { left, right }, bodyModel }` | The arm measurement: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a hard volume of the body model per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body of the author (information only), `hangDeg` the rest hang in effect, `handBelowHip` whether both hands sit below the hips bone, `headPenetration` the same overlap with the author's kinematic head and neck bodies, and `correctionDeg` the performer's arm collision correction in degrees. Appended: `bodyModel { volumes, garments, pinchedGarments, restAbductDeg { left, right }, restLimit { left, right }, shrunkVolumes, armCollisions }` is the body model the arms clear: the counts of its hard volumes, its garments and the garments the resting arm sits inside; the rest abduction per side in degrees; what limited each side's rest (`volume`, `garment`, or `null`); the volumes the rest solve shrank or dropped; and the status of the arm collision setup (`applied`, `no-arm-bodies`, `no-soft-garments`, `no-free-group`, or `null` when the model has no physics). `bodyModel` is `null` when the rig lacks a bone the model needs. |
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
 | `trace { state, frames, bones, seconds, refused }` | Scene recorder state (`idle`, `recording`, `stopped`), sample and bone counts, motion duration, and named refusal; null without a recorder or refusal. |
@@ -600,7 +604,7 @@ holds) and `wanderAnswer { seq, accepted }`. `nextWanderAtMs` was removed on
 | Command | Value | Effect |
 | --- | --- | --- |
 | `startMeasurement`, `stopMeasurement` | none | Open and close the measurement window. |
-| `setDebugFlag` | `{ flag: 'disableFootContact' \| 'disableLookAt', on }` or `{ flag: 'armRestHangDeg', value }` | Disables a body stage for QA, or overrides the rest hang in degrees below horizontal (0-90; `null` restores the default and the per-rig solver). |
+| `setDebugFlag` | `{ flag: 'disableFootContact' \| 'disableLookAt', on }` or `{ flag: 'armRestHangDeg', value }` | Disables a body stage for QA, or overrides the rest hang in degrees below horizontal on both sides (0-90; `null` restores the body model's rest). |
 | `advanceDirectorClock` | milliseconds | Adds to the director's clock only; Natural and physics keep real time. |
 | `setOverlay` | `Partial<MMDOverlayFlags>` | Turns overlays on or off (the lab uses `mmdOverlaySetEvent`). |
 | `requestGoal` | `{ x, urgency }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`, at `urgency` in [0, 1]. An urgency outside [0, 1] is rejected with one warning. |

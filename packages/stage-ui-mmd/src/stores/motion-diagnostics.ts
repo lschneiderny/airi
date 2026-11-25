@@ -92,10 +92,10 @@ export interface MMDMotionSnapshot {
   } | null
   /**
    * The arm rest layer. `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (0-1),
-   * `penetration` the deepest arm capsule-radius overlap of a kinematic torso, hip, leg or skirt-root body in model units
+   * `penetration` the deepest arm capsule-radius overlap of a hard volume of the body model in model units
    * (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg`
-   * the rest upper-arm hang in effect (default, solved per rig, or the debug override), and `handBelowHip`
-   * whether both hand bones sit below the hips bone.
+   * the rest upper-arm hang in effect (the body model's rest, or the debug override), and `handBelowHip`
+   * whether both hand bones sit below the hips bone. Appended: `bodyModel` summarises the body model the arms clear.
    */
   arms: {
     weight: number
@@ -108,6 +108,20 @@ export interface MMDMotionSnapshot {
     headPenetration: { left: number, right: number }
     /** The performer's arm collision correction in effect per side, in degrees. */
     correctionDeg: { left: number, right: number }
+    /**
+     * The body model: counts of its hard volumes, garments and pinched garments, the rest abduction per side in
+     * degrees, what limited each side's rest, the volumes the rest solve shrank, and the arm collision setup's status,
+     * which is null until the model gets its physics.
+     */
+    bodyModel: {
+      volumes: number
+      garments: number
+      pinchedGarments: number
+      restAbductDeg: { left: number, right: number }
+      restLimit: { left: 'volume' | 'garment' | null, right: 'volume' | 'garment' | null }
+      shrunkVolumes: number
+      armCollisions: 'applied' | 'no-arm-bodies' | 'no-soft-garments' | 'no-free-group' | null
+    } | null
   } | null
   /** The overlay flags the stage draws, so a lab opened after a toggle shows the stage's state. */
   overlays: MMDOverlayFlags

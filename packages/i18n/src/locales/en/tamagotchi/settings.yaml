@@ -802,8 +802,8 @@ devtools:
             title: IK chains
             description: Draw every PMX IK chain with the solver's helper.
           colliders:
-            title: Touch colliders
-            description: Draw the rigid-body shapes that pokes and pets hit, posed from the bones.
+            title: Colliders
+            description: Draw the rigid-body shapes that pokes and pets hit and the volumes that the arms clear, posed from the bones.
           feet:
             title: Foot anchors
             description: Mark each leg IK bone and the ankle it pulls.
@@ -828,6 +828,7 @@ devtools:
         legend:
           collider-head: Head collider
           collider-body: Body collider
+          arm-volume: Volume the arms clear
           foot-anchor: Foot anchor
           ankle: Ankle
           look-at: Look-at target

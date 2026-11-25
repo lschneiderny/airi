@@ -2,7 +2,7 @@ import type { BodyGestureReport, BodyPerformanceInput, LayerOutput, PerformanceL
 
 import type { MMDBodyEvent } from './performer'
 
-import { BODY_CHANNELS, BODY_TICK, BodySkeleton, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, BODY_TICK, BodySkeleton, channelIndex, createPerformanceLayers, DEFAULT_ARM_REST_POSE } from '@proj-airi/motion-driver-humanoid/performance'
 import { Euler, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -18,7 +18,8 @@ const owned = { pelvis: 1, hips: 1, torso: 1, head: 1, leftArm: 1, rightArm: 1, 
 function performerOf(fixture: ReturnType<typeof bodyFixture>) {
   const { mmd, rig } = fixture
   const { skeleton, bindMatrix } = mmd.mesh
-  const traits = buildBodyRigTraits(mmd.pmx, rig, [], { boneInverses: skeleton.boneInverses, bindMatrix })
+  const rest = { abduct: DEFAULT_ARM_REST_POSE.abduct, limit: null }
+  const traits = buildBodyRigTraits(mmd.pmx, rig, { volumes: [], rest: { left: rest, right: rest } }, [], { boneInverses: skeleton.boneInverses, bindMatrix })
   if (!traits)
     throw new TypeError('The fixture rig must yield body traits')
   return { traits, performer: new MMDBodyPerformer(new MMDBodyPose(mmd, rig), traits, { seed: 1, onEvent: () => {} }) }

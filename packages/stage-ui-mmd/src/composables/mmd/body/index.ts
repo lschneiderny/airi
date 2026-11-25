@@ -1,4 +1,5 @@
 import type { MMD } from '@moeru/three-mmd'
+import type { BodyModel } from '@proj-airi/motion-driver-humanoid/body-model'
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { GaitBaseline, GaitStyle, LocomotionFrame, MutableGaitStyle } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyCapabilities, BodyGazeGoal, BodyPerformanceInput, BodyRigTraits } from '@proj-airi/motion-driver-humanoid/performance'
@@ -10,20 +11,22 @@ import type { AnimationClip } from 'three'
 import type { MMDCleanPose, MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
 import type { MMDRigProfile } from '../rig'
 import type { MMDTouchCollider } from '../touch/colliders'
-import type { MMDArmsMeasurement } from './arms'
+import type { MMDArmsMeasurement, MMDBodyModelSummary } from './arms'
 import type { MMDBodyPoints } from './attention'
+import type { MMDBodyModel } from './body-model'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
 import { NEUTRAL_GAIT_STYLE, walkStyleFrom } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { BODY_CHANNELS, BODY_TICK, BodyCollision, channelIndex, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, BODY_TICK, BodyCollision, createPerformanceLayers } from '@proj-airi/motion-driver-humanoid/performance'
 import { WALK_URGENCY } from '@proj-airi/motion-driver-humanoid/types'
 import { Quaternion, Vector3 } from 'three'
 
 import { fnv1a32 } from '../natural/seed'
 import { buildMMDClipMask, toRigTraits } from '../rig'
-import { buildMMDArmTestColliders, buildMMDHeadColliders, scaleMMDTouchCollider } from '../touch/colliders'
+import { buildMMDClothColliders, buildMMDHeadColliders, fitMMDTouchColliders } from '../touch/colliders'
 import { MMDArms } from './arms'
+import { readMMDBodyModel } from './body-model'
 import { MMDBodyClock } from './clock'
 import { MMDEyes } from './eyes'
 import { meshAnkleTarget, MMDFootContact } from './feet'
@@ -32,11 +35,26 @@ import { MMDLocomotion, writeGaitChannels } from './locomotion'
 import { MMDBodyPerformer } from './performer'
 import { MMDBodyPose } from './pose'
 import { buildBodyRigTraits } from './rig-traits'
+import { readMMDArmCollisionReport } from './secondary-motion'
 
 export type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 export { writeWalkHand } from './locomotion'
 export type { MMDBodyEvent } from './performer'
 export { prepareMMDSecondaryMotion } from './secondary-motion'
+
+/** The body model as the diagnostics snapshot publishes it (`arms.bodyModel`); `MMDArms` fills `armCollisions` once the setup ran. */
+function summariseBodyModel(model: BodyModel): MMDBodyModelSummary {
+  const degrees = 180 / Math.PI
+  return {
+    volumes: model.volumes.length,
+    garments: model.garments.length,
+    pinchedGarments: model.garments.filter(garment => garment.pinched).length,
+    restAbductDeg: { left: model.rest.left.abduct * degrees, right: model.rest.right.abduct * degrees },
+    restLimit: { left: model.rest.left.limit?.kind ?? null, right: model.rest.right.limit?.kind ?? null },
+    shrunkVolumes: model.report.adjustments.filter(adjustment => adjustment.reason === 'rest-clearance').length,
+    armCollisions: null,
+  }
+}
 
 /**
  * The whole-body idle kinds this rig cannot perform, for `NaturalIdleDrive.unreachable`: the clasp without the `clasp`
@@ -75,7 +93,7 @@ export interface MMDBodyInput {
   readonly disableLookAt: boolean
   /** Looping base clips. They duck the body fully but keep half of the head's gaze. */
   readonly stanceClips: ReadonlySet<string>
-  /** Debug override of the arm rest hang angle in degrees below horizontal (0-90); null or absent keeps the default. */
+  /** Debug override of the arm rest hang angle in degrees below horizontal (0-90); null or absent keeps the body model's rest clearance. */
   readonly armRestHangDeg?: number | null
   /** The user drags the character. */
   readonly dragging: boolean
@@ -110,7 +128,6 @@ const FACING_HANDOFF = 0.1
 const FIXATION_SPAN = 20 * Math.PI / 180
 /** Walking looks along the travel direction, slightly down. */
 const TRAVEL_PITCH = 5 * Math.PI / 180
-const ABDUCT = { left: channelIndex('leftAbduct'), right: channelIndex('rightAbduct') } as const
 /** Lid closure the face shows at which a blink starts, and below which the lids count as open again. */
 const LID_ONSET = 0.1
 const LID_REOPEN = 0.05
@@ -120,6 +137,14 @@ export class MMDBody {
   readonly poseStages: MMDFrameStage[]
   readonly surfaceStage: MMDFrameStage
   readonly traits: BodyRigTraits | null
+  /** The body model the arms clear, with its volumes as colliders; null when the rig lacks a bone it needs. */
+  readonly bodyModel: MMDBodyModel | null
+  /**
+   * What the arm gate measures and the collider overlay draws: the model's hard volumes (region `body`), then the
+   * author's kinematic head and neck bodies (region `head`), each at the scale the performer's corrector fitted it to
+   * the rest hang (`BodyCollision.fit`), without any it fitted to nothing.
+   */
+  readonly armVolumes: readonly MMDTouchCollider[]
   private readonly pose: MMDBodyPose
   private readonly eyes: MMDEyes
   private readonly feet: MMDFootContact
@@ -188,18 +213,22 @@ export class MMDBody {
       this.rootPosition.copy(this.locomotion.frame.root.position)
     this.root = options.root
     const { skeleton, bindMatrix } = mmd.mesh
-    const colliders = buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig)
+    // The arms clear the body model's volumes and rest at its rest abduction. The model fits no head, so the author's
+    // kinematic head and neck bodies follow its volumes; the author's simulated bodies are only reported as cloth contact.
+    this.bodyModel = readMMDBodyModel(mmd, rig)
     const head = buildMMDHeadColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig)
-    this.traits = buildBodyRigTraits(mmd.pmx, rig, [...colliders.kinematic, ...head], { boneInverses: skeleton.boneInverses, bindMatrix })
+    this.traits = this.bodyModel ? buildBodyRigTraits(mmd.pmx, rig, this.bodyModel.model, head, { boneInverses: skeleton.boneInverses, bindMatrix }) : null
     const seed = fnv1a32(options.modelKey)
     this.performer = this.traits
       ? new MMDBodyPerformer(this.pose, this.traits, { seed, layers: createPerformanceLayers({ traits: this.traits, seed }), onEvent: event => this.listeners.forEach(listener => listener(event)) })
       : null
-    // The arm gate and the hang solver measure the bodies the performer's corrector clears: each fitted to the rest hang,
-    // and none fitted to nothing, which the corrector leaves out.
+    // The arm gate measures what the performer's corrector clears, in the order of `traits.colliders`: each fitted to
+    // the seed's rest hang, and none fitted to nothing, which the corrector leaves out. The rest hang is the model's, so
+    // the fit finds little among its volumes.
     const fit = this.traits && this.performer ? new BodyCollision(this.traits, this.performer.restChannels()).fit : null
-    const fitted = (bodies: MMDTouchCollider[], offset: number) => fit ? bodies.flatMap((body, i) => fit[offset + i] > 0 ? [scaleMMDTouchCollider(body, fit[offset + i])] : []) : bodies
-    this.arms = new MMDArms(this.pose, { kinematic: fitted(colliders.kinematic, 0), dynamic: colliders.dynamic }, fitted(head, colliders.kinematic.length))
+    const gated = [...this.bodyModel?.colliders ?? [], ...head]
+    this.armVolumes = fit ? fitMMDTouchColliders(gated, fit) : gated
+    this.arms = new MMDArms(this.pose, { kinematic: this.armVolumes.filter(collider => collider.region === 'body'), dynamic: buildMMDClothColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig) }, this.armVolumes.filter(collider => collider.region === 'head'), this.bodyModel && summariseBodyModel(this.bodyModel.model), () => readMMDArmCollisionReport(mmd)?.status ?? null)
     this.poseStages = [
       // Root motion lands before every bone write and before physics, so the pose and Ammo both see this frame's root.
       { id: 'locomotion', run: (context) => {
@@ -271,7 +300,7 @@ export class MMDBody {
       this.skateContact = skateContact
       this.skateContactPeak = Math.max(this.skateContactPeak, skateContact)
       const performance = this.performer?.diagnostics
-      this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 }, performance?.gestureActivation ?? { left: 0, right: 0 }, this.performer?.frame?.diagnostics.actActivation ?? { left: 0, right: 0 })
+      this.armsSnapshot = this.arms.measure(this.owned, performance?.correctionDeg ?? { left: 0, right: 0 })
     } }
   }
 
@@ -313,11 +342,8 @@ export class MMDBody {
     return this.arms.restPositions(names, () => {
       if (!performer)
         return
-      const rest = performer.restChannels()
-      const lift = this.arms.lift({ swingWeight: 1, owned: { leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }, hangDeg: null })
-      rest[ABDUCT.left] += lift.left
-      rest[ABDUCT.right] += lift.right
-      performer.applyArms(clean, { pelvis: 0, hips: 0, torso: 0, head: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }, rest)
+      // The performer's rest pose is the rig's: it carries the body model's rest abduction (`BodyArmTraits.restAbduct`).
+      performer.applyArms(clean, { pelvis: 0, hips: 0, torso: 0, head: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }, performer.restChannels())
     })
   }
 
@@ -440,7 +466,7 @@ export class MMDBody {
       this.goal = null
     const due = this.clock.advance(dt)
     const first = this.clock.ticks - due
-    const lift = this.arms.lift({ swingWeight: this.gait?.weight ?? 0, owned: this.owned, hangDeg: input.armRestHangDeg ?? null })
+    const lift = this.arms.lift(input.armRestHangDeg ?? null)
     this.resolveGaze(input)
     walkStyleFrom({ mood: input.intent.mood, energy: input.energy ?? 0.5, baseline: input.walkBaseline, urgency: this.goal?.urgency }, this.walkStyle)
     this.intent.capture({

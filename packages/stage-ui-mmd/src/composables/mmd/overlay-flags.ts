@@ -4,7 +4,7 @@
 export interface MMDOverlayFlags {
   /** Every PMX IK chain, through the solver's own helper. */
   ik: boolean
-  /** Touch colliders as wireframes: head bodies in one color, body bodies in another. */
+  /** Touch colliders as wireframes (head bodies in one color, body bodies in another) and, in a third, the volumes the arms clear: the body model's hard volumes and the author's head and neck bodies. */
   colliders: boolean
   /** Foot anchors: the leg IK bones the foot-contact stage writes, and the ankles they pull. */
   feet: boolean
@@ -36,6 +36,7 @@ export function isMMDOverlayFlags(value: unknown): value is Partial<MMDOverlayFl
 export const mmdOverlayColors = {
   colliderHead: 0xF472B6,
   colliderBody: 0x38BDF8,
+  armVolume: 0xA3E635,
   footAnchor: 0xFACC15,
   ankle: 0xFB923C,
   lookAt: 0x4ADE80,

@@ -82,9 +82,8 @@ export function buildMMDTouchColliders(
 
 /**
  * A body larger than this fraction of the shoulder span (the distance between the upper-arm bones) is a coat or cloth
- * shell, not a body part. Across Ellen, Vivian, Chisa and Elysia the largest real kinematic body is 0.44 of the span
- * (a hip or thigh) and Chisa's radius-2 coat shell is 0.80. The collision mask cannot tell them apart, because the
- * real torso, hip and leg bodies turn off collision with their own group.
+ * shell, not a body part. Across Ellen, Vivian, Chisa and Elysia the largest real body is 0.44 of the span (a hip or
+ * thigh) and Chisa's radius-2 coat shell is 0.80.
  */
 const MAX_BODY_SPAN_FRACTION = 0.65
 
@@ -97,32 +96,26 @@ export interface MMDArmTestSource {
   rigidBodies: readonly (MMDTouchSource['rigidBodies'][number] & Pick<PmxObject.RigidBody, 'physicsMode'>)[]
 }
 
-/** The arm test bodies: `kinematic` follow their bones and gate the arms; `dynamic` are simulated and only reported. */
-export interface MMDArmTestColliders {
-  kinematic: MMDTouchCollider[]
-  dynamic: MMDTouchCollider[]
-}
-
 /**
- * The rigid bodies an arm must not enter: the torso, hip and lower-body (skirt) subtrees, including the centre and
- * groove bones above the waist. Arm subtrees (sleeves, hand physics) and the head and neck are excluded, and the
- * nearest listed ancestor decides, as for touch regions. Collision masks are ignored, because the rig's own torso, hip,
- * chest and leg bodies commonly turn off collision with group 0. Only a body wider than `MAX_BODY_SPAN_FRACTION` of the
- * shoulder span (Chisa's radius-2 coat shell) is skipped. Bodies are split by physics mode: kinematic ones follow the bone and
- * obstruct the arm, dynamic (physics) ones are moved by the simulation, which resolves their contact. Touch regions are unchanged.
+ * The simulated (physics) rigid bodies of the torso, hip and lower-body (skirt) subtrees, including the centre and
+ * groove bones above the waist: the cloth the arm measurement reports contact with. The simulation resolves that
+ * contact, so these bodies never obstruct an arm; the arms clear the body model's volumes instead. Arm subtrees
+ * (sleeves, hand physics) and the head and neck are excluded, and the nearest listed ancestor decides, as for touch
+ * regions. A body wider than `MAX_BODY_SPAN_FRACTION` of the shoulder span is skipped. Touch regions are unchanged.
  */
-export function buildMMDArmTestColliders(
+export function buildMMDClothColliders(
   source: MMDArmTestSource,
   boneInverses: readonly Matrix4[],
   bindMatrix: Matrix4,
   rig: Pick<MMDRigProfile, 'bones' | 'hipsTranslation'>,
-): MMDArmTestColliders {
+): MMDTouchCollider[] {
   const names = (keys: readonly (keyof MMDRigProfile['bones'])[]) => keys.flatMap(key => rig.bones[key] ?? [])
   const included = [...names(['hips', 'spine', 'chest', 'upperChest']), ...[rig.hipsTranslation.center, rig.hipsTranslation.groove].flatMap(name => name ?? [])]
   const excluded = names(['head', 'neck', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm'])
   const [leftArm, rightArm] = [rig.bones.leftUpperArm, rig.bones.rightUpperArm].map(name => source.bones.find(bone => bone.name === name))
   const maxSize = leftArm && rightArm ? MAX_BODY_SPAN_FRACTION * new Vector3().fromArray(leftArm.position).distanceTo(new Vector3().fromArray(rightArm.position)) : Number.POSITIVE_INFINITY
-  const colliding = source.rigidBodies.filter(body => Math.max(...(body.shapeType === SHAPE_BOX ? body.shapeSize : [body.shapeSize[0]])) <= maxSize)
+  const rigidBodies = source.rigidBodies.filter(body => body.physicsMode !== PHYSICS_FOLLOW_BONE
+    && Math.max(...(body.shapeType === SHAPE_BOX ? body.shapeSize : [body.shapeSize[0]])) <= maxSize)
   const regionOf = (boneIndex: number): NaturalTouchRegion | null => {
     const visited = new Set<number>()
     for (let index = boneIndex; index >= 0 && index < source.bones.length && !visited.has(index); index = source.bones[index].parentBoneIndex) {
@@ -135,16 +128,13 @@ export function buildMMDArmTestColliders(
     }
     return null
   }
-  const build = (rigidBodies: typeof colliding) => buildColliders({ bones: source.bones, rigidBodies }, boneInverses, bindMatrix, regionOf)
-  return {
-    kinematic: build(colliding.filter(body => body.physicsMode === PHYSICS_FOLLOW_BONE)),
-    dynamic: build(colliding.filter(body => body.physicsMode !== PHYSICS_FOLLOW_BONE)),
-  }
+  return buildColliders({ bones: source.bones, rigidBodies }, boneInverses, bindMatrix, regionOf)
 }
 
 /**
- * The kinematic head and neck bodies, which the arm test excludes. The body performer keeps arms clear of them as a
- * second obstacle list; physics bodies (hair) and coat-sized shells are skipped by the same rules as the arm test.
+ * The kinematic head and neck bodies of the author's rig. The body model fits no head, so the body performer keeps the
+ * arms clear of these bodies after the model's volumes, and the arm gate measures them as its head list. Physics bodies
+ * (hair) and coat-sized shells are skipped.
  */
 export function buildMMDHeadColliders(
   source: MMDArmTestSource,
@@ -174,6 +164,14 @@ export function scaleMMDTouchCollider(collider: MMDTouchCollider, scale: number)
   const [x, y, z] = collider.size
   const size: MMDTouchCollider['size'] = collider.shape === 'sphere' ? [scale * x, y, z] : collider.shape === 'capsule' ? [scale * x, scale * y, z] : [scale * x, scale * y, scale * z]
   return { ...collider, size }
+}
+
+/**
+ * The colliders as the body performer's corrector fitted them, with `fit` one scale per collider (`BodyCollision.fit`):
+ * each scaled about its own centre, and none fitted to nothing, which the corrector leaves out of every query.
+ */
+export function fitMMDTouchColliders(colliders: readonly MMDTouchCollider[], fit: readonly number[]): MMDTouchCollider[] {
+  return colliders.flatMap((collider, index) => fit[index] > 0 ? [scaleMMDTouchCollider(collider, fit[index])] : [])
 }
 
 function buildColliders(

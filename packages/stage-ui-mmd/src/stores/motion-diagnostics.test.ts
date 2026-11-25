@@ -57,6 +57,19 @@ describe('mmd motion diagnostics channel', () => {
     }
   })
 
+  it('publishes the body model summary with the arm measurement', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    try {
+      const bodyModel = { volumes: 12, garments: 2, pinchedGarments: 1, restAbductDeg: { left: 19, right: 21 }, restLimit: { left: null, right: 'garment' as const }, shrunkVolumes: 0, armCollisions: 'applied' as const }
+      store.publish({ arms: { weight: 1, owned: { leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0 }, penetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, hangDeg: 70, handBelowHip: true, headPenetration: { left: 0, right: 0 }, correctionDeg: { left: 0, right: 0 }, bodyModel } })
+      expect(store.snapshot.arms?.bodyModel).toEqual(bodyModel)
+    }
+    finally {
+      disposePinia(pinia)
+    }
+  })
+
   it('starts, marks, stops and drains a scene trace through the diagnostics channel', async () => {
     const pinia = createPinia()
     const store = useMMDMotionDiagnostics(pinia)
