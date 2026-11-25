@@ -1,7 +1,7 @@
-import type { BodyChannel, BodySide, HandShape } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyArmForm, BodyChannel, BodyRigTraits, BodySide, HandShape } from '@proj-airi/motion-driver-humanoid/performance'
 
 import { GAIT_STYLE_BOUNDS } from '@proj-airi/motion-driver-humanoid/locomotion'
-import { addHandShape, BODY_CHANNELS, BODY_EMOTIONS, channelIndex, HAND_SHAPES, limitChannel, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
+import { addHandShape, ARM_FORMS, BODY_CHANNELS, BODY_EMOTIONS, channelIndex, GestureKeys, HAND_SHAPES, limitChannel, writeArmFormHand, writeHandShape } from '@proj-airi/motion-driver-humanoid/performance'
 import { writeWalkHand } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 
 const DEG = Math.PI / 180
@@ -62,6 +62,44 @@ export const HAND_SHEET_CELLS: readonly HandSheetCell[] = [
   { name: 'pronated', shape: 'relaxed', wrist: { ...NEUTRAL, pron: WRIST.pronation } },
   { name: 'supinated', shape: 'relaxed', wrist: { ...NEUTRAL, pron: -WRIST.pronation } },
 ]
+
+/**
+ * A contact cell: both arms at the key the gesture layer solves for a held arm form (`GestureKeys.armForm`, the form's
+ * hands by `writeArmFormHand`), or at the speech ready key at energy 0.65 with the relaxed hand. Drawn with the whole
+ * mesh around the hand, so the face, the chest or the other hand it meets shows.
+ */
+export type ContactCell = BodyArmForm | 'ready'
+
+/** Every held arm form, then the ready key. */
+export const CONTACT_CELLS: readonly ContactCell[] = [...Object.keys(ARM_FORMS) as BodyArmForm[], 'ready']
+
+/** The energy the ready cell's key is solved at: the middle of the speak scenario's energies. */
+const READY_ENERGY = 0.65
+
+/**
+ * The performer channels of a contact cell, and the sides whose key solved (a side that does not reach its key keeps
+ * its rest arm). A two-hand form solves both arms together, as the gesture layer does.
+ */
+export function contactChannels(rest: Float32Array, traits: BodyRigTraits, cell: ContactCell): { readonly channels: Float32Array, readonly reached: readonly BodySide[] } {
+  const keys = new GestureKeys(traits, rest)
+  const channels = rest.slice()
+  const reached: BodySide[] = []
+  for (const side of SIDES) {
+    const start = channelIndex(`${side}ClavElev`)
+    const home = Float64Array.from(rest.subarray(start, start + ARM_BLOCK))
+    const arm = home.slice()
+    if (cell === 'ready')
+      writeHandShape('relaxed', arm)
+    else
+      writeArmFormHand(cell, side, arm)
+    if (!(cell === 'ready' ? keys.solve(side, keys.readyKey(READY_ENERGY), arm, home) : keys.armForm(side, cell, arm)))
+      continue
+    reached.push(side)
+    for (let j = 2; j < ARM_BLOCK; j++)
+      channels[start + j] = limitChannel(start + j, arm[j])
+  }
+  return { channels, reached }
+}
 
 /**
  * The performer channels of one cell: `rest` (the performer's rest channels, so the arm hangs as she stands) with both
