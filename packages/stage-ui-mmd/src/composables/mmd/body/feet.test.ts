@@ -80,6 +80,43 @@ it('lifts a re-planted foot by its lift and lands it at its yaw from the standin
   expect(after.right).toEqual(before.right)
 })
 
+it('sets a placed re-plant down at its offset from the standing place, and the same placement again where it was', () => {
+  const fixture = bodyFixture(0, Math.PI, { toes: true })
+  const feet = new MMDFootContact(new MMDBodyPose(fixture.mmd, fixture.rig))
+  fixture.pipeline.poseStages.length = 0
+  fixture.pipeline.surfaceStages.length = 0
+  const dt = 1 / 60
+  let now = 0
+  let footSteps: BodyFootStep[] = []
+  fixture.pipeline.poseStages.push({ id: 'foot-contact', run: context => feet.apply(context, { offset: new Vector3(), duck: 1, contactDuck: 1, disabled: false, turnSteps: [], footSteps, now, clips: new Map(), root: { x: 0, yaw: 0 }, gait: null }) })
+  const frames = (count: number) => {
+    for (let frame = 0; frame < count; frame++) {
+      fixture.pipeline.step(dt)
+      footSteps = []
+      now += dt
+    }
+  }
+  frames(60)
+  const before = feet.anchors()
+  const yaw = 5 * Math.PI / 180
+  const place = (): BodyFootStep[] => [{ foot: 'left', startTime: now, duration: 0.5, yaw, lift: 0.2, offset: { x: 0.3, z: 0.4 } }]
+  footSteps = place()
+  frames(15)
+  expect(feet.anchors().left.position.y - before.left.position.y).toBeGreaterThan(0.15)
+  frames(30)
+  const after = feet.anchors()
+  expect(after.left.position.x - before.left.position.x).toBeCloseTo(0.3, 3)
+  expect(after.left.position.z - before.left.position.z).toBeCloseTo(0.4, 3)
+  expect(after.left.position.y).toBeCloseTo(before.left.position.y, 9)
+  expect(after.left.yaw).toBeCloseTo(yaw, 9)
+  expect(after.right).toEqual(before.right)
+  // Placements are absolute: the same one again leaves the foot where it is.
+  footSteps = place()
+  frames(45)
+  expect(feet.anchors().left.position.x).toBeCloseTo(after.left.position.x, 6)
+  expect(feet.anchors().left.position.z).toBeCloseTo(after.left.position.z, 6)
+})
+
 it('turns a standing foot toe-down about its ball for the performer\'s foot pitch, and leaves the other foot flat', () => {
   const fixture = bodyFixture(0, Math.PI, { toes: true })
   // Roll geometry needs a toe IK bone on each foot, which the fixture does not name.

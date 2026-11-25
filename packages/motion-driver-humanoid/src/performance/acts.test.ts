@@ -2,6 +2,8 @@ import type { BodyFootStep, BodyIdleAct, BodyIdleKind, BodyPerformanceInput, Bod
 
 import { describe, expect, it } from 'vitest'
 
+import { createRandomStream } from '../random'
+import { replant } from './acts'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
 import { GestureKeys } from './gesture-forms'
@@ -176,18 +178,39 @@ describe('the act layer', () => {
     return { steps, supports }
   }
 
-  it.each(rigs)('re-plants the foot she takes her weight off on $name\'s body: one 0.4 s step lifting 0.02 L, 4 to 8 degrees, landed by the end (4e act 3)', (rig) => {
-    const { steps } = replants(rig.traits, [record('shift-stance', 1.5, { side: 1 })])
+  // Re-pinned for the stand-life pass: the step lifts higher, for longer, and sets the foot down at a new place, so the
+  // re-plant reads as one (it was 0.4 s, 0.02 L high, and turned the foot in place).
+  it.each(rigs)('re-plants the foot she takes her weight off on $name\'s body: one 0.5 s step lifting 0.035 L to a new place, 4 to 8 degrees, landed by the end (4e act 3)', (rig) => {
+    const { steps, supports } = replants(rig.traits, [record('shift-stance', 1.5, { side: 1 })])
     expect(steps).toHaveLength(1)
     const [{ step, support }] = steps
     // Positive support: the right foot carries, so the left steps once its load is down to 5 %.
     expect(step.foot).toBe('left')
     expect(support).toBeGreaterThanOrEqual(0.9)
-    expect(step.duration).toBe(0.4)
-    expect(step.lift).toBeCloseTo(0.02 * rig.traits.legLength, 9)
+    expect(step.duration).toBe(0.5)
+    expect(step.lift).toBeCloseTo(0.035 * rig.traits.legLength, 9)
+    const offset = step.offset ?? { x: 0, z: 0 }
+    expect(Math.hypot(offset.x, offset.z) / rig.traits.legLength).toBeGreaterThanOrEqual(0.05 - 1e-9)
     expect(Math.abs(step.yaw) / DEG).toBeGreaterThanOrEqual(4)
     expect(Math.abs(step.yaw) / DEG).toBeLessThanOrEqual(8)
     expect(step.startTime + step.duration).toBeLessThanOrEqual(START + 1.5 + 2 * BODY_TICK)
+    // Landed, her weight goes onto the foot she set down instead of back to a half stance.
+    const landed = supports.filter(entry => entry.at > step.startTime + step.duration && entry.at <= START + 1.5)
+    expect(landed[landed.length - 1].support).toBeLessThan(landed[0].support - 0.1)
+  })
+
+  it('sets each re-planted foot down inside its ranges and at least 0.05 L from where it last stood', () => {
+    let last = { out: 0, forward: 0, yaw: 0 }
+    for (let seq = 1; seq <= 200; seq++) {
+      const next = replant(last, createRandomStream(seq))
+      expect(Math.hypot(next.out - last.out, next.forward - last.forward)).toBeGreaterThanOrEqual(0.05)
+      expect(next.out).toBeGreaterThanOrEqual(-0.02)
+      expect(next.out).toBeLessThanOrEqual(0.06)
+      expect(next.forward).toBeGreaterThanOrEqual(-0.04)
+      expect(next.forward).toBeLessThanOrEqual(0.08)
+      expect(Math.abs(next.yaw) / DEG).toBeLessThanOrEqual(8 + 1e-9)
+      last = next
+    }
   })
 
   it('turns each re-planted foot back toward where it stood, so its steps never add up past 12 degrees', () => {

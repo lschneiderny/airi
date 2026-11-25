@@ -22,7 +22,8 @@ deterministic motion algorithms for reusable character motion drivers.
 - `./noise`: `deriveSeed`, `gaussian`, `createDriftNoise` and
   `createActivityGate`, for independent seeded drift and moving holds.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
-  correction, signed knee pre-bend, and body-turn step arcs.
+  correction, signed knee pre-bend, body-turn step arcs, and placed-step arcs
+  (`planFootPlacement`).
 - `./look-at`: `createTurnPlanner`, the turn-step contracts, and `aimEyes`.
 - `./locomotion`: `createLocomotion`, a deterministic procedural gait with root
   motion, planted world foot anchors, body channels, and arm swing.
@@ -33,10 +34,14 @@ deterministic motion algorithms for reusable character motion drivers.
   started (`BodyPerformanceInput.idle`); it schedules nothing itself. A stance
   shift moves her weight fully onto one foot and, once the other carries 5 % of
   it (support 0.9), re-plants that foot: one `BodyFootStep` in
-  `frame.footSteps`, 0.4 s, lifting 0.02 L and turning it 4 to 8 degrees
+  `frame.footSteps`, 0.5 s, lifting 0.035 L and turning it 4 to 8 degrees
   toward and past its standing angle, so it stays within 8 degrees of it. The
-  host's foot stage plays the step. A foot let go in the air lands before her
-  weight goes back. A hand clasp (4e act 6) asks the gesture layer for the
+  step's `offset` sets the foot down at a new place, -0.02 to 0.06 L out from
+  its standing place and -0.04 to 0.08 L forward, at least 0.05 L from where it
+  last stood. A placement is absolute, so re-plants never add up. The host's
+  foot stage plays the step. A foot let go in the air lands before her weight
+  moves; once it lands, her weight settles onto it, so she stands on one leg
+  again. A hand clasp (4e act 6) asks the gesture layer for the
   two-hand `clasp` at the front-low anchor, lets the hand away from Natural's
   side go first, and rocks the pelvis fore and aft by 0.012 L, two to four
   rocks below 0.35 Hz, with both feet turning onto their balls by the lean of

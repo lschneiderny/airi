@@ -40,8 +40,10 @@ reaching feature parity with the Live2D and VRM renderers:
   director's answer goes back to Natural. A model with a sleep clip sleeps through its
   stance; a model without one dozes on her feet (the performer's rest layer).
   A stance shift re-plants a foot: the foot stage plays the performer's
-  `footSteps` like its turn steps, turning the foot about the root to its yaw
-  from the standing angle, without changing the facing. While the gait does
+  `footSteps`, carrying the foot to the step's `offset` from its standing place
+  (the bind ankle turned with the facing) at its yaw from the standing angle,
+  without changing the facing. A step without an offset turns the foot about the
+  root like a turn step. While the gait does
   not carry the feet, the foot stage also turns a standing foot toe-down about
   its ball for the performer's negative `FootPitch` channel (architecture
   5.1's ball pivot, through the gait roll's own ankle offset, before physics);
