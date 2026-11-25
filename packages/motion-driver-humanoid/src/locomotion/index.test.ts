@@ -188,8 +188,10 @@ describe('sidestep', () => {
     }
     // Ignore last-bit differences in transcendental math across V8 builds and optimization tiers. Re-pinned when the frame
     // gained `armSwing.wristFlex` and `handCurl` (hand carriage) and then the arm's `twist` and `pronation` (forearm
-    // roll): without those keys the frames hash as before.
-    expect(hash.digest('hex')).toBe('07b2b7bdbd17fee0c1534b7b70603de766e8a3ed6a859fedf076335d77afb768')
+    // roll): without those keys the frames hash as before. Re-pinned again when a goal behind her became a reversal
+    // through the stop, a goal during the settle started her at once, the turn lean came to scale with speed, and the gaze
+    // came to lead her facing by at most 40 degrees.
+    expect(hash.digest('hex')).toBe('db320969017c0ddbfb93f4217661a7e83b70df13334ebf6244e9ab89fcc63424')
   })
 
   it('finishes a withdrawn pair and settles with both feet planted', () => {
@@ -228,11 +230,13 @@ function hip(frame: LocomotionFrame, foot: Foot): Vec3 {
   const bind = traits.bindAnkles[foot]
   const cos = Math.cos(yaw)
   const sin = Math.sin(yaw)
-  // pelvisLateral moves toward the character's right, (-cos, 0, sin) in world axes.
+  // pelvisLateral moves toward the character's right, (-cos, 0, sin) in world axes, and pelvisForeAft along her
+  // forward, (sin, 0, cos), as the adapter writes them.
+  const { pelvisLateral, pelvisForeAft } = frame.body
   return {
-    x: position.x + cos * bind.x + sin * bind.z - cos * frame.body.pelvisLateral,
+    x: position.x + cos * bind.x + sin * bind.z - cos * pelvisLateral + sin * pelvisForeAft,
     y: bind.y + traits.hipToAnkleY - frame.body.pelvisDrop,
-    z: position.z - sin * bind.x + cos * bind.z + sin * frame.body.pelvisLateral,
+    z: position.z - sin * bind.x + cos * bind.z + sin * pelvisLateral + cos * pelvisForeAft,
   }
 }
 
@@ -1033,6 +1037,54 @@ describe('procedural gait', () => {
     const faced = run.frames.findIndex((frame, tick) => tick >= withdrawnAt && Math.abs(wrap(frame.root.yaw)) < rad)
     // The braking turn takes 1.6 steps (1.43 to within a degree); kept on the arrival turn's plan she took 1.94.
     expect((faced - withdrawnAt) / step).toBeLessThan(1.7)
+  })
+
+  it('reversal: a goal behind her turns her through the viewer while she brakes, and she sets off from the stop', () => {
+    const run = createRun({ x: 0, yaw: Math.PI / 2 })
+    run.advance(4, () => ({ goalX: 100, arriveFacing: 0 }))
+    const reversed = run.frames.length
+    run.advance(5, () => ({ goalX: -60, arriveFacing: 0 }))
+    const after = run.frames.slice(reversed)
+    // One walk carries her through: no turn on the spot and no blend back to standing.
+    expect(after.some(frame => frame.mode === 'turning' || frame.mode === 'idle')).toBe(false)
+    expect(Math.min(...after.map(frame => frame.weight))).toBe(1)
+    // The facing only ever turns toward the new heading, through the viewer, and never stops on the way.
+    const turning = after.findIndex(frame => frame.root.yaw < Math.PI / 2 - rad)
+    const done = after.findIndex(frame => frame.root.yaw <= -Math.PI / 2 + rad)
+    for (let tick = 1; tick < after.length; tick++)
+      expect(after[tick]!.root.yaw).toBeLessThanOrEqual(after[tick - 1]!.root.yaw + 1e-12)
+    for (let tick = turning; tick < done; tick++)
+      expect(after[tick + 1]!.root.yaw).toBeLessThan(after[tick]!.root.yaw)
+    // The gaze leaves first and leads the turn by at most 40 degrees, a comfortable turn of the neck.
+    expect(after[turning]!.root.yaw - after[turning]!.lookAhead).toBeGreaterThan(20 * rad)
+    for (const frame of after)
+      expect(Math.abs(frame.root.yaw - frame.lookAhead)).toBeLessThanOrEqual(40 * rad + 1e-9)
+    // She stands still for less than half a second and is never stopped while she faces the viewer.
+    const stopped = after.filter(frame => frame.speed === 0)
+    expect(stopped.length * dt).toBeLessThan(0.5)
+    expect(stopped.every(frame => Math.abs(frame.root.yaw) > 20 * rad)).toBe(true)
+    // The gaze names the new heading before the root moves the new way, and she sets off facing it, not backwards.
+    const setOff = after.findIndex((frame, tick) => tick > 0 && frame.root.position.x < after[tick - 1]!.root.position.x)
+    expect(after[setOff]!.lookAhead).toBeCloseTo(-Math.PI / 2, 6)
+    expect(after[setOff]!.root.yaw).toBeLessThan(-10 * rad)
+    expect(after.at(-1)!.mode).toBe('walking')
+    expect(run.locomotion.leashClamps).toBe(0)
+  })
+
+  it('arrival: a goal that comes while she settles sets off at once', () => {
+    const run = createRun({ x: 0, yaw: Math.PI / 2 })
+    let settledAt = -1
+    run.advance(9, () => {
+      const last = run.frames.at(-1)
+      // The settle is the stop's last stage: both feet stand beside the root and the gait's weight falls.
+      if (settledAt < 0 && last?.mode === 'stopping' && last.speed === 0 && last.weight < 1)
+        settledAt = run.frames.length
+      return { goalX: settledAt < 0 ? 30 : 80, arriveFacing: 0 }
+    })
+    expect(settledAt).toBeGreaterThan(0)
+    expect(run.frames[settledAt]!.mode).toBe('starting')
+    expect(Math.min(...run.frames.slice(settledAt).map(frame => frame.weight))).toBeGreaterThan(0.5)
+    expect(run.frames.at(-1)!.root.position.x).toBeGreaterThan(30)
   })
 
   it('arrival: a foot a full step behind rolls off while she turns to face the viewer', () => {
