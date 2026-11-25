@@ -203,20 +203,28 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   // length its speed would add; falling arousal shortens the step as well as slowing it.
   out.stride = Math.exp(0.07 * Math.min(0, a) - 0.1 * up + 0.05 * v - 0.05 * sad - 0.15 * t - 0.2 * f + 0.15 * b('stride'))
   out.bounce = Math.exp(0.75 * a + 0.2 * v - 0.5 * t + 0.6 * b('bounce'))
-  out.lift = Math.exp(0.15 * a - 0.3 * t - 0.2 * f)
-  out.roll = Math.exp(0.1 * a - 0.35 * t - 0.2 * f)
+  // Tension stiffens the step, a shuffle with a flat roll, unless arousal drives it: an angry foot lifts and plants
+  // through its heel, where a flat, low step under a lunging trunk read as hurrying, not force (independent visual
+  // audit, 2026-11-25; angry gait is heavy-footed, Montepare, Goldstein and Clausen 1987).
+  const stiff = t * (1 - up)
+  out.lift = Math.exp(0.15 * a - 0.3 * stiff - 0.2 * f)
+  out.roll = Math.exp(0.1 * a - 0.35 * stiff - 0.2 * f)
   out.pelvisTwist = Math.exp(0.2 * a - 0.3 * t + 0.35 * b('sway'))
   out.pelvisList = Math.exp(0.15 * a + 0.15 * v - 0.3 * t + 0.6 * b('sway'))
   out.width = Math.exp(0.4 * f + 0.1 * t - 0.35 * sad * (1 - up) + 0.6 * b('width'))
-  out.torsoTwist = Math.exp(0.35 * a + 0.15 * v - 0.4 * t)
+  // Tension squares the shoulders to the path: at -0.4 the angry trunk still counter-rotated 8.9 degrees and read as
+  // loose (independent visual audit, 2026-11-25).
+  out.torsoTwist = Math.exp(0.35 * a + 0.15 * v - 0.8 * t)
   out.armSwing = Math.exp(0.5 * a + 0.35 * v - 0.8 * t - 0.5 * f + 0.5 * b('armSwing'))
-  // Tension bends the elbow; arousal adds to it less when she is tense, where the two together held the forearm up like
-  // a jog over walking legs (independent visual audit, 2026-11-24). Angry stays 30 degrees over neutral, as acted angry
-  // walks carry it (44 against normal's 14).
-  out.elbowCarry = radians * (18 * up * (1 - 0.5 * t) + 24 * t + 20 * Math.max(0, b('armCarry')))
+  // Arousal bends the elbow, tension holds it lower. Acted angry walks carry it 30 degrees over normal, but 31 here
+  // measured 54 on the reference rig and read as pumping arms; the force belongs in the plant and the trunk
+  // (independent visual audits, 2026-11-24 and 2026-11-25).
+  out.elbowCarry = radians * (18 * up * (1 - t) + 8 * t + 20 * Math.max(0, b('armCarry')))
   out.armOut = radians * 3 * b('armCarry')
   out.lean = radians * (20 * f + 4 * sad + 10 * t + 4 * up - 3 * b('posture') + 6 * hurry)
-  out.head = radians * (12 * sad + 10 * f - 5 * glad * (1 - up) - 6 * b('posture'))
+  // Fatigue bends her from the hips more than at the neck, so the tired walk does not read as the sad one's lowered head
+  // (independent visual audit, 2026-11-25): 4 degrees per unit of fatigue, against sadness's 12.
+  out.head = radians * (12 * sad + 4 * f - 5 * glad * (1 - up) - 6 * b('posture'))
   // Valence, arousal and a carried arm extend the wrist (acted happy 31 to 38, feminine 31 to 51) at half the acted
   // gain, where the review saw a loose hand; sadness and fatigue drop it (sad 5 to 12); tension straightens it
   // (masculine 0 to 14).
@@ -226,8 +234,11 @@ export function walkStyleFrom(factors: WalkFactors, out: MutableGaitStyle = { ..
   // positive walk opens it (model and feminine walks: index curl 14 to 17, normal 43); a carried arm opens it, a wide
   // swing closes it a little.
   out.handCurl = Math.exp(0.2 * up + 1.1 * t + 0.6 * up * t - 0.9 * glad * (1 - up) - 0.8 * Math.max(0, b('armCarry')) + 0.4 * Math.max(0, b('armSwing')))
-  out.push = Math.exp(0.25 * up + 0.15 * glad - 0.2 * sad - 0.6 * f - 0.1 * t)
-  out.load = 0.9 * t * (0.4 + 0.6 * up)
+  // Fatigue picks the foot up late and sinks into each landing, a heavy step that sad's folded, narrow walk lacks
+  // (independent visual audit, 2026-11-25: tired read as sad); full fatigue nearly reaches the push's floor and half
+  // the load. Tension loads the step most with arousal, fully when angry.
+  out.push = Math.exp(0.25 * up + 0.15 * glad - 0.2 * sad - 0.8 * f - 0.1 * t)
+  out.load = t * (0.4 + 0.75 * up) + 0.8 * f
   // An aroused negative mood is anger, not defeat: the fold and the narrow step fade with arousal.
   out.fold = radians * (9 * sad * (1 - up) + 5 * f - 3 * glad * (1 - t))
   return boundGaitStyle(out, out)

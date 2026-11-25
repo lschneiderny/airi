@@ -491,6 +491,11 @@ const armOutForward = 16
  */
 const forearmRise = { knee: 60, ceiling: 85 } as const
 /**
+ * Steps the loading dip's recovery lasts longer at the push's floor than at a push of 1 (`loadingDip`); it still ends
+ * at 0.7 of the step, before the next strike, so the knee lands straight.
+ */
+const dragRecovery = 0.2
+/**
  * The arm's roll at a full swing, degrees either way, positive inward at the front of the swing and outward behind it,
  * timed with the elbow. Acted walks roll the forearm 7 to 19 degrees within a stride (36 in a youthful walk), and about
  * half the authored MMD walks key the arm twist bone, swinging 13 to 16 degrees either way (arm-hand plan, section 1).
@@ -1172,12 +1177,19 @@ class Locomotion {
 
   /**
    * A bouncy or loaded style's extra knee give after each heel strike, leg lengths: none at the strike, deepest 0.25 step
-   * later (the loading response) and gone by mid-stance, so the knee still lands straight.
+   * later (the loading response) and gone by mid-stance, so the knee still lands straight. A dragging push (below 1)
+   * also rises out of it slowly, gone `dragRecovery` step later at the push's floor: a tired walk picked up late but
+   * recovered as briskly as an angry one (independent visual audit, 2026-11-25). The share rests on judgment.
    */
   private loadingDip(strideScale: number) {
     const t = this.phase - Math.floor(this.phase)
     const amount = bounceDipShare * this.traits.legLength * (Math.max(0, this.style.bounce - 1) + this.style.load) * Math.min(1, strideScale)
-    return t < 0.5 ? amount * Math.sin(2 * Math.PI * t) ** 2 : 0
+    const drag = (1 - Math.min(1, this.style.push)) / (1 - GAIT_STYLE_BOUNDS.push[0])
+    const end = 0.5 + dragRecovery * drag
+    if (t < 0.25)
+      return amount * Math.sin(2 * Math.PI * t) ** 2
+    // From the deepest point the same quarter cosine as the loading's, stretched to `end`; at `end` 0.5 it is sin^2.
+    return t < end ? amount * Math.cos(Math.PI / 2 * (t - 0.25) / (end - 0.25)) ** 2 : 0
   }
 
   /** A planted foot's ankle in the world: its planning anchor moved by its roll's ankle offset. */
@@ -1977,7 +1989,12 @@ class Locomotion {
       // tanh shape keeps the elbow's speed continuous.
       const knee = forearmRise.knee * radians
       const room = (forearmRise.ceiling - forearmRise.knee) * radians
-      const rise = flexion + 2 * radians + this.style.elbowCarry + size * radians * 17 * (soft(late) - late)
+      // A swing wider than the walk's comes from the shoulder: the elbow's front bend gives back what the wider shoulder
+      // swing adds, so the forearm rises no higher in front than the walk's own: per unit of swing, 19.5 degrees at the
+      // shoulder's front (17.5 + 2 above) and 34 at the elbow's. A happy swing of 1.8 bent the elbow on top and carried
+      // the hand forward at shoulder height (independent visual audit, 2026-11-25).
+      const elbowSize = size <= 1 ? size : Math.max(0, 1 - (size - 1) * 19.5 / 34)
+      const rise = flexion + 2 * radians + this.style.elbowCarry + elbowSize * radians * 17 * (soft(late) - late)
       return {
         flexion,
         elbowFlex: (rise <= knee ? rise : knee + room * Math.tanh((rise - knee) / room)) - flexion,
