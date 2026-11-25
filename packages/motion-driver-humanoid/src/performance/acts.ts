@@ -11,6 +11,7 @@ import { path } from './cues'
 import { GestureKeys } from './gesture-forms'
 import { followerInverse } from './gestures'
 import { writeHandShape } from './hand-shapes'
+import { TRUNK_COUNTER_ROLL } from './posture'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
@@ -26,8 +27,8 @@ const NATURAL = { head: 30, body: 10 } as const
 const EXIT = 0.35
 /** Natural's look-around glances reach 0.7 aside and 0.22 up (`idle-activities.ts`); architecture 4e act 4 looks 35 deg aside and 20 deg up. */
 const LOOK = { yaw: 35 * DEG / 0.7, pitch: 20 * DEG / 0.22 } as const
-/** The posture's weight-chain roll per unit of support, lower 2.4, mid 0.9 and upper 0.5 degrees (`posture.ts`), as shares of a trunk roll. */
-const ROLL_SHARES = [2.4 / 3.8, 0.9 / 3.8, 0.5 / 3.8] as const
+/** The posture's weight-chain roll per unit of support (`TRUNK_COUNTER_ROLL`), as shares of a trunk roll. */
+const ROLL_SHARES = TRUNK_COUNTER_ROLL.map(degrees => degrees / TRUNK_COUNTER_ROLL.reduce((sum, value) => sum + value, 0))
 /** Architecture 4b nod: head 0.7 and neck 0.3 of the pitch, torso mid 0.12 of it. */
 const NOD = { head: 0.7, neck: 0.3, mid: 0.12 } as const
 /** Architecture 4f standing doze, as a nod-off and waking reach it: the head to +18 deg, the torso lower to +3, a 3 deg overshoot up. */

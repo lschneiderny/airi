@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BodyArms } from './arms'
 import { BodyBreath } from './breath'
-import { BODY_CHANNELS, channelIndex, DEG } from './channels'
+import { BODY_CHANNELS, BODY_TICK, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, idleInput, lagOf, peakSpeed, quietInput } from './performance.test-fixtures'
 import { BodyPosture } from './posture'
@@ -130,6 +130,41 @@ describe('posture performance', () => {
       }))
       for (const side of ['left', 'right'] as const)
         expect(peakSpeed(trace[c(`${side}Elbow`)]), `${side} support ${support}`).toBeGreaterThan(peakSpeed(trace[c(`${side}Abduct`)]))
+    }
+  })
+
+  it('tilts the shoulders against the hips and lets the free arm bend and the stance arm hang after the weight arrives', () => {
+    const even = 59
+    for (const support of [-1, 1]) {
+      const stance = support > 0 ? 'right' : 'left'
+      const free = support > 0 ? 'left' : 'right'
+      // Each shift also re-settles the arms by a few random degrees (`BodyArms`); the mean over seeds is the contrapposto.
+      let bend = 0
+      let lag = 0
+      const seeds = [1, 2, 3, 4, 5, 6]
+      for (const seed of seeds) {
+        const performer = createBodyPerformer({ traits, seed })
+        const trace = channelTrace(performer, 6, t => ({
+          ...quietInput(t),
+          posture: { amplitude: 0, shiftRate: 0, support: t < 0.5 ? 0 : support },
+        }))
+        const last = trace[0].length - 1
+        const at = (channel: Parameters<typeof c>[0], k = last) => trace[c(channel)][k] / DEG
+        // The trunk rolls the shoulders back past level, further than the hips roll, and the clavicle over the stance
+        // leg drops below the other.
+        expect(Math.abs(at('lowerRoll') + at('midRoll') + at('upperRoll'))).toBeGreaterThan(Math.abs(at('hipsRoll')))
+        expect(at(`${stance}ClavElev`) - at(`${free}ClavElev`)).toBeLessThan(-1.5)
+        bend += at(`${free}Elbow`) - at(`${stance}Elbow`) - (at(`${free}Elbow`, even) - at(`${stance}Elbow`, even))
+        const half = (values: number[]) => {
+          const moved = values.map(value => Math.abs(value - values[even]))
+          return moved.findIndex(value => value >= moved[last] / 2) * BODY_TICK
+        }
+        lag += half(trace[c(`${free}Elbow`)]) - half(trace[c('pelvisX')])
+      }
+      // Crossed with the legs: the free side's elbow bends and the stance side's straightens, by over 10 degrees between
+      // them, and the elbow gets there well after the pelvis.
+      expect(bend / seeds.length).toBeGreaterThan(10)
+      expect(lag / seeds.length).toBeGreaterThan(0.4)
     }
   })
 

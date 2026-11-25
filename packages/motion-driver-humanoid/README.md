@@ -566,9 +566,15 @@ and final arm collision correction. It never integrates root position, chooses
 a director goal, reads a clock, writes a bone, or imports Natural. The MMD body
 of `@proj-airi/stage-ui-mmd` poses every bone from it under the Natural driver.
 
-A support transfer stands her in contrapposto. As the weight leaves a foot, its
-heel rises up to 6 degrees, toe-down about its ball through the foot's
-`FootPitch` channel, so the free knee bends forward. The lift starts at support
+A support transfer stands her in contrapposto through the whole body. The trunk
+rolls the shoulder line against the hips, 5.8 degrees per unit of support
+against the hips' 4.5, and the clavicle over the free leg rides up 3 degrees.
+The arms cross with the legs: the arm over the stance leg hangs long, drawn in
+3 degrees against the hip with its elbow 4 degrees straighter, and the other arm
+rolls in 3 degrees, its elbow bends 11 and its hand turns in 8, through an
+underdamped follower, so the elbows and hands settle after her weight has
+arrived. As the weight leaves a foot, its heel rises up to 6 degrees, toe-down
+about its ball through the foot's `FootPitch` channel, so the free knee bends forward. The lift starts at support
 0.35, deepens at low arousal, and eases down while a turn steps. The heel
 follows in about half a second of its own, so a quick transfer never sets it
 down at the weight's speed, and a lift under 0.1 degrees is left flat. Each new

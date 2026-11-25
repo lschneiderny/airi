@@ -21,6 +21,16 @@ const SWAY_TRUNK_SHARE = 1 / 3
 const SWAY_TRUNK_SPLIT = [0.5, 0.3, 0.2] as const
 
 /**
+ * The trunk's counter-roll per unit of support at the lower, mid and upper controls, degrees, against the hips' 4.5: the
+ * shoulder line tilts against the hips (contrapposto), the shoulder over the stance leg lower. The first sizes (2.4, 0.9
+ * and 0.5, 3.8 in all) left the shoulders tilted about 3.5 degrees against 5 at the hips, which the stand-life audit
+ * read as barely countering them; with the clavicles' share (`arms.ts`) the shoulders now tilt a little further than
+ * the hips the other way (about 7 degrees against 5 on the Chisa test rig). The hips keep their 4.5: a larger roll lifts
+ * the stance hip out of a narrow-stanced rig's reach.
+ */
+export const TRUNK_COUNTER_ROLL = [3.2, 1.6, 1.0] as const
+
+/**
  * The free leg of a one-leg stance (contrapposto): as the weight leaves a foot its heel rises, the foot turning toe-down
  * about its ball, so the free knee bends forward instead of standing braced beside the stance knee. Degrees at a fully
  * unloaded foot, and the support beyond which it starts, eased in by a squared smoothstep, so the heel rises once the
@@ -180,10 +190,9 @@ export class BodyPosture {
     const gain = this.rotationScale
     out[3] += 3 * DEG * chain[0] * gain
     out[5] -= 4.5 * DEG * chain[0] * gain
-    out[8] += 2.4 * DEG * chain[1] * gain
-    // The old 1.4-degree upper share is split over mid and upper, preserving total tilt.
-    out[11] += 0.9 * DEG * chain[single ? 1 : 2] * gain
-    out[14] += 0.5 * DEG * chain[single ? 1 : 3] * gain
+    out[8] += TRUNK_COUNTER_ROLL[0] * DEG * chain[1] * gain
+    out[11] += TRUNK_COUNTER_ROLL[1] * DEG * chain[single ? 1 : 2] * gain
+    out[14] += TRUNK_COUNTER_ROLL[2] * DEG * chain[single ? 1 : 3] * gain
     out[9] -= 2 * DEG * chain[single ? 1 : 2] * gain
     if (this.traits.legIk) {
       out[0] += -this.lateralGain * s + lateral
