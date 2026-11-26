@@ -182,12 +182,31 @@ function wristPath(run: Run, side: 'left' | 'right', rig: BodyRigTraits = traits
 
 /** Kinematic apexes (plan 2.1): wrist-speed minima at most half a speed peak within the 300 ms before them, in seconds. */
 function apexes(run: Run, side: 'left' | 'right', rig: BodyRigTraits = traits): number[] {
+  return strokeEnds(run, side, rig).map(end => end.apex)
+}
+
+/**
+ * Each kinematic apex (`apexes`) with where its movement landed: the time, between ticks, the wrist's speed came down
+ * through a tenth of its peak since the previous apex (at most 300 ms back), or the apex itself when the speed stayed
+ * above that. A hand that was still moving as its stroke began creeps on into its hold at a few hundredths of the
+ * peak, and its first speed minimum can fall anywhere in that creep; the landing does not.
+ */
+function strokeEnds(run: Run, side: 'left' | 'right', rig: BodyRigTraits = traits): { apex: number, landing: number }[] {
   const path = wristPath(run, side, rig)
   const speed = path.map((p, i) => i ? Math.hypot(p[0] - path[i - 1][0], p[1] - path[i - 1][1], p[2] - path[i - 1][2]) : 0)
-  const out: number[] = []
+  const out: { apex: number, landing: number }[] = []
+  let last = 1
   for (let i = 2; i < speed.length - 1; i++) {
-    if (speed[i] <= speed[i - 1] && speed[i + 1] > speed[i] && speed[i] <= 0.5 * Math.max(...speed.slice(Math.max(1, i - 36), i)))
-      out.push(run.frames[i].time)
+    if (speed[i] <= speed[i - 1] && speed[i + 1] > speed[i] && speed[i] <= 0.5 * Math.max(...speed.slice(Math.max(1, i - 36), i))) {
+      const since = speed.slice(Math.max(last, i - 36), i)
+      const peak = Math.max(...since)
+      let k = Math.max(last, i - 36) + since.indexOf(peak)
+      while (k < i && speed[k + 1] > 0.1 * peak)
+        k++
+      const landing = k < i ? run.frames[k].time + BODY_TICK * (speed[k] - 0.1 * peak) / (speed[k] - speed[k + 1]) : run.frames[i].time
+      out.push({ apex: run.frames[i].time, landing })
+      last = i
+    }
   }
   return out
 }
@@ -1045,15 +1064,15 @@ describe('co-speech gestures', () => {
   }, 120_000)
 
   it('lands two-hand strokes with the second hand 30 to 90 ms behind, also the first after a hand joins', () => {
-    // The gesture-timing rule: the nearest apex of each hand within 200 ms of the stroke's reported apex.
-    // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.
-    // A hand starting its stroke from a recovery sometimes dips in speed mid-stroke, and the nearest apex then falls
-    // short of the lag: 2 of 178 two-hand strokes over these 300 seeds before hands leaned in (`RISE`), so the rule is
-    // judged as a share. A hand that had just risen and led the stroke still carried its rise: 13 of 181 missed. The
-    // share of 0.02 held 3 of 182 misses with hands that stood still at their ready keys. A sinking hand (`SINK`)
-    // that a phrase bringing in the other hand catches rises again into the new place and strokes off that rise: 8 of
-    // 180. Each miss's planned profiles land 58 to 75 ms apart; the lead's wrist slows into its hold so smoothly that its
-    // first speed minimum comes up to 73 ms later.
+    // The gesture-timing rule: each hand's landing (`strokeEnds`) nearest the stroke's reported apex, within 200 ms of
+    // it. The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its
+    // hold. A hand starting its stroke from a recovery sometimes dips in speed mid-stroke, and the nearest apex then
+    // fell short of the lag: 2 of 178 two-hand strokes over these 300 seeds before hands leaned in (`RISE`), so the
+    // rule is judged as a share. A hand that had just risen and led the stroke still carried its rise: 13 of 181 missed.
+    // Measured at the apexes themselves, 3 of 182 missed with hands that stood still at their ready keys and 9 of 181
+    // with sinking ones (`SINK`), each with its hands' speed peaks and landings 33 to 79 ms apart: a hand still moving
+    // as its stroke began creeps into its hold, and its first speed minimum came up to 100 ms after its landing. The
+    // second hand's minimum at the end of the motion it left could also lie nearer the reported apex than its stroke's.
     const speak = [0.8, 1.8, 3.03, 3.98, 5.17].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
     let both = 0
     let later = 0
@@ -1062,7 +1081,7 @@ describe('co-speech gestures', () => {
       const run = perform({ utterances: [utterance(0.3, 0.65, speak)] }, 6.5, { seed, traits: chisaTraits })
       const strokesOfBoth = strokes(run).filter(stroke => stroke.hand === 'both')
       for (const stroke of strokesOfBoth) {
-        const [left, right] = SIDES.map(side => nearest(apexes(run, side, chisaTraits), stroke.hit))
+        const [left, right] = SIDES.map(side => nearest(strokeEnds(run, side, chisaTraits).map(end => end.landing), stroke.hit))
         const lag = Math.abs(left - right)
         if (Math.abs(left - stroke.hit) > 0.2 || Math.abs(right - stroke.hit) > 0.2 || lag < 0.03 - 1e-9 || lag > 0.09 + 1e-9)
           missed.push(`seed ${seed} stroke ${stroke.hit.toFixed(3)}: ${(lag * 1000).toFixed(0)} ms`)
@@ -1070,7 +1089,7 @@ describe('co-speech gestures', () => {
       both += strokesOfBoth.length
       later += Math.max(0, strokesOfBoth.length - 1)
     }
-    expect(missed.length / both, missed.join(', ')).toBeLessThanOrEqual(0.05)
+    expect(missed.length / both, missed.join(', ')).toBeLessThanOrEqual(0.02)
     // Strokes after a unit's first are the ones that leave a post-stroke hold.
     expect(later).toBeGreaterThanOrEqual(15)
   }, 300_000)
