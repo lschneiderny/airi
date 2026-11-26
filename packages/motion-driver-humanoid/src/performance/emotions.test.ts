@@ -1,18 +1,19 @@
 import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { BodyChannel } from './channels'
-import type { BodyPerformanceInput } from './contracts'
+import type { BodyPerformanceFrame, BodyPerformanceInput } from './contracts'
 import type { MergedPerformancePlan, PerformanceLayer } from './stack'
 
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, DEG } from './channels'
 import { BODY_EMOTIONS, createEmotionLayer } from './emotions'
 import { GestureKeys } from './gesture-forms'
+import { createGestureLayers } from './gestures'
 import { HAND_SHAPES, writeHandShape } from './hand-shapes'
 import { createBodyPerformer, createPerformanceLayers } from './index'
-import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
+import { channelTrace, chisaTraits, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
 const c = channelIndex
@@ -275,6 +276,57 @@ describe('emotion posture layer', () => {
     expect(delta(at + 0.13, 'midYaw')).toBeCloseTo(3 * sign, 0)
     expect(delta(at + 0.13, 'midPitch') + delta(at + 0.13, 'upperPitch')).toBe(0)
     expect(Math.abs(delta(at + 0.7, 'midYaw'))).toBeLessThan(0.05)
+  })
+
+  // Love comes as a two-hand unit is under way, and the unit goes on with one-hand strokes before it lowers a hand.
+  it('beats love\'s chest toward the one hand that strokes while the gesture report still names both', () => {
+    const onsets = Array.from({ length: 9 }, (_, i) => 1.3 + i * 0.55 + (i % 3) * 0.07)
+    // Speech from 1 s, a 0.6 voice peak at each onset over a 0.1 floor, under Natural's 250 ms slow envelope.
+    const speech = () => {
+      const voice = { onsetSeq: 0, slow: 0 }
+      return (t: number): BodyPerformanceInput => {
+        const input = idleInput(t)
+        const onset = onsets.some(at => Math.abs(t - at) < BODY_TICK / 2)
+        voice.onsetSeq += onset ? 1 : 0
+        const level = t < 1 ? 0 : onset ? 0.6 : 0.1
+        voice.slow = level + (voice.slow - level) * Math.exp(-BODY_TICK / 0.25)
+        return { ...input, held: { emotion: 'love', strength: 1, level: ramp(t, 1.5), side: 1 }, voice: { speaking: t >= 1, level, slow: voice.slow, onsetSeq: voice.onsetSeq, emphasis: null }, energy: { ...input.energy, level: 0.65 } }
+      }
+    }
+    // The emotion layer's chest yaw on each tick, and the gesture report it read; without `beats` it reads no stroke.
+    const run = (beats: boolean) => {
+      const layer = createEmotionLayer()
+      const yaw: number[] = []
+      const reports: BodyPerformanceFrame['diagnostics']['gesture'][] = []
+      const recorder: PerformanceLayer = { ...layer, step: (context) => {
+        const gesture = context.previous.diagnostics.gesture
+        reports.push({ ...gesture })
+        const output = layer.step(beats ? context : { ...context, previous: { ...context.previous, diagnostics: { ...context.previous.diagnostics, gesture: { ...gesture, phase: 'hold' } } } })
+        yaw.push(output.channels[c('midYaw')] / DEG)
+        return output
+      } }
+      channelTrace(createBodyPerformer({ traits: chisaTraits, seed: 1, layers: [recorder, ...createGestureLayers({ traits: chisaTraits, seed: 1 })] }), 6, speech())
+      return { yaw, reports }
+    }
+    const beaten = run(true)
+    const plain = run(false)
+    const reports = beaten.reports
+    // Each stroke's start, the hand its apex reports (the hands that stroked), and the report's hand just before it.
+    const strokes = reports.flatMap((report, i) => {
+      if (i === 0 || report.phase !== 'stroke' || reports[i - 1].phase === 'stroke')
+        return []
+      const apex = reports.slice(i).find(r => r.strokeSeq !== reports[i - 1].strokeSeq)
+      return apex?.hand ? [{ i, hand: apex.hand, before: reports[i - 1].hand }] : []
+    })
+    expect(strokes.some(stroke => stroke.before === 'both' && stroke.hand !== 'both')).toBe(true)
+    for (const { i, hand } of strokes) {
+      // A beat stroke's time after the stroke starts, the beat's peak (the report is a frame old).
+      const beat = beaten.yaw[i + 14] - plain.yaw[i + 14]
+      if (hand === 'both')
+        expect(beat).toBe(0)
+      else
+        expect(beat * (hand === 'left' ? 1 : -1)).toBeGreaterThan(0.5)
+    }
   })
 
   it('settles love\'s hand on the chest lower into the body while she speaks, along a clear path, and asks nothing silent', () => {

@@ -1408,6 +1408,8 @@ class GesturePerformer {
     const performed = this.strokeTrack(leadTrack, context, now, form, size)
     if (!performed)
       return
+    // The report names the hands that stroke from the stroke's start: a two-hand unit's one-hand stroke strokes with one.
+    this.report.hand = both ? 'both' : lead
     if (both) {
       if (lagging.active && lagging.state !== 'retraction' && lagging.state !== 'form') {
         const lag = TIMING.lagRange[0] + (TIMING.lagRange[1] - TIMING.lagRange[0]) * this.random()
