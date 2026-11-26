@@ -7,6 +7,7 @@ import type { Live2DMotionDriver } from './live2d'
 import type { Live2DNaturalMotionAttention } from './natural-motion-adapter'
 import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-profile'
 
+import { breathWave } from '@proj-airi/motion-driver-natural/breath'
 import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { drawCursorEpisode } from '@proj-airi/motion-driver-natural/cursor-notice'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
@@ -760,6 +761,19 @@ describe('natural motion adapter', () => {
     const { commanded, written } = f.frame(1.5)
     expect(written.has('ParamBreath')).toBe(true)
     expect(commanded[f.at('ParamBreath')]).toBeCloseTo(natural(1.5).breath.value, 6)
+    f.adapter.dispose()
+  })
+
+  it('(e2) breathes over the whole parameter range on a rig whose physics reads the breath', () => {
+    const f = fixture({ physics: physicsRig([['ParamBreath', 'PhysicsOutput']]) })
+    f.state.eligible = true
+    f.frame(0)
+    const breath = f.at('ParamBreath')
+    expect(f.frame(1.5).commanded[breath]).toBeCloseTo(0.5 + 0.5 * breathWave(natural(1.5).breath), 6)
+    const values = Array.from({ length: 20 * 30 }, (_, index) => f.frame(1.5 + (index + 1) / 30).commanded[breath])
+    // The fixture's breath parameter runs from 0 to 1; Natural's own value stays between 0.33 and 0.57.
+    expect(Math.min(...values)).toBeLessThan(0.05)
+    expect(Math.max(...values)).toBeGreaterThan(0.95)
     f.adapter.dispose()
   })
 

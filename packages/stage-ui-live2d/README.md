@@ -83,7 +83,7 @@ The controller and its pure layers live in `packages/motion-driver-natural`, sha
 - Body follows the head with a lag of 150 to 300 milliseconds, drawn again at each posture shift.
 - Face adds slow brow, mouth-form, and eyelid micro-activity, plus occasional silent mouth openings. Mouth-form and eyelid micro-activity are low-passed (0.3 s), so they do not flicker frame to frame.
 - Blink schedules blinks at irregular intervals, with occasional double blinks, and starts a nearly due blink early at a large gaze shift.
-- Breath drives the breath channel and couples a very small pitch movement to the head.
+- Breath drives the breath channel and couples a very small pitch movement to the head. On a rig whose physics reads the breath channel, the breath spans that parameter's whole range (see below).
 - Speech emphasis turns onsets in the lipsync mouth level into occasional small head beats while the character speaks: 80% are pitch-down nods and 20% are roll tilts to a random side.
 - Impulses add short head gestures and decaying face hints for emotions and desktop reactions.
 - The hold layer keeps the face, posture, and pacing of the current held emotion; see Held emotions below.
@@ -119,6 +119,8 @@ Natural owns these channels when the model has them:
 - cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset. Natural resolves blush using the rule below, never cheek inflation. ZIP and restored-directory models retain CDI names. Traces sample the resolved physical parameter under the canonical `ParamCheek` channel;
 - Natural blink, while the user's auto-blink setting is on;
 - breath (`ParamBreath`), unless manual breath control is active.
+
+Natural's breath value moves between 0.33 and 0.57. The Cubism SDK's own breath, which rig authors tune against, moves `ParamBreath` between 0 and 1. On a rig whose physics takes `ParamBreath` as an input (`Live2DRigProfile` `breathFeedsPhysics`), parts hang from the breath, and a quarter of the authored range leaves them moving by less than a pixel. On such a rig the adapter writes the same breath wave over the parameter's whole range: fully out is the minimum and fully in is the maximum. While she speaks the wave is 0.6 times as deep, as on every rig. A rig whose physics does not read the breath keeps Natural's value.
 
 Blush resolution first excludes every candidate whose id or CDI display name contains any of these case-insensitive substrings: `puff`, `inflat` (including inflate and inflation), `swell`, `鼓`, or `膨`. This exclusion also applies to exact `ParamCheek`, even if another metadata entry labels the same id as blush. Among the remaining candidates, preference is:
 

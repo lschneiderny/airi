@@ -134,6 +134,15 @@ describe('rig profile', () => {
     }
   })
 
+  it('g: reports whether physics reads the breath, ignoring an input of zero weight', () => {
+    expect(readLive2DRigProfile(parameters(), rig([['ParamBreath', 'P1']])).breathFeedsPhysics).toBe(true)
+    expect(readLive2DRigProfile(parameters(), rig([['ParamAngleX', 'P1']])).breathFeedsPhysics).toBe(false)
+    expect(readLive2DRigProfile(parameters(), undefined).breathFeedsPhysics).toBe(false)
+    const muted = rig([['ParamBreath', 'P1']])
+    muted.inputs[0].weight = 0
+    expect(readLive2DRigProfile(parameters(), muted).breathFeedsPhysics).toBe(false)
+  })
+
   it('f: skips missing and fixed channels while retaining indices and asymmetric ranges', () => {
     const input = parameters(['Unknown', 'ParamAngleX', 'ParamBreath', 'ParamMouthOpenY'])
     input.maximumValues[2] = input.minimumValues[2]

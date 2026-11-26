@@ -19,6 +19,7 @@ import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
+import { breathWave } from '@proj-airi/motion-driver-natural/breath'
 import { IdleBehaviourReports } from '@proj-airi/motion-driver-natural/idle-activities'
 import { IdleErrandReports } from '@proj-airi/motion-driver-natural/idle-errands'
 import { dormantIdleView } from '@proj-airi/motion-driver-natural/idle-schedule'
@@ -186,6 +187,8 @@ export class Live2DNaturalMotionAdapter {
   private offsets: (ChannelRange & { key: keyof NaturalFaceOutput, sign: 1 | -1 })[] = []
   private mouth: ChannelRange | undefined
   private breath: ChannelRange | undefined
+  /** The rig's physics reads the breath, so the breath spans the parameter's range, as the rig's author tuned it. */
+  private breathFull = false
   private time = 0
   private frameTime: number | undefined
   private paused = false
@@ -294,6 +297,7 @@ export class Live2DNaturalMotionAdapter {
     })
     this.mouth = owned('mouthOpen')
     this.breath = owned('breath')
+    this.breathFull = profile.breathFeedsPhysics
     this.controller.setRigTraits({ bodyFromHeadPhysics: profile.bodyFromHeadPhysics })
   }
 
@@ -656,8 +660,10 @@ export class Live2DNaturalMotionAdapter {
       const base = core.getParameterValueByIndex(this.mouth.index)
       core.setParameterValueByIndex(this.mouth.index, clampRange(base + face.silentMouthOpen, this.mouth))
     }
-    if (this.breath && free(this.breath) && !attention.manualBreathActive)
-      core.setParameterValueByIndex(this.breath.index, clampRange(breath.value, this.breath))
+    if (this.breath && free(this.breath) && !attention.manualBreathActive) {
+      const value = this.breathFull ? this.breath.min + (this.breath.max - this.breath.min) * (0.5 + 0.5 * breathWave(breath)) : breath.value
+      core.setParameterValueByIndex(this.breath.index, clampRange(value, this.breath))
+    }
   }
 
   dispose() {

@@ -27,6 +27,14 @@ const speakingScale = 0.6
 const amplitudeTau = 0.5
 
 /**
+ * The breath wave behind an output's `value`: -1 fully out to 1 fully in while idle, and within -0.6 to 0.6 while
+ * speaking. A renderer that maps the breath onto a range of its own reads it.
+ */
+export function breathWave(output: Pick<NaturalBreathOutput, 'value'>) {
+  return (output.value - center) / amplitude
+}
+
+/**
  * Breathing as `ParamBreath = 0.45 + 0.12 a sin(phase)`, with a wandering period
  * and amplitude scale `a` (1 idle, 0.6 while speaking). Breath is the only periodic
  * signal in natural motion; the liveliness loop detector scores head channels only.

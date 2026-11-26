@@ -86,7 +86,7 @@ export function resolveCheekParameterId(ids: readonly string[], displayInfo?: un
 /** The parsed Cubism physics fields needed for ownership discovery, without SDK imports. */
 export interface PhysicsRigLike {
   settings: { baseInputIndex: number, inputCount: number, baseOutputIndex: number, outputCount: number }[]
-  inputs: { source: { id: string } }[]
+  inputs: { source: { id: string }, weight?: number }[]
   outputs: { destination: { id: string }, weight?: number }[]
 }
 
@@ -95,11 +95,13 @@ export interface Live2DRigProfile {
   channels: Map<NaturalChannel, { id: string, index: number, min: number, max: number, neutral: number }>
   physicsOutputs: Set<string>
   bodyFromHeadPhysics: { x: boolean, y: boolean, z: boolean }
+  /** The rig's physics reads the breath channel, so parts of the rig move with her breathing. */
+  breathFeedsPhysics: boolean
 }
 
 /**
- * Discovers rig ownership without changing model parameters. An omitted output
- * weight counts as active; only an explicit zero disables ownership.
+ * Discovers rig ownership without changing model parameters. An omitted output or input
+ * weight counts as active; only an explicit zero disables it.
  */
 export function readLive2DRigProfile(
   parameters: { ids: string[], minimumValues: ArrayLike<number>, maximumValues: ArrayLike<number>, defaultValues: ArrayLike<number> },
@@ -173,5 +175,6 @@ export function readLive2DRigProfile(
       y: reachable.has(channelIds.bodyY),
       z: reachable.has(channelIds.bodyZ),
     },
+    breathFeedsPhysics: physicsRig?.inputs.some(input => input.source.id === channelIds.breath && input.weight !== 0) ?? false,
   }
 }
