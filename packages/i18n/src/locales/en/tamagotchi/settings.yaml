@@ -40,6 +40,35 @@ pages:
         empty: No matching tools
         enabled: Enabled
         router-only: Router only
+  presence:
+    blocked-apps:
+      description: The character never sees these apps. AIRI drops their name and window title before anything else reads them, and the character stays quiet on its own while one is in front. Private browser windows that say so in their title are always blocked.
+      empty: No apps are blocked.
+      add-app: Block an app...
+      no-installed-apps: AIRI cannot list the installed apps on this system. Add a pattern instead.
+      remove: 'Unblock {app}'
+      pattern-placeholder: App name or pattern, such as *keepass*
+      add-pattern: Add pattern
+      pattern-hint: A pattern matches the app's file name or, on Linux, its desktop file name. Use * to match any characters.
+      load-error: AIRI could not list the installed apps.
+    hides:
+      title: Hide for now
+      description: Hide the app you used last, or pause everything. The character sees nothing of it until the hide ends. Every hide ends when AIRI quits.
+      front: 'Last app: {app}'
+      no-front: Switch to the app you want to hide, then come back here.
+      this-window: This window
+      app-hour: App for 1 hour
+      app-session: App until AIRI restarts
+      app-always: Block always
+      pause-hour: Pause everything for 1 hour
+      hidden-now: Hidden now
+      window-label: '{app} window'
+      pause-label: Everything
+      until-time: 'Until {time}'
+      until-quit: Until the app quits
+      until-restart: Until AIRI restarts
+      show-again: Show again
+      error: AIRI could not change the hide.
   system:
     general:
       hide-app-icon:
