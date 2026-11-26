@@ -7,6 +7,7 @@ Shared character behavior belongs in `packages/stage-ui`.
 
 From the repository root, run `pnpm install`, then `pnpm dev:tamagotchi`.
 Run `pnpm -F @proj-airi/stage-tamagotchi build` to build the app.
+A development build shows the Vue DevTools button at the bottom edge of each window. Set `AIRI_VUE_DEVTOOLS=0` to leave it out, for example in a demo or a recording.
 
 The root install builds shared packages and the desktop dependency graph, including the Terminal MCP service.
 If you install with `--ignore-scripts`, run `pnpm build:packages` before typecheck, development, or build.
