@@ -222,8 +222,8 @@ export function planFootSteps(turnSteps: readonly TurnStep[], anchors: Record<Fo
 
 /**
  * One foot's way from `start` to `end` over `duration` seconds, for a placed step (a re-plant): the foot travels by
- * minimum jerk, so it leaves and lands at rest, and lifts `swingHeight` model units on a sine that peaks a little before
- * mid-step, so it clears the ground as it leaves and sets down flat.
+ * minimum jerk, so it leaves and lands at rest, and lifts `swingHeight` model units on a squared sine that peaks a
+ * little before mid-step, so it leaves the ground and meets it again without a vertical speed.
  */
 export function planFootPlacement(start: FootAnchor, end: FootAnchor, duration: number, swingHeight: number) {
   return {
@@ -231,7 +231,7 @@ export function planFootPlacement(start: FootAnchor, end: FootAnchor, duration: 
     sample(elapsed: number): FootAnchor {
       const t = duration > 0 ? Math.max(0, Math.min(1, elapsed / duration)) : 1
       const target = blendAnchor(start, end, minJerk(t))
-      const lift = t > 0 && t < 1 ? swingHeight * Math.sin(Math.PI * t ** 0.8) : 0
+      const lift = t > 0 && t < 1 ? swingHeight * Math.sin(Math.PI * t ** 0.8) ** 2 : 0
       return { position: { ...target.position, y: target.position.y + lift }, yaw: target.yaw }
     },
   }
