@@ -65,6 +65,8 @@ export interface UseLive2DMotionManagerUpdateOptions {
   live2dAutoBlinkEnabled: Ref<boolean>
   live2dForceAutoBlinkEnabled: Ref<boolean>
   lastUpdateTime: Ref<number>
+  /** Whether the scene holds a motion on purpose. Such a motion is not idle playback, whichever group its file is in. */
+  holdsMotion?: () => boolean
 }
 
 /**
@@ -161,9 +163,9 @@ export function useLive2DMotionManagerUpdate(options: UseLive2DMotionManagerUpda
   function hookUpdate(model: CubismModel, now: number, hookedUpdate?: (model: CubismModel, now: number) => boolean) {
     const timeDelta = lastUpdateTime.value ? now - lastUpdateTime.value : 0
     const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
-    const isIdleMotion = !motionManager.state.currentGroup
+    const isIdleMotion = !options.holdsMotion?.() && (!motionManager.state.currentGroup
       || motionManager.state.currentGroup === motionManager.groups.idle
-      || (!!selectedMotionGroup && motionManager.state.currentGroup === selectedMotionGroup)
+      || (!!selectedMotionGroup && motionManager.state.currentGroup === selectedMotionGroup))
 
     const ctx: MotionManagerPluginContext = {
       model,

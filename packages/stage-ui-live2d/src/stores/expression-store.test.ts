@@ -35,6 +35,43 @@ describe('curated expression catalog', () => {
     vi.unstubAllGlobals()
   })
 
+  it('offers the rig\'s animations as entries she can hold, and names the one that shows', () => {
+    const store = useExpressionStore()
+    const vtube = { Hotkeys: [
+      { Action: 'TriggerAnimation', File: 'eat.motion3.json', Name: 'eat ct' },
+      { Action: 'TriggerAnimation', File: 'sleep.motion3.json', Name: 'sleep' },
+    ] }
+    store.setMotionFiles(['eat.motion3.json', 'sleep.motion3.json'])
+    store.registerDefinitions('a', defs, [], vtube)
+    const [eat, sleep] = ['animation:eat.motion3.json', 'animation:sleep.motion3.json']
+    expect(store.catalog.map(entry => entry.id)).toEqual(['smile', 'frown', 'glasses', eat, sleep])
+    expect(store.animationTarget).toBeNull()
+    // The user's tag is an ordinary override, and her own claim shows the animation.
+    store.updateEntry(eat, { idleUse: 'activity' })
+    expect(store.catalog.find(entry => entry.id === eat)?.idleUse).toBe('activity')
+    expect(store.setIdleClaims([eat])).toEqual([eat])
+    expect(store.animationTarget).toBe('eat.motion3.json')
+    // The composer has no definition for it, so it writes nothing.
+    expect(store.composer.parameterOffsets.size).toBe(0)
+    // A switch the user turns on later takes the shared group, and the scene loops that one.
+    store.toggle(sleep)
+    store.setIdleClaims([])
+    expect(store.animationTarget).toBe('sleep.motion3.json')
+    store.toggle(sleep)
+    expect(store.animationTarget).toBeNull()
+    // The panel's commands reach it like any switch, and a saved resting look brings it back with the model.
+    store.applySettingsCommand({ type: 'set-active', id: eat, active: true })
+    store.saveDefaults()
+    store.dispose()
+    expect(store.catalog).toEqual([])
+    store.registerDefinitions('a', defs, [], vtube)
+    expect(store.animationTarget).toBe('eat.motion3.json')
+    // A model that cannot play the files offers none.
+    store.setMotionFiles([])
+    expect(store.catalog.map(entry => entry.id)).toEqual(['smile', 'frown', 'glasses'])
+    expect(store.animationTarget).toBeNull()
+  })
+
   it('loads curated keepSeparate before deriving and rederives using retained model metadata', () => {
     const store = useExpressionStore()
     const duplicates: NamedExpressionDefinition[] = ['a', 'b'].map(id => ({

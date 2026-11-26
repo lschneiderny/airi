@@ -121,6 +121,29 @@ describe('live2d motion manager plugins', () => {
     expect(update.getClipOwnedIds().size).toBe(0)
   })
 
+  it('runs a motion the scene holds on purpose, although its file is in the idle group', () => {
+    const ctx = createContext({ live2dIdleAnimationEnabled: ref(false) })
+    const manager = Object.assign(new EventEmitter(), ctx.motionManager, { state: { currentGroup: 'Idle' } })
+    ctx.motionManager = manager
+    let held = false
+    const update = useLive2DMotionManagerUpdate({ ...ctx, lastUpdateTime: ref(0), holdsMotion: () => held })
+    update.register(useMotionUpdatePluginIdleDisable(), 'pre')
+    const sdkUpdate = vi.fn(() => true)
+    // The update reads the user's selected idle group.
+    vi.stubGlobal('localStorage', { getItem: () => null })
+
+    // Idle playback is stopped while idle motions are off, and the SDK update never runs.
+    update.hookUpdate(ctx.model as never, 16, sdkUpdate)
+    expect(manager.stopAllMotions).toHaveBeenCalledTimes(1)
+    expect(sdkUpdate).not.toHaveBeenCalled()
+
+    held = true
+    update.hookUpdate(ctx.model as never, 32, sdkUpdate)
+    expect(manager.stopAllMotions).toHaveBeenCalledTimes(1)
+    expect(sdkUpdate).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
+  })
+
   it('keeps SDK breath from changing AIRI-owned idle parameters', () => {
     const updateParameters = vi.fn()
     const internalModel = {

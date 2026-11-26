@@ -553,6 +553,14 @@ The end of an away span: the performance resolver's `away` turns false after it 
 **Not to be confused with:** a desktop wake, an unlock or resume, which can come while the user is still away; the situation's `returned` event and `welcome-back` ritual, which are the gate's answer to the mind's `observe-return`.
 **Avoid:** "welcome back" for the return itself, "unlock".
 
+### Rig animation
+
+A looping motion that a Live2D rig's author drew for it, such as eating or sleeping, offered as an expression entry with an `animation:` id and kind `prop`. The entries come from the motion files that the rig's `.vtube.json` binds to a `TriggerAnimation` hotkey. While an entry shows, the scene loops its motion file on her model; one rig animation shows at a time. The user can switch it on, and can allow it as a pastime, for sleep, or for a moment like any entry.
+
+**Code:** `packages/stage-ui-live2d/src/utils/expression-catalog/derive.ts` `deriveAnimationEntries`, `animationFileOf`; `packages/stage-ui-live2d/src/stores/expression-store.ts` `animationTarget`; `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue` `loopAnimation`.
+**Not to be confused with:** an idle motion, which the Universal driver plays from the rig's idle group; an MMD [clip](#clip) played as an `idle-clip` errand; and a [stage item](#stage-item), which is drawn on her and moves none of her parameters.
+**Avoid:** "hotkey animation", "idle clip" for Live2D.
+
 ### Scene session
 
 A chat session bound to an external scene, for example a Discord channel, where the character answers other people. Its replies return as text and never speak on the host. It gets no recipe tools, no reply cards, and no notices. A session without a binding is the owner's own conversation.

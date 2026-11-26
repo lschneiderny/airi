@@ -114,7 +114,8 @@ import { readParameterDisplayNames } from '../../../utils/expression-catalog/dis
 import { findFreeParameters } from '../../../utils/expression-catalog/free-parameters'
 import { naturalVoiceLevel } from './natural-voice-level'
 
-type CubismMotionCurve = NonNullable<NonNullable<Cubism4MotionManager['motionGroups'][string]>[number]>['_motionData']['curves'][number]
+type CubismMotion = NonNullable<NonNullable<Cubism4MotionManager['motionGroups'][string]>[number]>
+type CubismMotionCurve = CubismMotion['_motionData']['curves'][number]
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -518,6 +519,18 @@ function destroyModel(target: Live2DModel) {
   target.destroy({ texture: true, baseTexture: true })
 }
 
+/** The rig animation the catalog shows, and the Cubism motion that loops it once its file loaded. */
+let loopedAnimation: { file: string, motion?: CubismMotion } | null = null
+
+/** A rig animation that ends with its own fade-out. The one the catalog shows now starts when it has ended. */
+let endingAnimation: CubismMotion | null = null
+
+/**
+ * The values the looped rig animation found in the parameters it moves, by parameter index. The motion update
+ * writes them back before each motion step until the loop has faded out, so the fade ends where she was.
+ */
+const animationBase = new Map<number, number>()
+
 async function loadModel() {
   await until(modelLoading).not.toBeTruthy()
 
@@ -633,6 +646,12 @@ async function performModelLoad() {
     live2d.motions.setExecutor({
       play: motion => setMotion(motion.group, motion.index),
     })
+    // The catalog offers the rig animations this model can play, and one that already shows starts on the new model.
+    loopedAnimation = null
+    endingAnimation = null
+    animationBase.clear()
+    expressionStore.setMotionFiles(availableMotions.value.map(motion => motion.fileName))
+    void loopAnimation(expressionStore.animationTarget)
 
     // Check if user has selected a runtime motion to play as idle
     const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
@@ -690,6 +709,8 @@ async function performModelLoad() {
       live2dAutoBlinkEnabled,
       live2dForceAutoBlinkEnabled,
       lastUpdateTime,
+      // A rig animation plays for as long as its entry shows, also when its file is in the idle group.
+      holdsMotion: () => loopedAnimation?.motion !== undefined || endingAnimation !== null,
     })
 
     const expressionContextInput = () => live2dMotionDriver.value === 'natural' ? live2d.expressions : undefined
@@ -851,6 +872,14 @@ async function performModelLoad() {
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
+      // A motion blends from the values it finds, and Cubism saves what it wrote. Without this the loop's fade-out
+      // would blend toward its own last pose and leave it on her for good.
+      if (animationBase.size > 0) {
+        for (const [index, value] of animationBase)
+          model.setParameterValueByIndex(index, value)
+        if (!loopedAnimation && !endingAnimation && motionManager.isFinished())
+          animationBase.clear()
+      }
       return motionManagerUpdate.hookUpdate(model, now, hookedUpdate)
     }
 
@@ -860,6 +889,16 @@ async function performModelLoad() {
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
+      // A rig animation has faded out, or a motion that replaced it has ended. This frame wrote the animation's
+      // parameters back, so the animation the catalog shows now starts from where she was.
+      endingAnimation?.setIsLoop(false)
+      endingAnimation = null
+      animationBase.clear()
+      if (loopedAnimation) {
+        // The selected runtime idle below would replace it on the next frame.
+        void loopAnimation(loopedAnimation.file)
+        return
+      }
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
       const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
 
@@ -1077,6 +1116,51 @@ async function setMotion(motionName: string, index?: number) {
     return false
   }
 }
+
+/**
+ * Loops the rig animation the catalog shows (`animationTarget`), after the one before it has ended. Cubism loops the
+ * motion itself, so the loop has no seam. The one before it ends with the motion's own fade-out, because starting a
+ * motion drops every other motion on the frame; the `motionFinish` listener then starts the one that shows.
+ */
+async function loopAnimation(file: string | null) {
+  const internalModel = model.value?.internalModel
+  const manager = internalModel instanceof Cubism4InternalModel ? internalModel.motionManager : undefined
+  const previous = loopedAnimation
+  const next: typeof loopedAnimation = file === null ? null : { file }
+  loopedAnimation = next
+  const ending = previous?.motion ?? endingAnimation
+  endingAnimation = null
+  if (ending && manager) {
+    const entries = manager.queueManager._motions.filter(entry => entry?._motion === ending)
+    if (entries.length > 0) {
+      for (const entry of entries)
+        entry.setFadeOut(ending.getFadeOutTime())
+      endingAnimation = ending
+      return
+    }
+    // Another motion replaced it. The cached motion plays once again for anyone else who starts it.
+    ending.setIsLoop(false)
+  }
+  const entry = availableMotions.value.find(motion => motion.fileName === file)
+  if (!next || !entry || !manager || !(internalModel instanceof Cubism4InternalModel))
+    return
+  const motion = await manager.loadMotion(entry.motionName, entry.motionIndex)
+  // The catalog moved on while the file loaded.
+  if (!motion || loopedAnimation !== next)
+    return
+  const parameters = internalModel.coreModel.getModel().parameters
+  for (const curve of motion._motionData.curves) {
+    const index = parameters.ids.indexOf(curve.id)
+    if (index >= 0 && !animationBase.has(index))
+      animationBase.set(index, parameters.values[index])
+  }
+  motion.setIsLoop(true)
+  motion.setIsLoopFadeIn(false)
+  next.motion = motion
+  await setMotion(entry.motionName, entry.motionIndex)
+}
+
+watch(() => expressionStore.animationTarget, file => void loopAnimation(file))
 
 const dropShadowColorComputer = ref<HTMLDivElement>()
 const dropShadowAnimationId = ref(0)

@@ -2,13 +2,37 @@ import type { ExpressionDefinition } from '../../composables/live2d/expression/c
 
 import { describe, expect, it } from 'vitest'
 
-import { deriveCatalog, readVtubeHotkeyLabels, suggestGroups, suggestKind, suggestMappings } from './derive'
+import { animationFileOf, deriveAnimationEntries, deriveCatalog, readVtubeHotkeyLabels, suggestGroups, suggestKind, suggestMappings } from './derive'
 
 function definition(id: string, values: Record<string, number>): ExpressionDefinition {
   return { id, parameters: Object.entries(values).map(([id, value]) => ({ id, value, blend: 'Add' })) }
 }
 
 describe('catalog derivation', () => {
+  it('offers the animations a rig binds to a hotkey, for the motion files the model can play', () => {
+    const vtube = { Hotkeys: [
+      { Action: 'TriggerAnimation', File: 'Eat.motion3.json', Name: ' eat\u200B ct ' },
+      { Action: 'TriggerAnimation', File: 'eat.motion3.json', Name: 'second binding' },
+      { Action: 'TriggerAnimation', File: 'sleep.motion3.json', Name: '' },
+      { Action: 'TriggerAnimation', File: 'missing.motion3.json', Name: 'missing' },
+      { Action: 'ToggleExpression', File: 'wave.motion3.json', Name: 'not an animation' },
+    ] }
+    const entries = deriveAnimationEntries(vtube, ['motions/eat.motion3.json', 'sleep.motion3.json', 'wave.motion3.json'])
+    expect(entries.map(entry => [entry.id, entry.label])).toEqual([
+      ['animation:motions/eat.motion3.json', 'eat ct'],
+      ['animation:sleep.motion3.json', 'sleep'],
+    ])
+    // A prop the chat model cannot ask for and she never uses on her own, until the user says otherwise.
+    expect(entries[0]).toMatchObject({ kind: 'prop', area: 'props', exposedToLlm: false, parameterIds: [], mappings: [] })
+    expect(entries[0].idleUse).toBeUndefined()
+    // One group, so one animation shows at a time.
+    expect(new Set(entries.map(entry => entry.group))).toEqual(new Set(['group:animation:motions/eat.motion3.json']))
+    expect(animationFileOf(entries[0].id)).toBe('motions/eat.motion3.json')
+    expect(animationFileOf('eat.exp3.json')).toBeUndefined()
+    expect(deriveAnimationEntries(vtube, ['sleep.motion3.json'])[0].group).toBeNull()
+    expect(deriveAnimationEntries(undefined, ['sleep.motion3.json'])).toEqual([])
+  })
+
   it('cleans zero-width labels and keeps the first nonempty name across case and paths', () => {
     const Hotkeys = ['', '\u200B Angry\u200D \n face\uFEFF', 'ignored'].map(Name => ({
       Action: 'ToggleExpression',

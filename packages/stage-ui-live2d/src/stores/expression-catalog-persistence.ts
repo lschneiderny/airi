@@ -109,7 +109,8 @@ export function removeExpressionDocuments(modelId: string) {
 
 export interface CatalogPersistenceContext {
   modelId: Ref<string>
-  derived: Ref<CatalogEntry[]>
+  /** The entries the rig itself yields, which an override may name. */
+  derived: { readonly value: CatalogEntry[] }
   curated: Ref<CuratedCatalogDocument>
   catalog: Readonly<Ref<CatalogEntry[]>>
 }

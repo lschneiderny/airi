@@ -56,6 +56,14 @@ Activations resolve through claims. A slot activation that conflicts with a pick
 
 The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values, including `toggle`, `set-active`, `save-defaults`, `reset-all`, `update-entry`, `reset-entry`, `create-combo`, `update-combo`, `update-custom`, and `delete-custom`.
 
+### Rig animations
+
+A rig's author often draws loops for it, such as eating or sleeping, and binds each to a VTube Studio hotkey. Each motion file that the archive's `.vtube.json` binds to a `TriggerAnimation` hotkey, and that the loaded model can play, gets a catalog entry with the id `animation:<motion file>` and the hotkey's name as its label (`deriveAnimationEntries` in `utils/expression-catalog/derive.ts`). The scene reports the model's motion files with `setMotionFiles`.
+
+An animation entry is a `prop` in the props area. It has no parameters, so the composer writes nothing for it. While the entry shows, the scene loops its motion file (`loopAnimation` in `components/scenes/live2d/Model.vue`, fed by the store's `animationTarget`), under every driver. Switching it off fades the motion out over the file's own fade-out time, and the parameters the motion moved return to the values they had before it started. Switching to another animation lets the first one fade out before the second starts. The loop plays whichever motion group its file is in, the idle group included. Part opacities that a motion file animates are not returned.
+
+A rig's animation entries share one pick-one group, so one animation shows at a time. A new entry is not exposed to the LLM and she never uses it on her own. The entry editor edits it like any entry, so "On her own" makes it a pastime or keeps it on while she sleeps, an occasion or a moment times it, and "Suggest tags" covers it. A motion that plays over the loop, such as an ACT motion, replaces it, and the loop resumes when that motion ends. The [rig animations ADR](../../docs/ai/adr/2026-11-26-live2d-rig-animations.md) records the design.
+
 ### Expression slots
 
 Under Natural, the Root context's active expression controls and temporary
