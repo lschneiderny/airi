@@ -10,6 +10,8 @@ import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@pro
 
 import { advanceSecondOrder, minJerk, secondOrderCoefficients, softLimit } from '../dynamics'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
+import { KEY_HEADROOM } from './collision'
+import { ARM_FORMS, GestureKeys } from './gesture-forms'
 import { addHandShape } from './hand-shapes'
 
 /**
@@ -89,9 +91,10 @@ export interface BodyEmotionSpec {
   readonly startle?: number
   /**
    * While she speaks, degrees at full weight: the chest lifts (`lift`) and the trunk turns `turn` toward the far side,
-   * the hand that speaks, so the line comes from the emotion's posture instead of beside it.
+   * the hand that speaks, so the line comes from the emotion's posture instead of beside it. Each stroke of the speaking
+   * hand turns the chest `beat` more toward it (`BEAT`), and a held hand to chest settles into the body (`SETTLE`).
    */
-  readonly speech?: { readonly lift: number, readonly turn: number }
+  readonly speech?: { readonly lift: number, readonly turn: number, readonly beat: number }
 }
 
 /**
@@ -114,7 +117,8 @@ export interface BodyEmotionSpec {
  * - curious leans in from the hips and tilts, the shoulders and arms drawn back behind her.
  * - awkward retreats onto the far foot and turns away, hunched, with a self-touch to the hair on the side.
  * - love softens: the chest opens, the trunk curves toward the hand on the heart, the other forearm folds across the
- *   belly, and the sway slows and widens; while she speaks the chest lifts and turns toward the speaking hand.
+ *   belly, and the sway slows and widens; while she speaks the chest lifts and turns toward the speaking hand, turns
+ *   further with each of its strokes, and the hand on the heart settles lower into the body with the elbow down.
  * - flustered turns away and guards: the trunk twists away and hunches, the weight retreats, both forearms come up in
  *   front of the chest with loose fists; quick and jittery.
  * - sleepy sags and lists: the hips slide forward under a trunk that leans back and curls at the chest, the knees
@@ -131,7 +135,7 @@ export const BODY_EMOTIONS: Readonly<Record<PerformanceEmotion, BodyEmotionSpec>
   // Natural keeps the head; the body never adds a second head posture (plan 3.2).
   curious: { posture: { lowerPitch: 10, midPitch: 5, upperPitch: 1, midRoll: 4, pelvisZ: 0.003, arms: { clavProt: -6, flex: -18, elbow: 15, abduct: 4 } }, hands: null, response: { f: 1.3, zeta: 0.7, r: -0.3 }, heldShare: 1, support: 0.5, armForm: null, tempo: 1.1, amplitude: 1, tension: 0.5, breath: 1, sigh: false },
   neutral: { posture: {}, hands: null, response: null, heldShare: 0, support: null, armForm: null, tempo: 1, amplitude: 1, tension: 0.4, breath: 1, sigh: false },
-  love: { posture: { midPitch: -5, upperPitch: -3, lowerRoll: 4, midRoll: -2, pelvisZ: 0.002, arms: { clavProt: -4 }, farArm: { flex: 26, abduct: 4, twist: 36, elbow: 80, pron: 20 } }, hands: null, response: { f: 0.6, zeta: 0.95, r: -0.1 }, heldShare: 1, support: -1, armForm: 'hand-to-chest', tempo: 0.8, amplitude: 1.4, tension: 0.25, breath: 1.15, sigh: false, speech: { lift: 4, turn: 5 } },
+  love: { posture: { midPitch: -5, upperPitch: -3, lowerRoll: 4, midRoll: -2, pelvisZ: 0.002, arms: { clavProt: -4 }, farArm: { flex: 26, abduct: 4, twist: 36, elbow: 80, pron: 20 } }, hands: null, response: { f: 0.6, zeta: 0.95, r: -0.1 }, heldShare: 1, support: -1, armForm: 'hand-to-chest', tempo: 0.8, amplitude: 1.4, tension: 0.25, breath: 1.15, sigh: false, speech: { lift: 4, turn: 5, beat: 3 } },
   flustered: { posture: { midPitch: 4, upperPitch: 2, lowerRoll: -3, hipsYaw: 4, lowerYaw: 5, midYaw: 5, pelvisZ: -0.006, arms: { clavElev: 8, clavProt: 5, flex: 16, abduct: 6, twist: 10, elbow: 100, wflex: 10 } }, hands: { shape: 'fist', amount: 0.8 }, response: { f: 2.4, zeta: 0.5, r: -0.1 }, heldShare: 1, support: -1, armForm: null, tempo: 1.4, amplitude: 1.1, tension: 0.7, breath: 1.2, sigh: false },
   sleepy: { posture: { slump: 8.5, lowerPitch: -6.5, lowerRoll: 8.5, midRoll: 3, pelvisY: -0.012, pelvisZ: 0.014, arms: { clavElev: -8, abduct: -2, elbow: -6 } }, hands: { curl: 0.85 }, response: { f: 0.35, zeta: 1, r: 0 }, heldShare: 1, support: 1, armForm: null, tempo: 0.55, amplitude: 1.5, tension: 0.1, breath: 1.4, sigh: false },
 }
@@ -183,6 +187,29 @@ const RELEASE_LIFETIME = 15
 const REST = 1e-6
 /** The follower of her speaking that an emotion's `speech` terms ride: critically damped, settling in about half a second. */
 const SPEECH = secondOrderCoefficients({ f: 1, zeta: 1, r: 0 }, BODY_TICK)
+/**
+ * The chest's beat on each stroke of the speaking hand (`BodyEmotionSpec.speech.beat`), so the emphasis that moves the
+ * speech arm turns the ribs toward it too, and the hand on the chest rides them: it starts as the gesture layer reports the stroke (`BodyGestureReport.phase`, the last
+ * frame's), rises over `rise` seconds, a beat stroke's time, so it peaks with the stroke's hit, and returns over
+ * `decay`, as that stroke's own torso pulse does (`gestures.ts` `AMPLITUDE.torsoDecay`). A new stroke rises from where
+ * the beat is. Natural's voice emphasis reaches the body on few of the onsets the hand strokes, so it is not the cue.
+ * The beat turns and does not lift: the stroke's own torso pulse pitches the chest forward, and a lift against it
+ * halved the chest's pitch on each stroke.
+ */
+const BEAT = { rise: 0.12, decay: 0.5 } as const
+/**
+ * While she speaks, a held hand to chest settles into the body (audit of 2026-11-25: held where love stands, the hand
+ * hovered upright in front of the sternum through the line while the other hand spoke). The settled key is the held
+ * key's wrist moved `down` arm lengths lower on the chest and `in` toward it, with the elbow as low as the joint limits
+ * let it hang (the swivel from 0 in `swivelStep` steps up to the form's own), and the wrist flexed `wflex` more, so the
+ * hand lies on the chest instead of standing up from the steeper forearm; the solve pushes the hand back out to the
+ * body's surface and swings the elbow out only until the arm clears the trunk with the settling headroom
+ * (`KEY_HEADROOM`), along the whole way from the held key. The largest `down` that clears with the wrist still at least
+ * half of it lower wins (on a chested rig the push can lift the hand over the bust instead); on a rig where none does,
+ * the hand stays where it is held. The share is her speaking (`SPEECH`), so standing silent she holds the key the form
+ * solved.
+ */
+const SETTLE = { down: [0.08, 0.06, 0.04, 0.02], in: 0.03, swivelStep: 5 * DEG, wflex: 20 * DEG } as const
 /**
  * While she walks an emotion is an accent the stride absorbs, not a pose held over the swing (2026-11-25 amendment of the
  * emotion silhouettes ADR). Its arm joints (clavicle to wrist; the hand shape stays) show in full from the emotion's
@@ -312,6 +339,66 @@ export function createEmotionLayer(): EmotionLayer {
   let time = 0
   /** The tick's summed slump in radians, spread over the torso after every track has added its share. */
   let slump = 0
+  /** The gesture layer's solver, made on the first tick from the rest its own keys take, so the held keys agree. */
+  let keys: GestureKeys | null = null
+  /** Per side, the settled hand to chest less the held one (`SETTLE`); null where none clears, undefined until solved. */
+  const settled: Record<BodySide, Float64Array | null | undefined> = { left: undefined, right: undefined }
+  /** This tick's settle of the held hand to chest, handed to the gesture layer with the request. */
+  const settle = new Float64Array(26)
+  /** Whether the speaking hand was in a stroke on the last frame (`BEAT`). */
+  let wasStroking = false
+  /** The chest's beat on the latest stroke (`BEAT`): when it started and the beat it rose from. */
+  const beat = { start: Number.NEGATIVE_INFINITY, from: 0 }
+  /** The beat this tick, a share of `speech.beat`. */
+  let ribs = 0
+
+  function beatAt(t: number): number {
+    const age = t - beat.start
+    if (age < BEAT.rise)
+      return beat.from + (1 - beat.from) * minJerk(age / BEAT.rise)
+    return 1 - minJerk((age - BEAT.rise) / BEAT.decay)
+  }
+
+  /** The settled hand to chest on `side` less the held one (`SETTLE`), or null where the form or no settled key solves. */
+  function settledOffset(side: BodySide, rest: Float32Array): Float64Array | null {
+    if (!keys)
+      return null
+    const form = ARM_FORMS['hand-to-chest']
+    const start = ARM_START[side]
+    const held = Float64Array.from(rest.subarray(start, start + 26))
+    if (!keys.armForm(side, 'hand-to-chest', held))
+      return null
+    const [x, y, z] = keys.wrist(side, held)
+    const out = (side === 'left' ? 1 : -1) * x
+    const pose = held.slice()
+    for (const down of SETTLE.down) {
+      for (let swivel = 0; swivel <= form.swivel + 1e-9; swivel += SETTLE.swivelStep) {
+        if (keys.solve(side, { hand: [out, y - down, z - SETTLE.in], swivel, pron: form.pron, wflex: form.wflex + SETTLE.wflex, wdev: 0 }, pose, held, KEY_HEADROOM) && keys.wrist(side, pose)[1] <= y - 0.5 * down)
+          return pose.map((value, j) => value - held[j])
+      }
+    }
+    return null
+  }
+
+  /**
+   * The settle a speaking emotion gives its held hand to chest: the settled key's offset times her speaking. The form is
+   * held whole above `ARM_FORM_WEIGHT`, so its settle is too. Silent, the request carries none, and the form holds its
+   * own key.
+   */
+  function settling(track: Track, side: BodySide, rest: Float32Array): { settle?: Float64Array } {
+    if (!track.spec.speech || track.spec.armForm !== 'hand-to-chest')
+      return {}
+    if (settled[side] === undefined)
+      settled[side] = settledOffset(side, rest)
+    const offset = settled[side]
+    if (!offset)
+      return {}
+    if (speech.y === 0)
+      return {}
+    for (let j = 0; j < settle.length; j++)
+      settle[j] = speech.y * offset[j]
+    return { settle }
+  }
 
   function ownership(input: BodyPerformanceInput) {
     for (let channel = 0; channel < channels.length; channel++)
@@ -477,8 +564,8 @@ export function createEmotionLayer(): EmotionLayer {
     channels[c('upperYaw')] += k * s * (p.upperYaw ?? 0)
     channels[c('neckPitch')] += k * (p.neckPitch ?? 0)
     const line = track.spec.speech
-    if (line && speech.y !== 0) {
-      channels[c('midYaw')] += k * s * line.turn * speech.y
+    if (line && (speech.y !== 0 || ribs !== 0)) {
+      channels[c('midYaw')] += k * s * (line.turn * speech.y + line.beat * ribs)
       channels[c('midPitch')] -= 0.5 * k * line.lift * speech.y
       channels[c('upperPitch')] -= 0.5 * k * line.lift * speech.y
     }
@@ -518,6 +605,7 @@ export function createEmotionLayer(): EmotionLayer {
     modulation,
     plan(context: PerformanceContext): PerformancePlan {
       const { owned } = context.input
+      keys ??= new GestureKeys(context.traits, context.rest)
       let support: PerformancePlan['support']
       let armForm: PerformancePlan['armForm']
       let strongest = 0
@@ -539,7 +627,7 @@ export function createEmotionLayer(): EmotionLayer {
         // The hair touch needs a rig that reaches it; a key that never solves would be asked for on every tick.
         // While she walks a form is an accent too: it goes once the stride has absorbed the emotion's arms.
         if (form && track.commanded > ARM_FORM_WEIGHT && !track.absorbed && owned[`${side}Arm`] <= 0.5 && (form !== 'hair-touch' || context.capabilities.hairTouch))
-          armForm = { side, form }
+          armForm = { side, form, ...settling(track, side, context.rest) }
       }
       return { ...(support === undefined ? {} : { support }), ...(armForm === undefined ? {} : { armForm }) }
     },
@@ -557,6 +645,13 @@ export function createEmotionLayer(): EmotionLayer {
       advanceSecondOrder(speech, context.input.voice.speaking ? 1 : 0, SPEECH)
       if (!context.input.voice.speaking && Math.abs(speech.y) < REST && Math.abs(speech.v) < REST)
         speech.y = speech.v = speech.x = 0
+      const stroking = context.previous.diagnostics.gesture.phase === 'stroke'
+      if (stroking && !wasStroking) {
+        beat.from = beatAt(time)
+        beat.start = time
+      }
+      wasStroking = stroking
+      ribs = beatAt(time)
       for (const track of tracks) {
         if (!track.coefficients)
           continue
@@ -602,6 +697,9 @@ export function createEmotionLayer(): EmotionLayer {
       stance = 0
       walking = 0
       speech.y = speech.v = speech.x = 0
+      wasStroking = false
+      Object.assign(beat, { start: Number.NEGATIVE_INFINITY, from: 0 })
+      ribs = 0
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0, startleSeq: 0, startle: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
       impulseSeq = pokeSeq = null

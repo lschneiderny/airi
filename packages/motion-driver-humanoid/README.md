@@ -753,7 +753,8 @@ Mixed override/additive output supports arm gestures with additive torso
 motion. The context exposes full intent, capabilities, initial rest, the
 previous frame, the merged plan, tick and time. Besides support and gaze, a
 plan may request an arm form (`armForm`: hand to chest, the thinking hand or
-the hair touch, for the gesture layer to hold), `suppressHeadCue`, which hands the
+the hair touch, for the gesture layer to hold, with an optional `settle` that
+moves the held key by its offsets while the arm holds it), `suppressHeadCue`, which hands the
 head cue to the cue layer, and `suppressHeadEmphasis`, which hands the speech
 emphasis nod to the gesture layers' head beat. A step may also return its `gesture`, `cue`,
 `emotion` or `reaction` report; the frame's diagnostics carry the latest one
@@ -833,7 +834,15 @@ its intensity (`startleSeq`, `startle` in the layer's modulation); the stack cou
 every new one whatever the layer's weight, the performer reports the latest in
 `frame.startle`, and the host hands that to the gait, which checks the stride. While she speaks, love's chest lifts 4 degrees and its trunk
 turns 5 degrees toward the far, speaking hand, eased in and out over about half
-a second (`speech`). Neutral writes nothing, nor does any emotion term reach a group
+a second (`speech`). Each stroke of the speaking hand turns the chest 3 degrees
+more toward it at love's weight (`beat`), starting as the last frame's gesture
+report enters `stroke`, peaking 0.12 s later with the stroke's hit and returning
+over 0.5 s, so the hand on the chest rides the line's emphasis. On the same
+follower the held hand to chest settles into the body: the layer solves, once per
+rig, a key 0.08 to 0.02 arm lengths lower on the chest with the elbow as low as
+the joint limits let it hang and the wrist flexed 20 degrees more, cleared with
+the settling headroom along the way from the held key, and sends its offset with
+the request (`armForm.settle`). Silent, the request carries none. Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and
 awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches
 it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a
@@ -1039,7 +1048,8 @@ the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies' margin with every
 joint 2 degrees inside its limit. The hand to chest also keeps the settling
 headroom (`KEY_HEADROOM`), because the trunk breathes, sways and bends under the
-held hand; the chin and front-low contacts take none. The thinking hand puts the index fingertip on the face
+held hand; the chin and front-low contacts take none. While a form is held, a
+request's `settle` moves its key by those offsets. The thinking hand puts the index fingertip on the face
 instead of the wrist at an anchor: the fingertip point marches in at the chin
 seed, toward the midline where the face is narrower than the anchor's side
 offset, and the wrist tries a hand length from it in 600 directions, the hand

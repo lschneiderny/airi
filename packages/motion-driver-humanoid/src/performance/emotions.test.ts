@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest'
 
 import { ARM_START, BODY_CHANNELS, channelGroup, channelIndex, DEG } from './channels'
 import { BODY_EMOTIONS, createEmotionLayer } from './emotions'
+import { GestureKeys } from './gesture-forms'
 import { HAND_SHAPES, writeHandShape } from './hand-shapes'
-import { createBodyPerformer } from './index'
+import { createBodyPerformer, createPerformanceLayers } from './index'
 import { channelTrace, fixtureRigs, idleInput, quietInput } from './performance.test-fixtures'
 
 const traits = fixtureRigs[0].traits
@@ -236,6 +237,95 @@ describe('emotion posture layer', () => {
     const end = 7 * 120 - 1
     expect(delta(end, 'midYaw')).toBeCloseTo(5, 0)
     expect(delta(end, 'midPitch') + delta(end, 'upperPitch')).toBeCloseTo(-4, 0)
+  })
+
+  it('beats love\'s chest toward the speaking hand with each stroke of that hand', () => {
+    const at = 5
+    const stroke = (strokes: boolean): PerformanceLayer => ({
+      id: 'stroke',
+      order: 'gesture',
+      mode: 'additive',
+      mask: new Float64Array(BODY_CHANNELS.length),
+      step: context => ({
+        channels: new Float64Array(BODY_CHANNELS.length),
+        weight: 0,
+        sequence: 0,
+        gesture: { unitSeq: 1, strokeSeq: 0, form: 'beat', hand: 'left', phase: strokes && context.time >= at && context.time < at + 0.15 ? 'stroke' : 'hold', plannedHit: null },
+      }),
+      reset() {},
+    })
+    const run = (strokes: boolean) => {
+      const layer = createEmotionLayer()
+      const out: Float64Array[] = []
+      const recorder: PerformanceLayer = { ...layer, step: (context) => {
+        const output = layer.step(context)
+        out.push(Float64Array.from(output.channels))
+        return output
+      } }
+      const script: Script = t => ({ ...held('love', s => ramp(s, 0.5))(t), voice: { ...quietInput(t).voice, speaking: t >= 2 } })
+      channelTrace(createBodyPerformer({ traits, seed: 1, layers: [recorder, stroke(strokes)] }), 6.5, script)
+      return out
+    }
+    const plain = run(false)
+    const beaten = run(true)
+    const delta = (time: number, channel: BodyChannel) => (beaten[Math.round(time * 120)][c(channel)] - plain[Math.round(time * 120)][c(channel)]) / DEG
+    expect(delta(at, 'midYaw')).toBe(0)
+    // Love's `beat`, 3 degrees at full weight, peaking a beat stroke's time after the stroke starts (the report is a frame old).
+    expect(delta(at + 0.13, 'midYaw')).toBeCloseTo(3, 0)
+    expect(delta(at + 0.13, 'midPitch') + delta(at + 0.13, 'upperPitch')).toBe(0)
+    expect(Math.abs(delta(at + 0.7, 'midYaw'))).toBeLessThan(0.05)
+  })
+
+  it('settles love\'s hand on the chest lower into the body while she speaks, along a clear path, and asks nothing silent', () => {
+    let rest: Float32Array<ArrayBufferLike> = new Float32Array(BODY_CHANNELS.length)
+    const plans = (speaking: boolean) => {
+      const seen: MergedPerformancePlan['armForm'][] = []
+      const recorder: PerformanceLayer = {
+        id: 'recorder',
+        order: 'reaction',
+        mode: 'additive',
+        mask: new Float64Array(BODY_CHANNELS.length),
+        step: (context) => {
+          rest = context.rest
+          const form = context.plan.armForm
+          seen.push(form && { ...form, ...(form.settle ? { settle: Float64Array.from(form.settle) } : {}) })
+          return { channels: new Float64Array(BODY_CHANNELS.length), weight: 0, sequence: 0 }
+        },
+        reset() {},
+      }
+      const script: Script = t => ({ ...held('love', s => ramp(s, 0.5))(t), voice: { ...quietInput(t).voice, speaking: speaking && t >= 2 } })
+      channelTrace(createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer(), recorder] }), 5, script)
+      return seen
+    }
+    expect(plans(false).at(-1)).toEqual({ side: 'right', form: 'hand-to-chest' })
+    const speaking = plans(true)
+    expect(speaking[2 * 120 - 1]).toEqual({ side: 'right', form: 'hand-to-chest' })
+    const settle = speaking.at(-1)?.settle
+    expect(settle).toBeDefined()
+    const keys = new GestureKeys(traits, rest)
+    const start = ARM_START.right
+    const heldKey = Float64Array.from(rest.subarray(start, start + 26))
+    expect(keys.armForm('right', 'hand-to-chest', heldKey)).toBe(true)
+    const settledKey = heldKey.map((value, j) => value + (settle?.[j] ?? 0))
+    const [, heldUp, heldForward] = keys.wrist('right', heldKey)
+    const [, settledUp, settledForward] = keys.wrist('right', settledKey)
+    expect(heldUp - settledUp).toBeGreaterThan(0.015)
+    expect(settledForward).toBeLessThanOrEqual(heldForward + 0.005)
+    expect(keys.pathDepth('right', heldKey, settledKey)).toBe(0)
+  })
+
+  it('moves the held hand to chest by the settle love asks for while she speaks', () => {
+    const script = (speaking: boolean): Script => (t) => {
+      const input = held('love', s => ramp(s, 0.5))(t)
+      return { ...input, voice: { ...input.voice, speaking: speaking && t >= 3 } }
+    }
+    const layers = () => createPerformanceLayers({ traits, seed: 1 })
+    const silent = channelTrace(createBodyPerformer({ traits, seed: 1, layers: layers() }), 7, script(false))
+    const spoken = channelTrace(createBodyPerformer({ traits, seed: 1, layers: layers() }), 7, script(true))
+    const end = 7 * 120 - 1
+    const start = ARM_START.right
+    expect(Math.max(...[2, 3, 4, 5].map(j => Math.abs(spoken[start + j][3 * 120 - 1] - silent[start + j][3 * 120 - 1])))).toBeLessThan(1e-9)
+    expect(Math.max(...[2, 3, 4, 5].map(j => Math.abs(spoken[start + j][end] - silent[start + j][end])))).toBeGreaterThan(3 * DEG)
   })
 
   it('sags sleepy back from the hips and lists it to its side, where sad curls forward', () => {
