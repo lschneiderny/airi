@@ -21,6 +21,65 @@ const ollamaConfigSchema = z.object({
 
 type OllamaConfig = z.input<typeof ollamaConfigSchema>
 
+interface OllamaModelEntry {
+  name: string
+  size?: number
+}
+
+/** The native API sits beside the OpenAI-compatible `/v1/` root. */
+function ollamaNativeUrl(config: OllamaConfig, path: string) {
+  const baseUrl = config.baseUrl || ollamaConfigSchema.shape.baseUrl.parse(undefined)
+  return new URL(`../api/${path}`, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`)
+}
+
+async function fetchOllamaModels(config: OllamaConfig, path: 'ps' | 'tags'): Promise<OllamaModelEntry[]> {
+  const response = await fetch(ollamaNativeUrl(config, path), { headers: config.headers })
+  if (!response.ok)
+    return []
+
+  const body = await response.json() as { models?: Array<Partial<OllamaModelEntry>> }
+  return (body.models ?? []).filter((model): model is OllamaModelEntry => !!model.name)
+}
+
+/** Embedding-only models such as `all-minilm` lack the `completion` capability and cannot answer a chat ping. */
+async function canChat(config: OllamaConfig, model: string) {
+  const response = await fetch(ollamaNativeUrl(config, 'show'), {
+    method: 'POST',
+    headers: { ...config.headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+  if (!response.ok)
+    return false
+
+  const body = await response.json() as { capabilities?: string[] }
+  return body.capabilities?.includes('completion') ?? false
+}
+
+async function firstChatModel(config: OllamaConfig, models: OllamaModelEntry[]) {
+  for (const model of models) {
+    if (await canChat(config, model.name))
+      return model.name
+  }
+}
+
+/**
+ * Picks the model the chat probe pings. A probe loads its model into memory, which takes
+ * minutes for a large model and can evict the one the character uses. The probe prefers a
+ * loaded chat model, then the smallest installed one.
+ *
+ * @example
+ * await pickOllamaValidationModel({ baseUrl: 'http://localhost:11434/v1/' })
+ * // => 'gemma4:e4b-it-qat' (loaded), rather than the first listed 'gemma4:12b-it-qat'
+ */
+export async function pickOllamaValidationModel(config: OllamaConfig): Promise<string | undefined> {
+  const loaded = await firstChatModel(config, await fetchOllamaModels(config, 'ps'))
+  if (loaded)
+    return loaded
+
+  const installed = await fetchOllamaModels(config, 'tags')
+  return firstChatModel(config, installed.toSorted((a, b) => (a.size ?? Infinity) - (b.size ?? Infinity)))
+}
+
 function normalizeOllamaThinkingMode(value: unknown): OllamaThinkingMode {
   switch (value) {
     case 'auto':
@@ -178,6 +237,7 @@ export const providerOllama = defineProvider<OllamaConfig, 'ollama'>({
     ],
     validateProvider: createOpenAICompatibleValidators({
       checks: [ProviderValidationCheck.Connectivity, ProviderValidationCheck.ModelList, ProviderValidationCheck.ChatCompletions],
+      pickValidationModel: pickOllamaValidationModel,
       schedule: {
         mode: 'interval',
         intervalMs: 15_000,

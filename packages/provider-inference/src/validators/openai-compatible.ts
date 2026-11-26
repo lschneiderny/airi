@@ -18,6 +18,12 @@ interface OpenAICompatibleValidationOptions<TConfig extends { apiKey?: string, b
   fetchForConfig?: (config: TConfig) => typeof globalThis.fetch
   allowValidationWithoutModel?: boolean
   normalizeModelId?: (modelId: string) => string
+  /**
+   * Picks the model for the chat probe when the configuration names none. A local server
+   * uses it to avoid loading a large model into memory only to answer the probe.
+   * An empty result falls back to the first listed model.
+   */
+  pickValidationModel?: (config: TConfig) => Promise<string | null | undefined>
   schedule?: {
     mode: 'once' | 'interval'
     intervalMs?: number
@@ -92,10 +98,19 @@ async function pickValidationModel<TConfig extends { apiKey?: string | null, bas
   config: TConfig,
   provider: ProviderInstance,
   providerExtra: ProviderExtraMethods<TConfig> | undefined,
+  pickPreferred: ((config: TConfig) => Promise<string | null | undefined>) | undefined,
 ): Promise<string | null> {
   // A configured model expresses the user's protocol choice. Catalog order does not.
   if ('model' in config && typeof config.model === 'string' && config.model.trim())
     return config.model.trim()
+  try {
+    const preferred = await pickPreferred?.(config)
+    if (preferred)
+      return preferred
+  }
+  catch {
+    // The catalog below still gives a usable model.
+  }
   try {
     const models = await resolveModels(config, provider, providerExtra)
     const modelId = extractModelId(models.find(model => !shouldSkipModelId(extractModelId(model))))
@@ -125,7 +140,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
     provider: ProviderInstance,
     providerExtra: ProviderExtraMethods<TConfig> | undefined,
   ): Promise<ChatCheckResult> {
-    const model = await pickValidationModel(config, provider, providerExtra)
+    const model = await pickValidationModel(config, provider, providerExtra, options?.pickValidationModel)
     const normalizedModel = model ? options?.normalizeModelId?.(model) ?? model : model
 
     if (!normalizedModel) {
