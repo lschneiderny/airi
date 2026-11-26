@@ -1267,20 +1267,25 @@ class GesturePerformer {
 
   /**
    * Places the ready key at the phrase's place, or at the centre where that place has no clear key on this rig, with
-   * the hand `theme` has set (`SET`): the current phrase's unless given.
+   * the hand `theme` has set (`SET`): the current phrase's unless given. A hand already up goes there from `via`, where
+   * it is, along a path that clears a settled key's headroom: its followers lag its plan, so on its way it leaves the
+   * angle path it was cleared on. A path cleared to the margin let the arm reach into the margin, and the corrector
+   * stopped it at 30 deg/s (Ellen, `speak` seed 1: a new phrase's preparation from a hold that a stroke from a sinking
+   * hand had lowered). Where neither place clears so, the hand keeps its ready key.
    */
   private placeAt(track: ArmTrack, drive: number, phrase: GesturePhrase, twoHand: boolean, via: ArmPose | null, theme = this.setTheme()): boolean {
-    return this.placeReady(track, drive, this.placeOffset(phrase, track.side, twoHand), via, theme)
-      || (phrase.place !== 'centre' && this.placeReady(track, drive, this.placeOffset({ ...phrase, place: 'centre' }, track.side, twoHand), via, theme))
+    return this.placeReady(track, drive, this.placeOffset(phrase, track.side, twoHand), via, theme, KEY_HEADROOM)
+      || (phrase.place !== 'centre' && this.placeReady(track, drive, this.placeOffset({ ...phrase, place: 'centre' }, track.side, twoHand), via, theme, KEY_HEADROOM))
   }
 
   /**
    * Solves the ready key at `offset` from the arm's home with the headroom of a key the arm settles on, the phrase's set
-   * hand turn applied (`SET`), and with `via` also the path from there. Where no reachable key clears the headroom
-   * (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the key that clears the margin is used,
-   * so the unit still starts. False, with the ready key unchanged, when neither clears.
+   * hand turn applied (`SET`), and with `via` also the path from there, by `wayHeadroom` past the margin. Where no
+   * reachable key clears the headroom (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the
+   * key that clears the margin is used, so the unit still starts. False, with the ready key unchanged, when neither
+   * clears.
    */
-  private placeReady(track: ArmTrack, drive: number, offset: ReadyOffset, via: ArmPose | null, theme = this.setTheme()): boolean {
+  private placeReady(track: ArmTrack, drive: number, offset: ReadyOffset, via: ArmPose | null, theme = this.setTheme(), wayHeadroom = 0): boolean {
     const keys = this.keys
     if (!keys)
       return false
@@ -1294,7 +1299,7 @@ class GesturePerformer {
         writeHandShare(spec.shape, SET.hand * spec.shapeShare, candidate)
       else
         writeHandShare(READY_HAND.shape, READY_HAND.share, candidate)
-      if (keys.solve(track.side, key, candidate, track.home, headroom) && (!via || keys.pathDepth(track.side, via, candidate) === 0)) {
+      if (keys.solve(track.side, key, candidate, track.home, headroom) && (!via || keys.pathDepth(track.side, via, candidate, wayHeadroom) === 0)) {
         track.ready.set(candidate)
         track.readyKey = key
         return true

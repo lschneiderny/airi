@@ -1040,7 +1040,11 @@ starting pose, as stroke keys are along theirs from where the arm is (a stroke
 may cut a recovery short), and it keeps
 a headroom of 0.05 of each segment beyond the corrector's margin
 (`KEY_HEADROOM`), because the arm settles and holds there; where no reachable
-ready key clears that headroom, the one that clears the margin is used. A
+ready key clears that headroom, the one that clears the margin is used. A hand
+carried on into the next phrase takes its new place only along a path that
+keeps that headroom as well, because its followers lag the plan and leave the
+path it was cleared on; where neither the place nor the centre clears so, it
+keeps its ready key. A
 stroke key keeps that headroom too where it can, because the trunk turns and
 leans under the phrase; otherwise it clears the margin. A stroke is cleared
 at its end, the post-stroke hold's 1.5 % A drift included, and its key lies

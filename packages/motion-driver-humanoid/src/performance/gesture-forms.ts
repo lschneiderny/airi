@@ -909,12 +909,12 @@ export class GestureKeys {
     return this.pathDepth(side, rest, via) <= start && this.pathDepth(side, via, key) <= start
   }
 
-  /** Largest margin-inclusive proxy depth along the angle path from `from` to `to`, sampled at 11 points. */
-  pathDepth(side: BodySide, from: ArmPose, to: ArmPose): number {
+  /** Largest proxy depth along the angle path from `from` to `to`, the margin and `headroom` included, sampled at 11 points. */
+  pathDepth(side: BodySide, from: ArmPose, to: ArmPose, headroom = 0): number {
     let depth = 0
     for (let sample = 0; sample <= PATH_SAMPLES; sample++) {
       this.load(side, from, to, sample / PATH_SAMPLES)
-      depth = Math.max(depth, this.collision.measure(side, this.scratch).depth)
+      depth = Math.max(depth, this.collision.measure(side, this.scratch, headroom).depth)
     }
     return depth
   }
