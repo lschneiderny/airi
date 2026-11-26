@@ -1109,7 +1109,10 @@ rest the arm swung out to the side like a wave. When either leg's path does not
 clear the proxies, the reach goes straight. The performer searches the
 clasp's and the tuck's keys when `capabilities.clasp` or `capabilities.hairTouch`
 is first read, once per rig and seeded rest pose, since the rest hang decides
-which keys clear the body.
+which keys clear the body. The gesture layer's own search, at the first
+request, solves the tuck from the rest clavicles as the clasp's does: from
+the live shoulders, 4 degrees above rest after a shoulder roll, no key cleared
+on the Chisa rigs and the refusal held for the rest of the run.
 Each lead stroke also nods the head (the speech head beat, MMD only): neck
 and head pitch down together by 3 degrees for a major stroke (Graf et al. 2002,
 about 3 to 5 degrees per accent nod), 0.6 of that for a minor stroke, 0.6 more

@@ -1579,6 +1579,21 @@ describe('co-speech gestures', () => {
     expect(alone.frames.every(frame => frame.gesture.activation.right === 0)).toBe(true)
   })
 
+  it('solves the hair tuck\'s keys from the rest clavicles, so shoulders standing higher at the first request still reach them', () => {
+    // A rig's live shoulders stood 4 degrees above rest when a cued touch first asked, no key cleared from there, and
+    // the refusal was kept for the rest of the run.
+    const rest = createBodyPerformer({ traits: chisaTraits, seed: 1 }).restChannels()
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const fromRest = new Float64Array(rest.subarray(start, start + 26))
+      expect(new GestureKeys(chisaTraits, rest).armForm(side, 'hair-touch', fromRest), side).toBe(true)
+      const raised = new Float64Array(rest.subarray(start, start + 26))
+      raised[0] += 4 * DEG
+      expect(new GestureKeys(chisaTraits, rest).armForm(side, 'hair-touch', raised), side).toBe(true)
+      expect(Array.from(raised.subarray(2, 9)), side).toEqual(Array.from(fromRest.subarray(2, 9)))
+    }
+  })
+
   it('holds a two-hand clasp on both arms, lets one hand go first, then the other', () => {
     const script: Script = { utterances: [], armForm: time => time > 0.2 && time < 4 ? { side: 'both', form: 'clasp' } : time >= 4 && time < 5 ? { side: 'right', form: 'clasp' } : null }
     const run = perform(script, 8)
