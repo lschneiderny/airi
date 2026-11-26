@@ -1107,10 +1107,20 @@ Lucilla's and Sigrika's, so the other eight tuck. The reach to the touch passes
 a via pose (`GestureKeys.tuckVia`): the elbow and the forward flex lead while
 the upper arm stays low, so the hand comes up in front of the chest before it
 goes out to the temple, and the way home from the touch or the sweep goes back
-through it. The second leg starts while the first still moves and carries its
+through it. At the via the hand is straight along the forearm, the fingers
+leading, with the palm toward the head's side, so the hand rises and falls
+thumb edge first; half the key's pronation and wrist extension there stood
+the hand upright with the palm to the viewer, a wave. The second leg starts while the first still moves and carries its
 velocity and acceleration, so the hand does not stop at the via. Straight from
-rest the arm swung out to the side like a wave. When either leg's path does not
-clear the proxies, the reach goes straight. The performer searches the
+rest the arm swung out to the side like a wave. When either leg's path goes
+deeper into the proxies than the arm stands when the reach starts, the reach
+goes straight: a hang a little inside the margin sent the swimsuit Chisa's
+hand straight up, palm forward. Among the pairs of keys, after facing and
+headroom, one whose way in and out keeps the palm turned at least 45 degrees
+away from the viewer goes first (`TUCK_PALM_OUT`), and the sweep's candidates
+come from every back-off step up to the first with a facing one: a sweep a
+little off the hair with the palm along it beats one on the hair that turns
+the palm out. The performer searches the
 clasp's and the tuck's keys when `capabilities.clasp` or `capabilities.hairTouch`
 is first read, once per rig and seeded rest pose, since the rest hang decides
 which keys clear the body. The gesture layer's own search, at the first

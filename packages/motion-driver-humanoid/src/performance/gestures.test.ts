@@ -1601,6 +1601,71 @@ describe('co-speech gestures', () => {
     }
   })
 
+  it('passes the hair tuck\'s via with the hand straight along the forearm and the palm toward the midline, also from an arm a little inside the margin', () => {
+    // Half of the key's pronation and wrist extension stood the hand upright with the palm to the viewer, a wave.
+    const rest = createBodyPerformer({ traits: chisaTraits, seed: 1 }).restChannels()
+    const keys = new GestureKeys(chisaTraits, rest)
+    const skeleton = new BodySkeleton(chisaTraits)
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const from = new Float64Array(rest.subarray(start, start + 26))
+      const key = from.slice()
+      writeArmFormHand('hair-touch', side, key)
+      expect(keys.armForm(side, 'hair-touch', key), side).toBe(true)
+      const via = new Float64Array(26)
+      expect(keys.tuckVia(side, from, key, via), side).toBe(true)
+      expect(Math.abs(via[7]) / DEG, side).toBeLessThan(0.5)
+      expect(Math.abs(via[8]) / DEG, side).toBeLessThan(0.5)
+      const channels = rest.slice()
+      channels.set(via, start)
+      skeleton.update(channels)
+      const hand = skeleton.arm(side, channels).hand
+      // The palm faces the hand frame's -sigma x; the midline lies at -sigma x from the arm.
+      expect(hand[0], side).toBeGreaterThan(0.5)
+      // A hanging arm drawn in until it stands inside the margin still goes through the via: only a path deeper
+      // than its start sends the hand out straight.
+      const inside = from.slice()
+      while (keys.pathDepth(side, inside, inside) === 0 && inside[3] > from[3] - 20 * DEG)
+        inside[3] -= 0.5 * DEG
+      expect(keys.pathDepth(side, inside, inside), side).toBeGreaterThan(0)
+      expect(keys.tuckVia(side, inside, key, via), side).toBe(true)
+    }
+  })
+
+  it('turns the hair tuck\'s palm away from the viewer on its way in and out', () => {
+    // The hand passed upright beside the head with the palm forward, a wave. Chisa keeps the palm normal's forward
+    // share within sin 45 degrees. The fixture Ellen has no such keys: her sweep on the hair showed 0.98, and a
+    // facing sweep off it 0.83.
+    for (const [rig, most] of [[chisaTraits, Math.SQRT1_2], [ellenTraits, Math.cos(30 * DEG)]] as const) {
+      const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+      const keys = new GestureKeys(rig, rest)
+      const skeleton = new BodySkeleton(rig)
+      for (const side of SIDES) {
+        const start = ARM_START[side]
+        const sigma = side === 'left' ? 1 : -1
+        const from = new Float64Array(rest.subarray(start, start + 26))
+        const touch = from.slice()
+        writeArmFormHand('hair-touch', side, touch)
+        expect(keys.armForm(side, 'hair-touch', touch), side).toBe(true)
+        const sweep = touch.slice()
+        expect(keys.armForm(side, 'hair-sweep', sweep), side).toBe(true)
+        const via = new Float64Array(26)
+        keys.tuckVia(side, from, touch, via)
+        let out = -1
+        for (const [a, b] of [[via, touch], [sweep, via]] as const) {
+          for (let k = 0; k <= 10; k++) {
+            const channels = rest.slice()
+            for (let j = 0; j < 26; j++)
+              channels[start + j] = a[j] + (b[j] - a[j]) * k / 10
+            skeleton.update(channels)
+            out = Math.max(out, -sigma * skeleton.arm(side, channels).hand[6])
+          }
+        }
+        expect(out, side).toBeLessThanOrEqual(most)
+      }
+    }
+  })
+
   it('solves the hair tuck\'s keys clear of the head rolled toward the hand as the act rolls it', () => {
     // Solved against the upright head, the held hand met the rolled one, and the corrector's push stepped the upper
     // arm at 51 deg/s.

@@ -198,15 +198,23 @@ export const TUCK_TILT = { degrees: 4, neck: 0.35 } as const
  */
 const TUCK_PALM_ROLL = 50 * DEG
 /**
- * Where the hair tuck's reach passes on its way between the rest arm and a tuck key, as each channel's share of the way
- * from the rest arm: flex, abduct, twist and elbow, then every wrist and hand channel. The elbow and the forward flex
- * lead while the upper arm stays low, so the hand comes up in front of the chest and then out to the temple. Straight
- * from rest, every joint at once, the arm swung out to the side with the elbow high and the palm forward, a wave, the
- * wrist 0.3 to 0.4 arm lengths out beyond where the touch holds it; through this via, 0.15 to 0.24. A stronger lead
- * asks the elbow for more than the act layer's easing allows (0.25 degrees per tick per tick) in the reach's time:
- * 0.62 did once the keys cleared the rolled head (`TUCK_TILT`).
+ * The most the tuck's palm may turn toward the viewer on its way in and out, as the forward share of its normal:
+ * sin 45 degrees, so it faces the head's side more than the viewer. Straight from the via to a key held with the wrist
+ * pronated and bent back, the hand passed upright beside the head with the palm forward, a wave.
  */
-const TUCK_VIA = { flex: 0.75, abduct: 0.2, twist: 0.2, elbow: 0.58, hand: 0.5 } as const
+const TUCK_PALM_OUT = Math.SQRT1_2
+/**
+ * Where the hair tuck's reach passes on its way between the rest arm and a tuck key, as each channel's share of the way
+ * from the rest arm: flex, abduct, twist and elbow, then the clavicles and fingers (`hand`). The elbow and the forward
+ * flex lead while the upper arm stays low, so the hand comes up in front of the chest and then out to the temple.
+ * Straight from rest, every joint at once, the arm swung out to the side with the elbow high and the palm forward, a
+ * wave, the wrist 0.3 to 0.4 arm lengths out beyond where the touch holds it; through this via, 0.15 to 0.24. A
+ * stronger lead asks the elbow for more than the act layer's easing allows (0.25 degrees per tick per tick) in the
+ * reach's time: 0.62 did once the keys cleared the rolled head (`TUCK_TILT`). At the via the wrist holds the hand
+ * straight along the forearm, the fingers leading, with the palm toward the head's side, rolled from it by up to `roll`;
+ * half the key's pronation and wrist extension stood the hand upright with the palm to the viewer.
+ */
+const TUCK_VIA = { flex: 0.75, abduct: 0.2, twist: 0.2, elbow: 0.58, hand: 0.5, roll: 90 * DEG } as const
 /** Directions from the fingertips in which the tuck tries the wrist. */
 const WRIST_DIRECTIONS = 600
 /** No joint of an arm form sits within this of its limit. */
@@ -644,20 +652,44 @@ export class GestureKeys {
       }
     }
     pairs.sort((a, b) => a.change - b.change)
-    // The arm reaches the sweep from the held touch and swings a little past it as it lands, so among the pairs of
-    // one facing, a sweep that keeps twice the key's headroom goes first; a rig with none keeps the plain headroom.
+    // The arm swings a little past the sweep as it lands, so a sweep with twice the key's headroom goes first. Next,
+    // a pair whose way in and out hides the palm from the viewer (`TUCK_PALM_OUT`); ranked above the headroom, it let
+    // one rig's arm overshoot into the head.
+    const via = work.slice()
     for (const facing of [true, false]) {
       for (const headroom of [2 * KEY_HEADROOM, KEY_HEADROOM]) {
-        const pair = pairs.find(pair => pair.facing === facing && this.deepest(side, pair.sweep, pair.touch, headroom) === null)
-        if (pair)
-          return pair
+        for (const hidden of [true, false]) {
+          const pair = pairs.find(pair => pair.facing === facing && this.deepest(side, pair.sweep, pair.touch, headroom) === null && (!hidden || this.palmOut(side, pair.touch, pair.sweep, via) <= TUCK_PALM_OUT))
+          if (pair)
+            return pair
+        }
       }
     }
     return null
   }
 
   /**
-   * The candidate keys of one tuck key at the first back-off step that has any: at each step the wrist goes a hand
+   * The largest forward share of the palm's normal on the way from the tuck's via to `touch` and from `sweep` back to
+   * it, the via taken from the rest arm (`tuckVia`, written into `via`): 1 when the palm faces the viewer square on.
+   */
+  private palmOut(side: BodySide, touch: ArmPose, sweep: ArmPose, via: ArmPose): number {
+    this.tuckVia(side, this.restArms[side], touch, via)
+    const sigma = side === 'left' ? 1 : -1
+    let out = -1
+    for (const [from, to] of [[via, touch], [sweep, via]] as const) {
+      for (let sample = 0; sample <= PATH_SAMPLES; sample++) {
+        this.load(side, from, to, sample / PATH_SAMPLES)
+        // The palm faces the hand frame's -sigma x; the body faces +z.
+        out = Math.max(out, -sigma * this.skeleton.arm(side, this.scratch).hand[6])
+      }
+    }
+    return out
+  }
+
+  /**
+   * The candidate keys of one tuck key at the first back-off step that has any, and for the sweep at every step from
+   * there to the first one with a facing candidate, or the first step's alone when none has: a sweep reached a little
+   * off the hair with the palm along it beats one on the hair that turns the palm out. At each step the wrist goes a hand
    * length from the fingertips in each of `WRIST_DIRECTIONS` directions, and the elbow swings out from the form's
    * swivel to 80 degrees (`bentHand`). A candidate has every joint 2 degrees inside its limit, the hand from wrist to
    * fingertips clear of the proxies by its capsule's radius, and the pose clear of them with the settling headroom, the
@@ -684,9 +716,10 @@ export class GestureKeys {
       return []
     const from = spec.after ? null : this.restArms[side]
     const hand = traits.arms[side].handLength
+    const candidates: { readonly pose: ArmPose, readonly facing: boolean }[] = []
+    let first: number | null = null
     for (let out = 0; out <= ANCHOR.backOff + 1e-9; out += ANCHOR.backOffStep) {
       const tip = { x: surface + sigma * out * length, y, z }
-      const candidates: { readonly pose: ArmPose, readonly facing: boolean }[] = []
       for (let i = 0; i < WRIST_DIRECTIONS; i++) {
         // A Fibonacci sphere: evenly spread directions from the fingertips to the wrist.
         const up = 1 - 2 * (i + 0.5) / WRIST_DIRECTIONS
@@ -714,10 +747,11 @@ export class GestureKeys {
         if (best)
           candidates.push(best)
       }
-      if (candidates.length)
+      first ??= candidates.length || null
+      if (first !== null && (!spec.after || candidates.some(candidate => candidate.facing)))
         return candidates
     }
-    return []
+    return candidates.slice(0, first ?? 0)
   }
 
   /**
@@ -855,14 +889,24 @@ export class GestureKeys {
   }
 
   /**
-   * Writes into `via` where the hair tuck's reach passes between `rest`, the rest arm, and `key`, a tuck key
-   * (`TUCK_VIA`); false when either leg's angle path does not clear the proxies, so the reach goes straight.
+   * Writes into `via` where the hair tuck's reach passes between `rest`, the arm where the reach starts, and `key`, a
+   * tuck key (`TUCK_VIA`), the hand straight along the forearm with its palm toward the head's side where the wrist
+   * turns it there; false when either leg's angle path goes deeper into the proxies than `rest` stands, so the reach
+   * goes straight. A hanging arm may start a little inside the margin, and the margin's own depth is no reason to
+   * swing the hand out.
    */
   tuckVia(side: BodySide, rest: ArmPose, key: ArmPose, via: ArmPose): boolean {
     const shares = [TUCK_VIA.flex, TUCK_VIA.abduct, TUCK_VIA.twist, TUCK_VIA.elbow]
     for (let j = 0; j < 26; j++)
       via[j] = rest[j] + (j >= 2 && j <= 5 ? shares[j - 2] : TUCK_VIA.hand) * (key[j] - rest[j])
-    return this.pathDepth(side, rest, via) === 0 && this.pathDepth(side, via, key) === 0
+    const blend = via.slice(6, 9)
+    via[6] = via[7] = via[8] = 0
+    this.load(side, via, via, 0)
+    const { forearm, hand } = this.skeleton.arm(side, this.scratch)
+    if (!this.orientHand(side, via, { x: -forearm[1], y: -forearm[4], z: -forearm[7] }, { x: this.traits.head.x - hand[9], y: 0, z: 0 }, TUCK_VIA.roll))
+      via.set(blend, 6)
+    const start = this.pathDepth(side, rest, rest)
+    return this.pathDepth(side, rest, via) <= start && this.pathDepth(side, via, key) <= start
   }
 
   /** Largest margin-inclusive proxy depth along the angle path from `from` to `to`, sampled at 11 points. */
