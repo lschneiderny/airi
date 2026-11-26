@@ -220,6 +220,36 @@ function speedPeaks(span: readonly number[]): number[] {
   return peaks
 }
 
+/**
+ * Every time a hand rose toward its ready key: its gesture layer took the arm and its wrist came up `height` arm
+ * lengths or more over where the arm hung (half the way to a ready key, which lifts the wrist about 0.5), with when it
+ * rose and whether that hand (or a two-hand stroke) stroked before the layer gave the arm back. A lean (`LEAN`) stays
+ * under it.
+ */
+function rises(run: Run, height = 0.25, rig: BodyRigTraits = traits): { side: BodySide, rose: number, lift: number, stroked: boolean }[] {
+  const hits = strokes(run)
+  const out: { side: BodySide, rose: number, lift: number, stroked: boolean }[] = []
+  for (const side of SIDES) {
+    const { upperArm, forearm } = rig.arms[side]
+    const length = Math.hypot(upperArm.x, upperArm.y, upperArm.z) + Math.hypot(forearm.x, forearm.y, forearm.z)
+    const path = wristPath(run, side, rig)
+    let taken = -1
+    for (let i = 1; i < run.frames.length; i++) {
+      const [before, frame] = [run.frames[i - 1].gesture.activation[side], run.frames[i].gesture.activation[side]]
+      if (before === 0 && frame > 0)
+        taken = i
+      if (before > 0 && frame === 0 && taken >= 0) {
+        const lift = (Math.max(...path.slice(taken, i).map(p => p[1])) - path[taken - 1][1]) / length
+        const rose = run.frames[taken].time
+        if (lift >= height)
+          out.push({ side, rose, lift, stroked: hits.some(hit => (hit.hand === side || hit.hand === 'both') && hit.hit > rose && hit.hit < run.frames[i].time) })
+        taken = -1
+      }
+    }
+  }
+  return out
+}
+
 const nearest = (values: readonly number[], to: number) => values.reduce((best, value) => Math.abs(value - to) < Math.abs(best - to) ? value : best, Infinity)
 
 /**
@@ -317,17 +347,28 @@ describe('co-speech gestures', () => {
     expect(checked).toBeGreaterThanOrEqual(2)
   }, 60_000)
 
-  it('raises the hands after a pause only for an onset they stroke, and strokes it before lowering them', () => {
+  it('leans the hands on a weak onset after a pause, raises them only for an onset they stroke, and strokes it before lowering them', () => {
     // The first unit lowers its hands in the pause; its refractory has passed by 4.4 s. Speech resumes with a weak
-    // onset, then a stroking one 0.4 s before speaking ends: the hands rise for that one and stroke it.
-    const run = perform({ utterances: [{ start: 0.5, end: 5.4, energy: 0.5, onsets: [{ at: 1 }, { at: 1.9 }, { at: 4.5, weak: true }, { at: 5 }], pauses: [[2.3, 4.2]] }] }, 8)
+    // onset, which opens a unit that only leans the hands (`LEAN`); a stroking one 0.4 s before speaking ends raises
+    // them, and they stroke it. Audit 4, speak-phrases 32.1 s: the hands did not prepare until the first stroking
+    // onset, and its stroke came late.
+    const script = (stroking: boolean): Script => ({ utterances: [{ start: 0.5, end: 5.4, energy: 0.5, onsets: [{ at: 1 }, { at: 1.9 }, { at: 4.5, weak: true }, ...(stroking ? [{ at: 5 }] : [])], pauses: [[2.3, 4.2]] }] })
+    const run = perform(script(true), 8)
     const units = run.frames.flatMap((frame, i) => i > 0 && frame.gesture.unitSeq !== run.frames[i - 1].gesture.unitSeq ? [frame] : [])
     expect(units).toHaveLength(2)
-    expect(units[1].time).toBeGreaterThanOrEqual(5)
+    expect(units[1].time).toBeCloseTo(4.5, 1)
     const second = strokes(run).filter(s => run.frames[s.index].gesture.unitSeq === 2)
     expect(second).toHaveLength(1)
     expect(second[0].onset).toBeCloseTo(5, 1)
     expect(second[0].hit - second[0].onset).toBeLessThan(0.7)
+    const raised = rises(run).filter(rise => rise.rose > 4.2)
+    expect(raised.length).toBeGreaterThan(0)
+    expect(raised.every(rise => rise.stroked)).toBe(true)
+    // With no stroking onset, the leaning hands go home without rising.
+    const leaned = perform(script(false), 8)
+    expect(leaned.frames.some(frame => frame.time > 4.5 && frame.gesture.unitSeq === 2)).toBe(true)
+    expect(rises(leaned).filter(rise => rise.rose > 4.2)).toEqual([])
+    expect(strokes(leaned).filter(stroke => stroke.hit > 4.2)).toEqual([])
   })
 
   it('strokes the onset that opens a unit once the hands have risen, instead of letting it pass', () => {
@@ -407,26 +448,14 @@ describe('co-speech gestures', () => {
     // Strokes 1 s apart, then weak onsets only. A phrase ending on the unit's sixth stroke could draw the other hand,
     // and a two-hand phrase of beats left its second hand no stroke: either hand rose, waited and lowered unstroked.
     const onsets = [...[1, 2, 3, 4, 5, 6].map(at => ({ at, major: at % 2 === 1 })), ...[7.2, 8.4].map(at => ({ at, weak: true }))]
-    let rises = 0
+    let count = 0
     for (let seed = 1; seed <= 30; seed++) {
       const run = perform({ utterances: [{ start: 0.5, end: 9.5, energy: 0.65, onsets }] }, 11, { seed })
-      const hits = strokes(run)
-      for (const side of SIDES) {
-        let rose = Number.NaN
-        for (let i = 1; i < run.frames.length; i++) {
-          const [before, frame] = [run.frames[i - 1].gesture.activation[side], run.frames[i].gesture.activation[side]]
-          if (before === 0 && frame > 0)
-            rose = frame === 0 ? Number.NaN : run.frames[i].time
-          if (before > 0 && frame === 0 && !Number.isNaN(rose)) {
-            const stroked = hits.some(hit => (hit.hand === side || hit.hand === 'both') && hit.hit > rose && hit.hit < run.frames[i].time)
-            expect(stroked, `seed ${seed}, ${side} raised at ${rose.toFixed(2)}`).toBe(true)
-            rises++
-            rose = Number.NaN
-          }
-        }
-      }
+      const raised = rises(run)
+      expect(raised.filter(rise => !rise.stroked), `seed ${seed}`).toEqual([])
+      count += raised.length
     }
-    expect(rises).toBeGreaterThanOrEqual(30)
+    expect(count).toBeGreaterThanOrEqual(30)
   }, 120_000)
 
   it('leaves a phrase to the other hand when the chosen one cannot reach its ready key from where it hangs', () => {

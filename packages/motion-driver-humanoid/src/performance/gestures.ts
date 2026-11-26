@@ -148,11 +148,16 @@ const AMPLITUDE = {
 const CALM = { drive: 0.4, floor: 0.5 } as const
 
 /**
- * A hand rises only to say something. A unit opens on an utterance's speaking edge or on an onset that strokes, never
- * on a weak one; an onset that finds the lead hand still rising strokes as soon as the preparation lets it, when that
- * is within `defer` seconds of the onset, so the rise leads into its stroke; and the unit lowers its hands only after
- * that stroke. Before, an onset that opened a unit passed while the hands rose, and a pause or the end of speech
- * lowered them again with no stroke at all.
+ * A hand rises only to say something. A unit opens on an utterance's speaking edge or on an onset that strokes; an
+ * onset that finds the lead hand still rising strokes as soon as the preparation lets it, when that is within `defer`
+ * seconds of the onset, so the rise leads into its stroke; and the unit lowers its hands only after that stroke.
+ * Before, an onset that opened a unit passed while the hands rose, and a pause or the end of speech lowered them again
+ * with no stroke at all.
+ *
+ * A hand that would rise before its stress is known only leans (`LEAN`) and rises on the next stroking onset, which it
+ * strokes: the hands of a unit opened by a weak onset. Speech that restarts on a weak onset so prepares the hands in
+ * time without raising them for nothing; before, they did not move until the first stroking onset, and its stroke came
+ * late.
  *
  * A raised hand with nothing more to stress lets go: once every hand of a unit has waited at its ready key for
  * `settle` seconds of speech with no stroke leaving, the unit lowers them while speech goes on, and the next stroking
@@ -163,6 +168,13 @@ const CALM = { drive: 0.4, floor: 0.5 } as const
  * the hands stay up between close strokes; at 1 s a lively hand let go just before such a stroke.
  */
 const RISE = { defer: 0.6, settle: 1.1 } as const
+
+/**
+ * A leaning hand moves `share` of the way from its rest to its ready key, over the time its whole preparation takes:
+ * the elbow bends and the hand comes a little forward, a shift of the arm's hang rather than a raised forearm. It waits
+ * there as a ready hand waits (`RISE.settle`), and its rise from there takes the rest of the way.
+ */
+const LEAN = { share: 0.3 } as const
 
 /**
  * A phrase's theme stroke sets its hand: the ready key turns `share` of the way to the theme's forearm and wrist and
@@ -226,7 +238,7 @@ const HEAD_BEAT = { degrees: 3 * DEG, neckShare: 0.35, neckLead: 0.03, back: 0.2
 const NECK_PITCH = 16
 const HEAD_PITCH = 19
 
-type TrackState = 'rest' | 'preparation' | 'ready' | 'stroke' | 'hold' | 'recovery' | 'retraction' | 'form'
+type TrackState = 'rest' | 'preparation' | 'lean' | 'ready' | 'stroke' | 'hold' | 'recovery' | 'retraction' | 'form'
 
 interface Segment {
   readonly from: ArmPose
@@ -300,6 +312,8 @@ class ArmTrack {
   waited = 0
   /** Whether the arm has risen from rest and not stroked since: a two-hand phrase's beat takes it along (`perform`). */
   silent = false
+  /** Whether the arm's preparation goes only to its lean (`LEAN`), where it waits in state `lean`. */
+  leaning = false
   readonly key = pose()
   /** Where the hair tuck's reach passes between the rest arm and its key (`GestureKeys.tuckVia`). */
   readonly tuckVia = pose()
@@ -644,6 +658,7 @@ class ArmTrack {
     this.beatPath = -1
     this.waited = 0
     this.silent = false
+    this.leaning = false
   }
 }
 
@@ -735,7 +750,8 @@ class GesturePerformer {
   private dominant: BodySide = 'right'
   private keys: GestureKeys | null = null
   private tick = -1
-  private unit = { active: false, sides: [] as BodySide[], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false }
+  /** `leaning`: the unit's hands have only leaned (`LEAN`); a unit that ends so takes no refractory. */
+  private unit = { active: false, sides: [] as BodySide[], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false, leaning: false }
   /** The current phrase, kept past its unit so the next one differs from it; its strokes; whether its theme has set the hand. */
   private phrase: GesturePhrase | null = null
   private phraseStrokes = 0
@@ -776,7 +792,7 @@ class GesturePerformer {
     this.dominant = this.random() < 0.85 ? 'right' : 'left'
     this.keys = null
     this.tick = -1
-    this.unit = { active: false, sides: [], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false }
+    this.unit = { active: false, sides: [], twoHand: false, drive: 0.5, start: 0, strokes: 0, retracting: false, bySpeech: false, leaning: false }
     this.phrase = null
     this.phraseStrokes = 0
     this.phraseSet = false
@@ -824,7 +840,7 @@ class GesturePerformer {
     // A pause leaves the wait alone: the quiet rule decides whether hands hold through it.
     for (const side of SIDES) {
       const track = this.tracks[side]
-      track.waited = track.state !== 'ready' ? 0 : track.waited + (this.quiet === 0 ? BODY_TICK : 0)
+      track.waited = track.state !== 'ready' && track.state !== 'lean' ? 0 : track.waited + (this.quiet === 0 ? BODY_TICK : 0)
     }
     const unit = this.unit
     if (this.deferred && (!unit.active || unit.retracting || now - this.deferred.at > RISE.defer))
@@ -857,9 +873,11 @@ class GesturePerformer {
       this.step(this.tracks[side], context, now)
     if (unit.active && unit.sides.every(side => !this.tracks[side].active || this.tracks[side].state === 'form')) {
       unit.active = false
-      this.refractoryEnd = now + (unit.bySpeech
-        ? TIMING.refractoryBase + TIMING.refractorySpan * (1 - unit.drive)
-        : TIMING.pauseBase + TIMING.pauseSpan * (1 - unit.drive))
+      // Hands that only leaned have not gestured: the next stroking onset may raise them at once.
+      if (unit.leaning)
+        this.refractoryEnd = now
+      else
+        this.refractoryEnd = now + (unit.bySpeech ? TIMING.refractoryBase + TIMING.refractorySpan * (1 - unit.drive) : TIMING.pauseBase + TIMING.pauseSpan * (1 - unit.drive))
     }
     this.body.advance(now)
     this.body.write(this.bodyAdditive, freeShare(input.owned.head))
@@ -893,6 +911,7 @@ class GesturePerformer {
     track.phaseEnd = now + TIMING.cancel
     track.state = 'retraction'
     track.pending = null
+    track.leaning = false
     track.correctAt = Infinity
     track.viaReady = false
     track.settle = false
@@ -992,9 +1011,8 @@ class GesturePerformer {
     const stirred = onset && (major || input.voice.level >= this.peakFloor(drive))
     if (drive < CALM.drive && !stirred)
       return
-    // Past the speaking edge, the hands rise only for an onset they will stroke (`RISE`).
-    if (!edge && !this.strikes(input, major, drive))
-      return
+    // Past the speaking edge the hands rise only for an onset they will stroke, and a weaker one leans them (`RISE`).
+    const lean = !edge && !this.strikes(input, major, drive)
     const walking = input.gait !== null && input.gait.mode !== 'idle'
     const free = SIDES.filter(side => this.free(side, input, context))
     if (!free.length || !this.keys)
@@ -1021,11 +1039,15 @@ class GesturePerformer {
     for (const side of started) {
       const track = this.tracks[side]
       this.begin(track, now)
+      if (lean) {
+        this.lean(track, now, gestureTempo(drive))
+        continue
+      }
       track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(drive), this.tension, this.correct())
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
     }
-    this.unit = { active: true, sides: started, twoHand: started.length === 2, drive, start: now, strokes: 0, retracting: false, bySpeech: false }
+    this.unit = { active: true, sides: started, twoHand: started.length === 2, drive, start: now, strokes: 0, retracting: false, bySpeech: false, leaning: lean }
     this.phrase = { ...phrase, sides: started }
     this.phraseStrokes = 0
     this.phraseSet = false
@@ -1035,9 +1057,46 @@ class GesturePerformer {
     this.report.form = null
     this.report.plannedHit = null
     this.report.hand = started.length === 2 ? 'both' : started[0]
-    this.aimBody(context, now, Math.max(...started.map(side => this.tracks[side].prepSeconds)))
+    // Leaning hands leave the body where it is; it takes the phrase's hold as they rise (`riseFor`).
+    if (!lean)
+      this.aimBody(context, now, Math.max(...started.map(side => this.tracks[side].prepSeconds)))
     if (onset)
       this.stroke(context, now, major)
+  }
+
+  /** Starts `track`'s preparation to its lean (`LEAN`) from rest, over the time its whole preparation would take. */
+  private lean(track: ArmTrack, now: number, tempo: number): void {
+    const lean = this.scratch
+    for (let j = 0; j < 26; j++)
+      lean[j] = track.home[j] + LEAN.share * (track.ready[j] - track.home[j])
+    const seconds = (0.25 + 0.35 * this.travel(track.side, track.home, track.ready)) / tempo
+    track.phaseEnd = now + track.move(lean, now, seconds, this.tension)
+    track.prepSeconds = seconds
+    track.state = 'preparation'
+    track.leaning = true
+  }
+
+  /**
+   * Takes a leaning arm the rest of the way to its ready key at its whole preparation's pace, in the share of that
+   * preparation's time the lean left. Its `prepSeconds` stay the whole way's, which its retraction scales.
+   */
+  private rise(track: ArmTrack, now: number): void {
+    track.leaning = false
+    track.phaseEnd = now + track.transit(track.ready, now, (1 - LEAN.share) * track.prepSeconds, this.tension, this.correct())
+    track.state = 'preparation'
+  }
+
+  /** Raises the hands of a unit that a weak onset opened (`RISE`) to their ready keys, on a stroking onset. */
+  private riseFor(context: PerformanceContext, now: number): void {
+    const unit = this.unit
+    if (!unit.leaning)
+      return
+    unit.leaning = false
+    for (const side of unit.sides) {
+      if (this.tracks[side].leaning)
+        this.rise(this.tracks[side], now)
+    }
+    this.aimBody(context, now, Math.max(...unit.sides.map(side => this.tracks[side].phaseEnd - now)))
   }
 
   /**
@@ -1193,8 +1252,9 @@ class GesturePerformer {
       return
     if (now - this.lastStroke < TIMING.strokeGap || unit.strokes >= TIMING.unitStrokes)
       return
-    const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
+    this.riseFor(context, now)
     const form = this.chooseForm(input, now, major, unit.twoHand)
+    const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
     if (this.strokeReady(lead, now, GESTURE_FORMS[form].strokeSeconds / gestureTempo(unit.drive))) {
       this.deferred = null
       this.perform(context, now, form, major)
@@ -1267,7 +1327,7 @@ class GesturePerformer {
   private strokeReady(track: ArmTrack, now: number, seconds: number): boolean {
     if (track.state === 'ready' || track.state === 'hold' || track.state === 'recovery' || track.state === 'stroke')
       return true
-    return track.state === 'preparation' && track.phaseEnd - now <= seconds
+    return track.state === 'preparation' && !track.leaning && track.phaseEnd - now <= seconds
   }
 
   /**
@@ -1460,6 +1520,7 @@ class GesturePerformer {
    * in one tick (a velocity step).
    */
   private retractTrack(track: ArmTrack, now: number): void {
+    track.leaning = false
     if (track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery') {
       // A recovery is already the way back to the ready key: it goes on. Restarted as a new segment of full recovery
       // time, the plan's velocity carried the arm past the key, off the path the key was cleared on.
@@ -1524,7 +1585,7 @@ class GesturePerformer {
       track.phaseEnd = now + track.transit(track.ready, now, TIMING.recovery / gestureTempo(unit.drive), this.tension, track.recoveryCorrected)
     }
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
-      track.state = 'ready'
+      track.state = track.leaning ? 'lean' : 'ready'
     }
     const prepared = track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery' || track.state === 'ready'
     if (!prepared)
@@ -1567,6 +1628,7 @@ class GesturePerformer {
     track.exitSeconds = TIMING.exit
     track.dropAt = Infinity
     track.silent = true
+    track.leaning = false
     // A hand joining at a phrase change may have written its last tick already; its target starts from home this tick.
     track.write()
   }
@@ -1592,6 +1654,7 @@ class GesturePerformer {
     const lead = this.tracks[this.unit.twoHand ? this.dominant : this.unit.sides[0]]
     switch (lead.state) {
       case 'preparation':
+      case 'lean':
         return 'preparation'
       case 'stroke':
         return 'stroke'
