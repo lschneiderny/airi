@@ -174,8 +174,9 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       channels[c('lowerPitch')] = REST.lower * DEG
       channels[c('midPitch')] = settled.mid * DEG
       channels[c('upperPitch')] = settled.upper * DEG
-      // The head drops and tilts toward the leg she stands on (positive support is the right foot).
-      const toward = Math.sign(support)
+      // The head drops and tilts toward the leg she stands on (positive support is the right foot), and follows the
+      // weight across when she changes legs.
+      const toward = Math.max(-1, Math.min(1, support))
       channels[c('headPitch')] = 0.65 * (REST.head + settled.head) * DEG
       channels[c('neckPitch')] = 0.35 * (REST.head + settled.head) * DEG
       channels[c('headRoll')] = 0.65 * toward * settled.headRoll * DEG
