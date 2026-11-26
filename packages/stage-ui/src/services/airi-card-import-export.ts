@@ -155,7 +155,13 @@ export async function exportAiriCardPackage({ card, displayModelsStore, backup }
  * then starts the card's state fresh from its profile. A damaged state entry
  * never fails the import.
  */
-export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<{ card: ccv3.CharacterCardV3, memories: MemoryWrite[], characterState: CharacterStateRecordV1 | null }> {
+export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<{
+  card: ccv3.CharacterCardV3
+  memories: MemoryWrite[]
+  characterState: CharacterStateRecordV1 | null
+  /** The display model the package carried, if any. A package cannot carry an MMD model. */
+  displayModelId?: string
+}> {
   const zip = await loadZip(file)
   const manifest = await readJsonFile(zip, MANIFEST_PATH, manifestSchema)
   const cardJson = await readJsonFile(zip, manifest.card.path, characterCardV3Schema)
@@ -168,7 +174,7 @@ export async function importAiriCardPackage({ file, displayModelsStore }: { file
     ? await readCharacterState(zip, manifest.resources.characterState.path, card.extensions.airi)
     : null
 
-  return { card: exportToJSON(card), memories, characterState }
+  return { card: exportToJSON(card), memories, characterState, displayModelId: displayModel?.id }
 }
 
 /** The packaged state record through `migrateCharacterState`, or `null` with a warning when the entry is missing or not JSON. */
