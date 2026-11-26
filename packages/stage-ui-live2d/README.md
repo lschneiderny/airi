@@ -476,6 +476,15 @@ await live2d.motions.execute('motions/wave.motion3.json')
 - A tap or a pat on the canvas plays a reaction from `createLive2DTouchReaction`, and the scene emits `touch`.
   `Model.touchAt` resolves the head or the body from the author hit areas, the head box, or the drawable bounds.
 
+## Physics rate
+
+The vendored Cubism 4 runtime simulates physics in one step of the frame time, so a rig swings differently at 30, 60, and 144 frames a second, and differently from how its author saw it in the Cubism editor.
+`utils/live2d-fixed-rate-physics-registration` wraps the factory's `createPhysics`, so a physics file that declares `Meta.Fps` is simulated in steps of `1 / Fps` seconds under every driver, for her model and for Live2D items (`evaluatePhysicsAtFixedRate` in `composables/live2d/fixed-rate-physics.ts`, a port of the Cubism 5 SDK's evaluation).
+Each frame shows the outputs of the two latest steps, blended by the time left over, so the outputs trail the simulation by up to one step.
+A file without `Meta.Fps` keeps the runtime's evaluation.
+
+Measured over 300 s of idle at pep 0 with `pnpm qa:live2d-rig --idle 300 --hz <rate>`, ForBOOTH's picture made 10.1, 3.1, and 1.5 quick reversals a minute at 30, 60, and 144 Hz before the change, and 3.1, 3.1, and 2.9 after it.
+
 ## Stage items
 
 `Live2DItems`, exported from `packages/stage-ui-live2d/src/components/scenes/live2d/index.ts`, draws the shown stage items beside her model. Each item is an expression catalog entry, so the expression store decides which items show. The layer draws each item between two of her draw segments through the vendored range draw (`drawSegments`) in `patches/pixi-live2d-display.patch`. Animated GIFs advance on item-local time through `gifFrameAt` and do not change her motion clock.

@@ -12,6 +12,8 @@ import { readLive2DRigProfile } from '../natural-motion/rig-profile'
 import { isPointInLive2DMesh } from '../touch'
 import { Live2DParameterMirror } from './mirror'
 
+import '../../../utils/live2d-fixed-rate-physics-registration'
+
 /** The longest step an item model integrates at once, as the stage ticker clamps a frame; a longer undrawn gap counts as this. */
 const maxItemStepMs = 100
 

@@ -26,6 +26,7 @@
     "./composables/live2d/expression/compose": "./src/composables/live2d/expression/compose.ts",
     "./composables/live2d/expression/hold": "./src/composables/live2d/expression/hold.ts",
     "./composables/live2d/expression/slots": "./src/composables/live2d/expression/slots.ts",
+    "./composables/live2d/fixed-rate-physics": "./src/composables/live2d/fixed-rate-physics.ts",
     "./composables/live2d/items/*": "./src/composables/live2d/items/*.ts",
     "./composables/live2d/lipsync-handoff": "./src/composables/live2d/lipsync-handoff.ts",
     "./composables/live2d/natural-motion/*": "./src/composables/live2d/natural-motion/*.ts",

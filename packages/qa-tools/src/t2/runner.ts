@@ -1,6 +1,7 @@
 import type { CatalogEntry, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { ExpressionDefinition } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/compose'
+import type { FixedRatePhysics } from '@proj-airi/stage-ui-live2d/composables/live2d/fixed-rate-physics'
 import type { PhysicsRigLike } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import type { CubismParameterTable, NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import type { SlotLeases } from '@proj-airi/stage-ui-live2d/stores/expression-slot-leases'
@@ -17,6 +18,7 @@ import { pathToFileURL } from 'node:url'
 
 import { parseExp3Expression } from '@proj-airi/stage-shared/expression-performance'
 import { ExpressionComposer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/compose'
+import { evaluatePhysicsAtFixedRate, physicsFps } from '@proj-airi/stage-ui-live2d/composables/live2d/fixed-rate-physics'
 import { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import { createSlotLeases, emptyLeases } from '@proj-airi/stage-ui-live2d/stores/expression-slot-leases'
@@ -61,7 +63,7 @@ interface InternalModel {
   motionManager: { expressionManager?: unknown }
   eyeBlink?: unknown
   breath?: unknown
-  physics?: { evaluate: (model: unknown, dt: number) => void, _physicsRig?: PhysicsRigLike }
+  physics?: FixedRatePhysics & { _physicsRig?: PhysicsRigLike }
   pose?: unknown
   updateFocus: () => void
   update: (dtMs: number, nowMs: number) => void
@@ -200,8 +202,12 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       const moc = cubism4.CubismMoc.create(rig.moc)
       const coreModel = moc.createModel()
       const internalModel = new cubism4.Cubism4InternalModel(coreModel, modelSettings, {})
-      if (rig.physicsJson)
-        internalModel.physics = cubism4.CubismPhysics.create(rig.physicsJson)
+      if (rig.physicsJson) {
+        // As the app's factory does (`live2d-fixed-rate-physics-registration`): physics runs at the rig's declared rate.
+        const physics = cubism4.CubismPhysics.create(rig.physicsJson)
+        const fps = physicsFps(rig.physicsJson)
+        internalModel.physics = fps === undefined ? physics : evaluatePhysicsAtFixedRate(physics, fps)
+      }
       if (rig.poseJson)
         internalModel.pose = cubism4.CubismPose.create(rig.poseJson)
 

@@ -87,7 +87,7 @@ export function resolveCheekParameterId(ids: readonly string[], displayInfo?: un
 export interface PhysicsRigLike {
   settings: { baseInputIndex: number, inputCount: number, baseOutputIndex: number, outputCount: number }[]
   inputs: { source: { id: string }, weight?: number }[]
-  outputs: { destination: { id: string }, weight?: number }[]
+  outputs: { destination: { id: string }, weight?: number, destinationParameterIndex?: number }[]
 }
 
 /** Channels available to Natural and destinations that must remain physics-owned. */
