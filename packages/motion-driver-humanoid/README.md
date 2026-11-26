@@ -919,7 +919,11 @@ to four strokes, drawn from their own seeded stream with drive weighting each
 choice; place and theme differ from the phrase before. At a phrase's end the
 hands go on into the next phrase, prepared again from where they are to its
 place, with the other hand taking over or both joining, or below drive 0.4 they
-may lower instead. Each recovery returns to a ready key floated within the
+may lower instead. A hand that the next phrase brings in from rest only
+leans, and the phrase begins on the next onset that strokes: that hand rises
+and strokes it, and the hand that has the thought keeps it until then. A
+two-hand stroke that takes along a hand that has just risen waits until both
+hands are prepared, led by the hand that was already up. Each recovery returns to a ready key floated within the
 place, the elbow up or down by turns, the hand back as it rises and forward as
 it falls, so a lowered hand stays out in front of the body. A hand's beats go
 down and forward, then shallower and further forward, then diagonally out to
