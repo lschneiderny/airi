@@ -1505,3 +1505,97 @@ describe('walk style', () => {
     expect(styled({})).toEqual(plain.frames)
   })
 })
+
+describe('startle check', () => {
+  const cruise = scenarioDefinitions.cruise
+  /** A steady walk that a startle of `strength` reaches `at` seconds in; `at` null raises none. */
+  function startledRun(at: number | null, strength: number, startle = true) {
+    const run = createRun(cruise.start)
+    run.advance(cruise.seconds, now => ({
+      ...cruise.drive(),
+      ...(startle ? { startle: { seq: at !== null && now >= at ? 1 : 0, strength } } : {}),
+    }))
+    return run
+  }
+  const plain = startledRun(null, 0, false)
+  // A startle 0.1 s after a steady lift-off, with that foot in the air.
+  const lift = eventsOf(plain.frames, 'liftOff').find(event => event.tick * dt >= 4)!
+  const at = lift.tick * dt + 0.1
+  const strikesAfter = (frames: readonly LocomotionFrame[]) => eventsOf(frames, 'heelStrike').filter(strike => strike.tick * dt > at)
+  const opposite = (foot: Foot): Foot => foot === 'left' ? 'right' : 'left'
+  const stepLength = (strike: { foot: Foot, frame: LocomotionFrame }, before: { frame: LocomotionFrame }) =>
+    Math.abs(strike.frame.feet[strike.foot].target.position.x - before.frame.feet[opposite(strike.foot)].target.position.x)
+
+  function caught(strength: number) {
+    const { frames } = startledRun(at, strength)
+    const base = strikesAfter(plain.frames)
+    const strikes = strikesAfter(frames)
+    const all = eventsOf(frames, 'heelStrike')
+    const baseAll = eventsOf(plain.frames, 'heelStrike')
+    const index = all.indexOf(all.find(strike => strike.tick === strikes[0]!.tick)!)
+    const baseIndex = baseAll.indexOf(baseAll.find(strike => strike.tick === base[0]!.tick)!)
+    return {
+      frames,
+      late: (strikes[0]!.tick - base[0]!.tick) * dt,
+      short: stepLength(base[0]!, baseAll[baseIndex - 1]!) - stepLength(strikes[0]!, all[index - 1]!),
+      strikes,
+      all,
+      index,
+    }
+  }
+
+  it('lands the step in the air late and short, then walks its own stride again within two steps', () => {
+    const { late, short, strikes, all, index, frames } = caught(0.6)
+    expect(late).toBeGreaterThan(0.05)
+    expect(short).toBeGreaterThan(0.02 * legLength)
+    // From the second step after the caught one, steps keep the steady period and length of the walk at v_ref.
+    const steady = strikesAfter(plain.frames)
+    const steadyLength = stepLength(steady[4]!, eventsOf(plain.frames, 'heelStrike').find((_, k, list) => list[k + 1]?.tick === steady[4]!.tick)!)
+    for (let k = 2; k < 6; k++) {
+      expect([83, 84]).toContain(strikes[k + 1]!.tick - strikes[k]!.tick)
+      expect(Math.abs(stepLength(all[index + k]!, all[index + k - 1]!) - steadyLength)).toBeLessThan(0.01 * legLength)
+    }
+    expect(frames.at(-1)!.speed).toBeCloseTo(referenceSpeed, 6)
+    // The feet keep their contacts: no planted foot moves and no ankle is leashed.
+    for (const side of sides) {
+      let origin: Vec3 | null = null
+      for (const frame of frames) {
+        const foot = frame.feet[side]
+        origin = foot.planted ? origin ?? foot.target.position : null
+        if (origin)
+          expect(distance(foot.target.position, origin)).toBeLessThanOrEqual(1e-9)
+      }
+    }
+    expect(maxReach(frames)).toBeLessThanOrEqual(hardReach * legLength)
+  })
+
+  it('checks harder for a stronger startle', () => {
+    const weak = caught(0.3)
+    const clear = caught(0.6)
+    const strong = caught(0.9)
+    expect(weak.late).toBeGreaterThan(0)
+    expect(clear.late).toBeGreaterThan(weak.late)
+    expect(strong.late).toBeGreaterThan(clear.late)
+    expect(weak.short).toBeGreaterThan(0)
+    expect(strong.short).toBeGreaterThan(weak.short)
+  })
+
+  it('changes nothing without a new startle', () => {
+    const hash = (frames: readonly LocomotionFrame[]) => createHash('sha256').update(JSON.stringify(frames)).digest('hex')
+    expect(hash(startledRun(null, 0.9).frames)).toBe(hash(plain.frames))
+  })
+
+  it('does nothing while she stands, and keeps no check for a later walk', () => {
+    const run = (startle: boolean) => {
+      const standing = createRun({ x: 0, yaw: Math.PI / 2 })
+      // A startle at 1 s while she stands, a walk from 2 s.
+      standing.advance(5, now => ({
+        goalX: now >= 2 ? 500 : null,
+        arriveFacing: Math.PI / 2,
+        ...(startle ? { startle: { seq: now >= 1 ? 1 : 0, strength: 1 } } : {}),
+      }))
+      return standing.frames
+    }
+    expect(JSON.stringify(run(true))).toBe(JSON.stringify(run(false)))
+  })
+})

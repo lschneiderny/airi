@@ -59,13 +59,15 @@ A second animation audit reviewed emotions during speech and walks, the touch si
 
 The touch reaction and sad now write neck channels. They add to Natural's head through the performer like every other layer term, and owned groups still receive none. Tests that pinned the earlier touch signs, the poke startle's arm share and the surprised held elbow were re-pinned.
 
-## Amendment (2026-11-25): love's hand clears the body model
+## Amendment (2026-11-25): love's hand clears the body model, and a startle reaches the step
 
-After the [body model](2026-11-25-body-model.md) replaced the trunk's authored bodies, a third audit checked the emotion poses against it.
+After the [body model](2026-11-25-body-model.md) replaced the trunk's authored bodies, a third audit checked the emotion poses against it and the combined performance.
 
 1. **The hand to chest sits 0.075 arm lengths up from the chest seed, with the settling headroom.** At 0.15 the held hand met the author's neck and hair bodies and the forearm the mid-chest volume as the trunk and head moved under the held key: `emotion-bands` read up to 983 guard scans and cap hits on five of eight rigs. The form now keeps `KEY_HEADROOM` as the stroke keys do, because the trunk breathes, sways and bends under it; the chin and front-low contacts still take none. The hand still rests on the upper chest beside the sternum, a little lower than before. This supersedes the anchor height in item 2 of the amendment above.
+2. **A surprise during a walk checks the stride.** Item 1 of the amendment above left the step unhitched. Each surprised pulse now raises a startle at the pulse's intensity (`BodyEmotionModulation.startleSeq` and `startle`). The stack passes it on with the layer's other modulation, counting every new one whatever the layer's weight, since a pulse's posture starts from zero weight on the tick that raises it. The performer reports it in `frame.startle`, and the host hands it to the gait on the next tick (`LocomotionInput.startle`). The gait alone answers, by its own rules: see the [natural walk refit ADR](2026-11-23-natural-walk-refit.md). A poke's startle is the same surprised pulse, so it reaches the step without its own path. Standing, nothing reads it.
 
 ### Consequences
 
-- On eight rigs (seed 1) `emotions`, `emotion-bands` and `emotion-compose` read zero guard scans and cap hits.
+- On eight rigs (seed 1) `emotions`, `emotion-bands`, `emotion-compose`, `touch` and `walk` read zero collisions, guard scans, cap hits, holds and penetration. `pops` fails only on one velocity step of the right upper arm at 200.65 s of `emotion-bands` on two rigs, which the run before this amendment shows too.
 - Each emotion's peak on four rigs matches the reviewed boards of the earlier amendment, except that love's chest hand rests lower. On the reference rig the emotion table still passes `pairs-from-neutral` (22/22); its smallest separation reads 2.120 instead of 2.162 because love's trials vary more and widen the pooled sigma (10.41 to 10.61 degrees), not because any two emotions came closer.
+- Love during speech is unchanged: the chest hand does not settle into the body as the line goes on, and the ribs do not carry its emphasis toward the speaking hand. That needs the speech emphasis in the emotion layer, and is not built.

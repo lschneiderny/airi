@@ -83,7 +83,8 @@ export interface BodyEmotionSpec {
   readonly sigh: boolean
   /**
    * A startle in a walking body: the pelvis dips this far (leg lengths) while the accent lasts, so the stance knee gives
-   * under the step it is on instead of the stride carrying on unchanged (`STRIDE`).
+   * under the step it is on (`STRIDE`). Each pulse of such an emotion also raises a startle in the modulation
+   * (`PerformanceModulation.startleSeq`) at the pulse's intensity, which the gait answers by checking the stride.
    */
   readonly startle?: number
   /**
@@ -246,6 +247,9 @@ export interface BodyEmotionModulation {
   breath: number
   /** Increments once per sighing onset. */
   sighSeq: number
+  /** Increments once per pulse of an emotion with a `startle`; `startle` is that pulse's intensity. */
+  startleSeq: number
+  startle: number
 }
 
 export interface EmotionLayer extends PerformanceLayer {
@@ -289,7 +293,7 @@ interface Track {
 export function createEmotionLayer(): EmotionLayer {
   const channels = new Float64Array(BODY_CHANNELS.length)
   const ownedFactor = new Float64Array(BODY_CHANNELS.length)
-  const modulation: BodyEmotionModulation = { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 }
+  const modulation: BodyEmotionModulation = { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0, startleSeq: 0, startle: 0 }
   const report: BodyEmotionReport & { seq: number, emotion: PerformanceEmotion | null, phase: 'onset' | 'release' | null } = { seq: 0, emotion: null, phase: null }
   const tracks: Track[] = PERFORMANCE_EMOTIONS.map((emotion) => {
     const spec = BODY_EMOTIONS[emotion]
@@ -345,6 +349,11 @@ export function createEmotionLayer(): EmotionLayer {
           track.side = impulse.side
         track.accentFrom = time
         track.absorbed = false
+        // A poke's startle checks a walking stride too: it reaches the layer as this same pulse.
+        if (track.spec.startle !== undefined) {
+          modulation.startleSeq++
+          modulation.startle = track.episode.amplitude
+        }
         // Only from rest, so a share never changes under a held pose.
         if (Math.abs(track.state.y) < REST)
           track.armShare = track.emotion === 'surprised' && time - pokedAt <= TOUCH_STARTLE.within ? TOUCH_STARTLE.arms[pokedRegion] : 1
@@ -593,7 +602,7 @@ export function createEmotionLayer(): EmotionLayer {
       stance = 0
       walking = 0
       speech.y = speech.v = speech.x = 0
-      Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0 })
+      Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0, startleSeq: 0, startle: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
       impulseSeq = pokeSeq = null
       pokedAt = Number.NEGATIVE_INFINITY

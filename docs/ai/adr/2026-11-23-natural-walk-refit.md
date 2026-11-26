@@ -50,3 +50,17 @@ Four causes were found in the code:
 - A walk is under way sooner: the fixture of `director/press.test.ts` travels 0.25 L in the first second of a chase where it travelled none.
 - The capture holds no standing start or stop, so the start, the stop and the turn from rest rest on the quarter-turn clips and on judgment, not on a measured reference.
 - A rig without foot roll geometry gets a deeper bob, since its trailing foot cannot rise onto its ball. No such rig was among the 13.
+
+## Amendment (2026-11-25): a startle checks the stride
+
+The [emotion silhouettes ADR](2026-11-24-emotion-silhouettes.md) let a surprise during a walk dip the pelvis but left the step unhitched. A startle now reaches the gait as an input, and the gait answers it by its own rules.
+
+1. **`LocomotionInput.startle`** carries the latest startle the performer raised (`frame.startle`: a sequence number and a strength in [0, 1]). A new sequence number checks the stride once a walk is under way: not while she stands, turns on the spot, prepares her first step, sidesteps or settles at the goal. Omitted or unchanged, the gait is untouched.
+2. **The check is a 0.7 s bump** (`CATCH`), the strength times sin² of its progress, summed over overlapping startles and capped at 1. At its height the root's travel slows by 0.8 of it and the step rate by 0.6. The speed law carries on from the unchecked speed, so the walk returns to its pace as the bump falls, and the cadence law and the stride variation are untouched.
+3. **The feet keep the walk's rules.** The planted foot stays a frozen anchor, the landing is still re-planned until 0.75 of the swing, so the step in the air lands late and short where the slowed root puts it, and the roll, the reach limits and the contact rules are the gait's own.
+
+### Consequences
+
+- A clear surprise (strength 0.6) in `emotion-compose` lands the next step 0.117 s late and about 7 % short on four rigs, and the step after it keeps the walk's period, so the stride is back within one step and the walk runs that 0.117 s behind. A strength of 0.3 checks less and 0.9 more. A first try of 0.5 s, 0.6 and 0.5 moved the strike by 60 ms only.
+- Inside the check the contact skate reads at most 0.011 on eight rigs. Outside it, the later strides move the arrival's braking step, and the stop's contact skate rose on five rigs (0.021 to 0.023 on the reference rig) and fell or held on three.
+- The `walk` scenario raises no startle and stays bit-identical.

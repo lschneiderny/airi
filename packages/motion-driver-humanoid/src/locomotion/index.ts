@@ -78,6 +78,11 @@ export interface LocomotionInput {
   readonly plantedFeet: Record<Foot, FootAnchor>
   /** The walk's shape; `NEUTRAL_GAIT_STYLE` when omitted. A walk under way eases into a new one (`styleTau`). */
   readonly style?: GaitStyle
+  /**
+   * The latest startle the performer raised (`BodyPerformanceFrame.startle`): a change of `seq` while a walk is under way
+   * checks the stride by `strength` in [0, 1] (`CATCH`). Omitted or unchanged, the gait is untouched.
+   */
+  readonly startle?: { readonly seq: number, readonly strength: number }
 }
 
 /**
@@ -387,6 +392,18 @@ const startAccelerationFloor = 0.25
 const startAccelerationFullAt = 0.3
 /** Architecture 5.4: the settle hold after the last plant, long enough for the stop dip and one lean overshoot. */
 const settleDuration = 0.45
+/**
+ * A startle checks the stride (natural walk refit ADR, 2026-11-25 amendment): over `seconds` the root's travel and the
+ * step rate dip through a smooth bump, `sin^2(pi t / seconds)` times the startle's strength, by up to `speed` and `rate`
+ * at full strength. The foot in the air so lands short and late, the weight stays over the stance leg while the phase
+ * slows, and the braking leans the trunk back. The speed law runs on underneath, so as the bump falls the root is back
+ * at the law's own speed. The strides' structure stays the gait's: a slower phase and a shorter planned landing, never
+ * a moved planted foot. Startles that overlap add, up to a full check. The sizes rest on judgment against the audit's frames: a
+ * clear surprise (strength 0.6) lands the next step about 0.12 s late and 7 % short and holds the root back by up to
+ * half its speed, and the step after it keeps the walk's period (Chisa, `emotion-compose`, 2026-11-25). A first try of
+ * 0.5 s, 0.6 and 0.5 moved that strike by 60 ms only.
+ */
+const CATCH = { seconds: 0.7, speed: 0.8, rate: 0.6 } as const
 const blendDuration = 0.3
 /** Architecture 5.4: an under-damped lean, one overshoot of about 13 % gone in 0.6 s (omega 5 rad/s, zeta 0.55). */
 const leanResponse = { f: 5 / (2 * Math.PI), zeta: 0.55, r: 0 } as const
@@ -796,6 +813,11 @@ class Locomotion {
   /** This tick's pelvis, shared by the leash and the frame so both see the same drop. */
   private posture: ReturnType<Locomotion['pelvis']> | null = null
   private clamps = 0
+  /** The startle seq the gait last saw (`LocomotionInput.startle`), and the checks still running, oldest first. */
+  private startleSeq = 0
+  private readonly catches: { elapsed: number, readonly strength: number }[] = []
+  /** The share of the speed law's speed the last walking tick travelled at: below 1 only while a check runs. */
+  private checkFactor = 1
   /** The style the walk shows now, easing toward the input's. */
   private readonly style: MutableGaitStyle = { ...NEUTRAL_GAIT_STYLE }
   /** The input style with the rig's limits applied, and which values they held. */
@@ -936,6 +958,8 @@ class Locomotion {
     for (const link of this.twistLinks)
       link.state.y = link.state.v = link.state.x = 0
     this.girdle.times.length = this.girdle.values.length = 0
+    this.catches.length = 0
+    this.checkFactor = 1
   }
 
   step(input: LocomotionInput, dt: number): LocomotionFrame {
@@ -952,6 +976,7 @@ class Locomotion {
       Object.assign(this.style, style)
     else if (dt > 0)
       easeGaitStyle(this.style, style, 1 - Math.exp(-dt / styleTau))
+    this.startled(input)
     let mode: LocomotionFrame['mode'] = 'idle'
     if (!input.enabled) {
       this.halt()
@@ -989,6 +1014,35 @@ class Locomotion {
     const frame = this.frame(mode, events, this.posture ?? this.pelvis(this.speed, this.x), dt)
     this.posture = null
     return frame
+  }
+
+  /**
+   * Starts a check of the stride for a new startle while a walk is under way: past its preparation, in the walk form,
+   * neither sidestepping nor settling. Standing, turning on the spot or stepping aside, the startle is only noted.
+   */
+  private startled(input: LocomotionInput) {
+    const startle = input.startle
+    if (!startle || startle.seq === this.startleSeq)
+      return
+    this.startleSeq = startle.seq
+    const walk = this.walk
+    const strength = clamp(finite(startle.strength), 0, 1)
+    if (walk && this.walkForm && !walk.sidestep && !walk.settle && walk.preparation >= preparationDuration && strength > 0)
+      this.catches.push({ elapsed: 0, strength })
+  }
+
+  /** This tick's share of a full check (`CATCH`), 0 without one; advances the running checks by `dt`. */
+  private check(dt: number) {
+    if (this.catches.length === 0)
+      return 0
+    let share = 0
+    for (const running of this.catches) {
+      running.elapsed += dt
+      share += running.strength * Math.sin(Math.PI * Math.min(1, running.elapsed / CATCH.seconds)) ** 2
+    }
+    while (this.catches.length > 0 && (this.catches[0]?.elapsed ?? 0) >= CATCH.seconds)
+      this.catches.shift()
+    return Math.min(1, share)
   }
 
   private bindFeet(): Record<Foot, FootAnchor> {
@@ -1384,6 +1438,8 @@ class Locomotion {
     // As if the walk had been running: the first swing foot lifts at phase delta, the other foot a step later.
     this.strikes = { [firstFoot]: doubleSupport - (1 + doubleSupport), [opposite(firstFoot)]: 0 } as Record<Foot, number>
     this.speed = 0
+    this.catches.length = 0
+    this.checkFactor = 1
     this.walk = { preparation: 0, direction, heading, firstFoot, step: 0, starting: true, startRoll: 0.5, arrived: false, settle: null, arrivalFacing: null, stopping: false }
     // From standing the turn is quicker and the gaze leads it; a start that carries an on-spot turn's yaw rate keeps
     // the walking turn's pace.
@@ -1501,6 +1557,7 @@ class Locomotion {
     }
     if (walk.sidestep)
       return this.advanceSidestep(walk, walk.sidestep, input, dt, events)
+    const check = this.check(dt)
     // A faster walk lengthens the step, so the limit caps the speed as well: past the top cadence for the style, and by a
     // few percent where a stride's variation would lengthen a step at the limit. Only the style's own cap is reported.
     const asked = urgencySpeedShare(input.urgency) * this.referenceSpeed * this.speedFactor * this.style.speed
@@ -1517,7 +1574,9 @@ class Locomotion {
     const nearing = !braking && this.stoppingSpeed(Math.max(0, ahead - turnLead), dt) < command
     const target = braking || walk.settle ? 0 : Math.min(command, this.stoppingSpeed(ahead, dt))
     const change = this.maxAcceleration * dt
-    const speed = Math.max(0, clamp(target, this.speed - change, this.speed + change * this.startShare(this.speed, command)))
+    // The speed law runs on the speed the check held back, so the check is the bump alone and does not compound.
+    const lawful = this.checkFactor === 1 ? this.speed : this.speed / this.checkFactor
+    const speed = Math.max(0, clamp(target, lawful - change, lawful + change * this.startShare(lawful, command)))
 
     // Keep the departure turn through the first step. The braking cap can be below cruise speed while still accelerating.
     const wasArriving = walk.arrivalFacing !== null
@@ -1528,7 +1587,8 @@ class Locomotion {
     const reversing = goal !== null && ahead < -minWalkShare * this.traits.legLength
     const facing = reversing ? walk.heading - walk.direction * Math.PI : arriving ? finite(input.arriveFacing) : walk.heading
     const slowed = walk.stopping ? (1 - Math.min(1, speed / command)) ** 2 : 0
-    const rate = this.stepRate(speed) + (closingRate - minRate) * slowed
+    const paced = this.stepRate(speed) + (closingRate - minRate) * slowed
+    const rate = check > 0 ? paced * (1 - CATCH.rate * check) : paced
     // A goal moved behind her during the lead brakes at once, so the turn is planned again over the braking's steps.
     if (!walk.settle && (arriving !== wasArriving || (braking && !wasStopping) || (walk.arrivalFacing !== null && Math.abs(wrap(facing - walk.arrivalFacing)) > turnTolerance))) {
       this.yawPlan = reversing
@@ -1547,6 +1607,10 @@ class Locomotion {
     this.followYawPlan()
 
     let advance = braking ? speed * dt : Math.min(speed * dt, ahead)
+    // The check holds the root back by its share of the speed law's travel.
+    this.checkFactor = 1 - CATCH.speed * check
+    if (check > 0)
+      advance *= this.checkFactor
     this.posture = this.pelvis(speed, this.x + walk.direction * advance)
     // The knees give as the weight arrives on the final plant, and recover over the settle.
     if (walk.settle)
@@ -1828,6 +1892,8 @@ class Locomotion {
     this.turn = null
     this.yawPlan = null
     this.speed = 0
+    this.catches.length = 0
+    this.checkFactor = 1
   }
 
   /**
