@@ -965,7 +965,11 @@ velocity and acceleration, and the followers receive the inverse of that whole
 path, so the cut adds no step to their target (architecture 4e: an act's exit
 can start from any tick). On the way, home is cleared
 every tick against the body as it is posed then, by the corrector's own
-projection (`BodyCollision.project`), because the trunk moves during a unit.
+projection (`BodyCollision.project`), because the trunk moves during a unit:
+the weight shift that often comes with the retraction rolls the stance hip out
+under that arm. Home keeps a settled key's headroom (`KEY_HEADROOM`) from that
+body, as the rest hang keeps it from the rest trunk, so the arm settles there
+without reaching the corrector's margin.
 Only paths through the
 ready key are cleared, so a retraction lets a stroke in flight land, and from a
 stroke or hold first goes back to the ready key along the stroke over the

@@ -1675,7 +1675,7 @@ class GesturePerformer {
       track.exitSeconds = TIMING.exit
     }
     // Home is where the arm rested before the unit, cleared against the trunk as it was then; the trunk has moved since,
-    // so the arm comes home to where the corrector would hold it against the body now.
+    // so the arm comes home clear of the body as it is now, with a settled key's headroom (`clearOfBody`).
     if (track.state === 'retraction' && track.settle && this.keys) {
       this.scratch.set(track.home)
       this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)

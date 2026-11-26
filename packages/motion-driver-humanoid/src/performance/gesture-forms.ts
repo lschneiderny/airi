@@ -813,8 +813,11 @@ export class GestureKeys {
 
   /**
    * Moves `pose`'s arm (flex to elbow) out of the proxies of the body as `channels` pose it now, by the corrector's own
-   * projection (architecture 6.2): where the corrector would hold that arm this tick. Keys are cleared against the rest
-   * trunk; an arm coming home must clear the trunk it comes home to.
+   * projection (architecture 6.2). Keys are cleared against the rest trunk; an arm coming home must clear the trunk it
+   * comes home to. Home is a key the arm settles on, so it keeps `KEY_HEADROOM` from that body, as the rest hang keeps
+   * it from the rest trunk. Cleared to the margin only, a home that the stance hip of a weight shift rolled into (the
+   * retraction's own shift often brings it) left the arm no room to settle: it crossed the margin while it arrived, and
+   * the corrector kicked it at 20 to 50 degrees a second (Ellen's fixture, a cut stroke; Chisa, speak seed 3).
    */
   clearOfBody(side: BodySide, pose: ArmPose, channels: ArrayLike<number>): void {
     const start = ARM_START[side]
@@ -823,7 +826,7 @@ export class GestureKeys {
     for (let j = 2; j < 26; j++)
       this.liveChannels[start + j] = pose[j]
     this.live.prepare(this.liveChannels)
-    this.live.project(side, this.liveChannels)
+    this.live.project(side, this.liveChannels, 0, KEY_HEADROOM)
     for (let j = 2; j <= 5; j++)
       pose[j] = this.liveChannels[start + j]
   }
