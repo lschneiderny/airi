@@ -196,6 +196,20 @@ describe('createOpenAICompatibleValidators', () => {
     expect(listModelsMock).not.toHaveBeenCalled()
   })
 
+  it('probes the provider-preferred model before catalog order', async () => {
+    listModelsMock.mockResolvedValue([{ id: 'large-model' }, { id: 'small-model' }])
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+      pickValidationModel: async () => 'small-model',
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'small-model' }))
+    expect(listModelsMock).not.toHaveBeenCalled()
+  })
+
   it('normalizes the selected model id before chat probing', async () => {
     listModelsMock.mockResolvedValue([
       { id: 'byteplus/seed-2-0-pro-260328' },
