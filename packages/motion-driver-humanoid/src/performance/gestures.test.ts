@@ -580,6 +580,19 @@ describe('co-speech gestures', () => {
     expect(arriving.run.frames.slice(0, lowered).some(frame => frame.time > 3 && frame.gesture.phase === 'preparation')).toBe(true)
   })
 
+  it('leaves the body where it is when she arrives with hands that only lean', () => {
+    // The weak onset after the pause opens a unit that only leans the hands (`LEAN`); she arrives before any stroke.
+    const roll = channelIndex('headRoll')
+    const script: Script = { utterances: [{ start: 0.5, end: 5.4, energy: 0.5, onsets: [{ at: 1 }, { at: 1.9 }, { at: 4.5, weak: true }], pauses: [[2.3, 4.2]] }], still: true, walking: time => time < 4.8 }
+    const run = perform(script, 7, { seed: 3 })
+    const bare = perform(script, 7, { seed: 3, layers: false })
+    expect(run.frames.some(frame => frame.time > 4.5 && frame.time < 4.8 && frame.gesture.unitSeq === 2)).toBe(true)
+    // Until the hands go home at 5.7 s: the weight shift that follows them (`SHIFT`) tilts the head on its own.
+    const held = run.frames.map((frame, k) => Math.abs(frame.channels[roll] - bare.frames[k].channels[roll]))
+    expect(run.frames.findIndex(frame => frame.gesture.phase === 'retraction' && frame.gesture.unitSeq === 2)).toBeGreaterThan(Math.round(5.6 / BODY_TICK))
+    expect(Math.max(...held.slice(Math.round(4.8 / BODY_TICK), Math.round(5.6 / BODY_TICK)))).toBeLessThan(0.05 * DEG)
+  })
+
   it('moves the weight to the other foot as the hands come down, in most units', () => {
     let shifted = 0
     for (const seed of [1, 2, 3, 4, 5, 6]) {
