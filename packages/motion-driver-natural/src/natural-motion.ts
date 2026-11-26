@@ -32,7 +32,7 @@ import { naturalEmotions } from './emotions'
 import { NaturalPerformanceEnergy } from './energy'
 import { NaturalFaceLayer } from './face'
 import { withHints } from './face-hints'
-import { NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
+import { attentionShare, NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
 import { NaturalGestures } from './gestures'
 import { NaturalHoldLayer } from './hold'
 import { IdleBehaviourReports, NaturalIdleActivities } from './idle-activities'
@@ -94,9 +94,14 @@ const pepEaseSeconds = 1
 // Pep divides the blink interval by `1 + pepBlinkRate * pep` and scales the lid times by `1 - pepBlinkSpeed * pep`.
 const pepBlinkRate = 1.25
 const pepBlinkSpeed = 0.42
-// Review candidate: head units of yaw and pitch per eye unit of gaze when a posture shift follows the eyes.
+// Attention-led head motion (docs/ai/adr/2026-11-25-attention-led-head-motion.md). Pep at or above this value is
+// fully attention-led; below it the share rises linearly from 0, so pep 0 keeps the random shifts bit for bit.
+const attentionLedPep = 0.25
+// Fully attention-led, a hold between posture shifts lasts this many times as long, and at most the limit in seconds.
+const attentionHoldScale = 6
+const attentionHoldLimitSeconds = 12
+// Head units of yaw and pitch per eye unit of gaze when a posture shift follows the eyes.
 const headAimShare = { x: 1, y: 0.8 }
-const headAimLeadSeconds = 0.05
 
 // Critically damped follower time constants (seconds): the head trails eye pursuit.
 const followers = {
@@ -650,7 +655,6 @@ export class NaturalMotion {
       wobble: bounded(gains.wobble, 0),
       eyes: bounded(gains.eyes, 0),
       body: bounded(gains.body, 0),
-      follow: Number.isFinite(gains.follow) ? Math.max(0, Math.min(1, gains.follow)) : 0,
     }
   }
 
@@ -1053,7 +1057,15 @@ export class NaturalMotion {
     this.posture.layerGains.shift = this.review.shifts
     this.posture.layerGains.drift = this.review.drift
     this.posture.layerGains.continuous = this.review.wobble
-    this.posture.aimShare = this.reviewTarget.follow
+    // With pep the head follows attention: every shift is led by the eyes and aimed where they look, holds are
+    // longer, and a led fixation reaches further. All of it is exactly off at pep 0.
+    const led = Math.min(1, this.pep / attentionLedPep)
+    this.posture.aimShare = led
+    this.posture.holdLimit = led === 0 ? Number.POSITIVE_INFINITY : attentionHoldLimitSeconds
+    if (led !== 0)
+      this.posture.shiftRateScale /= 1 + (attentionHoldScale - 1) * led
+    this.attention.share = attentionShare + (1 - attentionShare) * led
+    this.attention.wide = led
     // Outside held emotions the period scale rests at 1, so the idle scale is the whole value there.
     if (idle || this.idleBreathScaled) {
       this.breath.periodScale = (this.performanceSettings.heldEmotions ? this.hold.modulation().breathPeriod : 1) * (idle?.breathPeriodScale ?? 1)
@@ -1095,9 +1107,11 @@ export class NaturalMotion {
       this.notify({ kind: 'placement', at: stepStart, inward: this.placement.value, yawBias: this.yawBias })
     }
     if (this.posture.aimShare !== 0) {
-      // The cursor already turns the head through the follow bias, so a shift during pursuit aims at the home.
+      // A layer that holds the eyes moves the head itself (an act, a gesture, an emotion, the chat, the pet hand), so
+      // the posture stays. The cursor turns the head through the follow bias, so a shift during pursuit aims at the home.
+      const owned = this.gaze.claim !== null || this.gaze.onChat || this.petOverride
       const looking = this.gaze.onCursor ? { x: 0, y: 0 } : this.gaze.fixationPoint
-      this.posture.aim = [headAimShare.x * looking.x, headAimShare.y * looking.y]
+      this.posture.aim = owned ? null : [headAimShare.x * looking.x, headAimShare.y * looking.y]
     }
     const posture = this.posture.step(step, this.yawBias !== 0
       ? [this.x.cursorX + this.yawBias, this.x.cursorY, 0]
@@ -1144,10 +1158,6 @@ export class NaturalMotion {
     if (this.gaze.saccadeCount !== this.saccadeCount) {
       this.saccadeCount = this.gaze.saccadeCount
       this.blink.onGazeShift(this.gaze.saccadeSize)
-      // Review candidate: the head answers a new fixation 50 ms after the eyes leave, unless it is still moving.
-      // The advanced time returns through the next hold, so the shift rate is unchanged.
-      if (this.posture.aimShare !== 0 && !this.posture.shiftMoving && !this.gaze.onCursor)
-        this.posture.advanceShift(this.posture.secondsUntilShift - headAimLeadSeconds)
       this.face.onGazeShift(this.gaze.saccadeSize)
     }
     const lean = this.impulses.bodyOffset(stepStart + step)

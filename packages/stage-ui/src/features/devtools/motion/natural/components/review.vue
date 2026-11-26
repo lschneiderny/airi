@@ -17,7 +17,7 @@ const prefix = 'tamagotchi.settings.devtools.pages.live2d-natural-motion.review'
 /** The layers a solo isolates. `shiftRate` is a pace, not a layer, so a solo leaves it alone. */
 const soloLayers = ['shifts', 'drift', 'wobble', 'eyes', 'body', 'acts'] as const
 type SoloLayer = typeof soloLayers[number]
-const gainLayers = ['follow', 'shifts', 'shiftRate', 'drift', 'wobble', 'eyes', 'body'] as const satisfies readonly (keyof NaturalReviewGains)[]
+const gainLayers = ['shifts', 'shiftRate', 'drift', 'wobble', 'eyes', 'body'] as const satisfies readonly (keyof NaturalReviewGains)[]
 
 const { t } = useI18n()
 const diagnostics = useNaturalMotionDiagnostics()
@@ -146,7 +146,7 @@ const flagRows = computed(() => reviewFlags.value.map(flag => ({
         :data-review-gain="layer"
         :model-value="reviewTuned.gains[layer]"
         :min="layer === 'shiftRate' ? 0.1 : 0"
-        :max="layer === 'follow' ? 1 : 2"
+        :max="2"
         :step="0.05"
         :default-value="neutralReviewGains[layer]"
         :format-value="value => `${Math.round(value * 100)}%`"
