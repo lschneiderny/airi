@@ -841,7 +841,7 @@ class GesturePerformer {
     this.quiet = voice.slow < VOICE.quiet ? this.quiet + BODY_TICK : 0
 
     for (const side of SIDES)
-      this.yieldOwned(side, input, now)
+      this.yieldOwned(side, context, now)
     this.performArmForm(context, now)
 
     // A pause leaves the wait alone: the quiet rule decides whether hands hold through it.
@@ -907,7 +907,8 @@ class GesturePerformer {
   }
 
   /** A clip claiming a performing arm ends that arm's part at once, its weight gone before the claim reaches 0.5. */
-  private yieldOwned(side: BodySide, input: BodyPerformanceInput, now: number): void {
+  private yieldOwned(side: BodySide, context: PerformanceContext, now: number): void {
+    const { input } = context
     const track = this.tracks[side]
     const owned = Math.max(input.owned[`${side}Arm`], input.owned[`${side}Fingers`])
     if (!track.active || owned === 0 || track.weight === 0)
@@ -935,6 +936,11 @@ class GesturePerformer {
       // That hand takes the thought on: its wait at the ready key starts again (`RISE`).
       for (const other of unit.sides)
         this.tracks[other].waited = 0
+    }
+    // A clip taking the unit's last hand ends the unit: a hand leaning in to take the thought over goes home, and the
+    // body lets its phrase hold go.
+    else if (unit.active && !unit.retracting && unit.sides.includes(side)) {
+      this.retract(context, now, false)
     }
   }
 
