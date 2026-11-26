@@ -245,19 +245,23 @@ describe('natural motion', () => {
     }
   })
 
-  it('reports physics-derived body axes as null without changing other channels', () => {
+  it('reports physics-derived body axes as null, and changes nothing but the posture it smooths', () => {
     const motion = new NaturalMotion({ seed: 17 })
     const reference = new NaturalMotion({ seed: 17 })
     motion.setRigTraits({ bodyFromHeadPhysics: { x: true, y: false, z: false } })
     motion.advance(0)
     reference.advance(0)
-    const { pose } = motion.advance(4)
-    const expected = reference.advance(4).pose
-    expect(pose.bodyX).toBeNull()
-    expect(pose.bodyY).toBe(expected.bodyY)
-    expect(pose.bodyZ).toBe(expected.bodyZ)
-    expect(pose.headX).toBe(expected.headX)
-    expect(pose.eyeX).toBe(expected.eyeX)
+    const frame = motion.advance(4)
+    const expected = reference.advance(4)
+    expect(frame.pose.bodyX).toBeNull()
+    // The trait draws nothing: every layer outside the posture reports the reference's values.
+    expect(frame.fixation).toEqual(expected.fixation)
+    expect(frame.face).toEqual(expected.face)
+    expect(frame.blink).toEqual(expected.blink)
+    expect(frame.breath).toEqual(expected.breath)
+    // The head is the reference's idle posture, late (hung body smoothing).
+    expect(frame.pose.headX).not.toBe(expected.pose.headX)
+    expect(frame.pose.headX).toBeCloseTo(expected.pose.headX, 1)
   })
 
   it('drives face, blink, and breath on every advance', () => {

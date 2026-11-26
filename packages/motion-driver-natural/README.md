@@ -37,6 +37,14 @@ Cursor attention draws nothing: it plays the episodes the character mind draws.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
 between grid states, so the frame rate does not change the motion.
 
+`setRigTraits` tells the controller which body axes the rig's physics derives
+from the head. It reports those axes as `null`. While any axis is derived, it
+also smooths the idle posture term with `HungBodySmoothing` (two low-passes of
+0.12 s), because on such a rig every start and reversal of the head rings
+through the parts that hang from it. Gestures, reactions, emphasis, the pet
+tilt and idle acts are added after the smoothing. The trait draws nothing, so
+every other layer is unchanged, and a rig without the trait is unchanged.
+
 Desktop events reach the controller as requests that start on the next grid
 step, like pokes. `motion.react('wake' | 'screen-change', nowSeconds)` starts a
 desktop reaction: `wake` lifts the head, glances at the camera, and rouses her

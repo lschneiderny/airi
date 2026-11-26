@@ -122,6 +122,8 @@ Natural owns these channels when the model has them:
 
 Natural's breath value moves between 0.33 and 0.57. The Cubism SDK's own breath, which rig authors tune against, moves `ParamBreath` between 0 and 1. On a rig whose physics takes `ParamBreath` as an input (`Live2DRigProfile` `breathFeedsPhysics`), parts hang from the breath, and a quarter of the authored range leaves them moving by less than a pixel. On such a rig the adapter writes the same breath wave over the parameter's whole range: fully out is the minimum and fully in is the maximum. While she speaks the wave is 0.6 times as deep, as on every rig. A rig whose physics does not read the breath keeps Natural's value.
 
+On a rig whose physics derives a body axis from the head, every part that hangs from the head answers each start and reversal of the head command. For such a rig Natural smooths its idle posture (the posture shifts, the drift, the wobble, and the cursor bias) with two cascaded low-passes of 0.12 s (`HungBodySmoothing` in `motion-driver-natural`), which delays it by about 0.24 s. Gestures, reactions, speech emphasis, the pet tilt, and idle acts are added after the smoothing and keep their timing and size. The eyes compensate for the smoothed pose.
+
 Blush resolution first excludes every candidate whose id or CDI display name contains any of these case-insensitive substrings: `puff`, `inflat` (including inflate and inflation), `swell`, `鼓`, or `膨`. This exclusion also applies to exact `ParamCheek`, even if another metadata entry labels the same id as blush. Among the remaining candidates, preference is:
 
 1. Exact `ParamCheek`, including when CDI is absent or its name is neutral or blush-related.
