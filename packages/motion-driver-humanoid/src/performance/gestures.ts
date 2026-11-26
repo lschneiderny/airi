@@ -1002,25 +1002,31 @@ class GesturePerformer {
     const twoHand = !walking && free.length === 2 && this.random() < 0.15 + 0.25 * drive
     const other: BodySide = this.dominant === 'left' ? 'right' : 'left'
     const preferred = this.random() < 0.7 ? this.dominant : other
-    const sides = twoHand ? [...SIDES] : [free.includes(preferred) ? preferred : free[0]]
+    const first = free.includes(preferred) ? preferred : free[0]
+    // A hand whose ready key does not clear from where it hangs leaves a one-hand phrase to the other free hand.
+    const choices: BodySide[][] = twoHand ? [[...SIDES]] : [[first], ...free.filter(side => side !== first).map(side => [side])]
     // Walking keeps 4a's single beat phrase at the centre; standing, each unit opens a phrase of its own.
-    const phrase = walking ? { sides, place: 'centre' as const, theme: 'beat' as const, length: Infinity } : drawPhrase(this.phrases, drive, sides, this.phrase)
-    const started: BodySide[] = []
-    for (const side of sides) {
+    const phrase = walking ? { sides: choices[0], place: 'centre' as const, theme: 'beat' as const, length: Infinity } : drawPhrase(this.phrases, drive, choices[0], this.phrase)
+    let started: BodySide[] = []
+    for (const sides of choices) {
+      started = sides.filter((side) => {
+        this.captureHome(this.tracks[side], context)
+        return this.placeAt(this.tracks[side], drive, phrase, sides.length === 2, null)
+      })
+      if (started.length)
+        break
+    }
+    if (!started.length)
+      return
+    for (const side of started) {
       const track = this.tracks[side]
-      this.captureHome(track, context)
-      if (!this.placeAt(track, drive, phrase, sides.length === 2, null))
-        continue
       this.begin(track, now)
       track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / gestureTempo(drive), this.tension, this.correct())
       track.state = 'preparation'
       track.phaseEnd = now + track.prepSeconds
-      started.push(side)
     }
-    if (!started.length)
-      return
     this.unit = { active: true, sides: started, twoHand: started.length === 2, drive, start: now, strokes: 0, retracting: false, bySpeech: false }
-    this.phrase = phrase
+    this.phrase = { ...phrase, sides: started }
     this.phraseStrokes = 0
     this.phraseSet = false
     // 4a's quiet rule reads the utterance, not the silence before it: Natural's slow envelope rises after the edge.

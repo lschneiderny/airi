@@ -429,6 +429,23 @@ describe('co-speech gestures', () => {
     expect(rises).toBeGreaterThanOrEqual(30)
   }, 120_000)
 
+  it('leaves a phrase to the other hand when the chosen one cannot reach its ready key from where it hangs', () => {
+    // Audit 4, speak-phrases 32.1 to 34.1 s: the left hand's centre key did not clear its path from a narrow hang, so
+    // the unit never opened and nothing moved for 3 s. Here a sphere in front of Chisa's right waist blocks the path
+    // to some of the right hand's ready keys while its guard pose stays clear, so both hands keep their gestures.
+    const blocked: BodyRigTraits = { ...chisaTraits, colliders: [...chisaTraits.colliders, { bone: 'hips', centre: { x: -0.9, y: 1.6, z: 1.4 }, rotation: { yaw: 0, pitch: 0, roll: 0 }, shape: 'sphere', radius: 0.7 }] }
+    const hands = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const run = perform({ utterances: [utterance(0.4, 0.65, peaks(0.4))], tension: 0 }, 7, { seed, traits: blocked })
+      const opened = run.frames.find(f => f.gesture.unitSeq > 0)
+      expect(opened?.time, `seed ${seed}`).toBeLessThan(0.6)
+      for (const stroke of strokes(run))
+        hands.add(stroke.hand)
+    }
+    expect(hands).toContain('left')
+    expect(hands).toContain('right')
+  }, 60_000)
+
   it('lowers the hands in a pause between phrases and gestures again after it', () => {
     const run = perform({ utterances: [{ start: 0.5, end: 9, energy: 0.85, onsets: [1, 1.9, 2.8, 5.6, 6.5, 7.4].map(at => ({ at })), pauses: [[3.2, 5.2]] }] }, 9)
     const inPause = run.frames.filter(f => f.time > 3.2 && f.time < 5.6)

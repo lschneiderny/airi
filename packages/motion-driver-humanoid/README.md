@@ -907,6 +907,8 @@ one), outside a refractory of
 after a unit lowered while speech went on. Below drive 0.4 a unit opens only on
 an emphasis or a loud onset, and a stroke needs a voice level up to 0.5 above
 the S2 rule unless it carries an emphasis, so a calm speaker gestures seldom.
+A one-hand unit whose hand has no ready key that clears from where it hangs
+opens with the other free hand.
 A unit plays phrases (`src/performance/phrases.ts`): each has its hands, a
 place (`centre`, `low`, `side`, `high`, or two hands' `inner`), a theme and two
 to four strokes, drawn from their own seeded stream with drive weighting each
