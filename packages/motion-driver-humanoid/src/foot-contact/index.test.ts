@@ -196,5 +196,9 @@ describe('turn step planner', () => {
     // It leaves and lands without a jump in speed: the last and first hundredths barely move.
     expect(distance(step.sample(0.005).position, start.position)).toBeLessThan(0.02)
     expect(distance(step.sample(0.495).position, end.position)).toBeLessThan(0.01)
+    // The lift has no vertical speed at either end: a thousandth of the step in, the foot has left the ground by less
+    // than a thousandth of its lift.
+    expect(step.sample(0.0005).position.y - 1).toBeLessThan(2e-4)
+    expect(step.sample(0.4995).position.y - 1).toBeLessThan(2e-4)
   })
 })
