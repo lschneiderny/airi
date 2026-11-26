@@ -90,7 +90,8 @@ export interface ForegroundSensor {
  * state, activity, or category, and clears a reported category. It forgets what it reported, so turning the setting
  * back on reports the current sample again, even for the same app.
  *
- * When the read policy changes (the `blockedApps` or the `shareWindowTitles` setting), the sensor forgets what it
+ * When the read policy changes (the `blockedApps` or the `shareWindowTitles` setting, or the host's
+ * `hostPolicyRevision`), the sensor forgets what it
  * reported and reports no activity from the sample it holds, because the host read that sample under the previous
  * policy. The next sample is reported again. The host leaves the title empty while `shareWindowTitles` is false.
  */
@@ -169,9 +170,9 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
 
   const scope = effectScope(true)
   scope.run(() => {
-    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document)], ([, sharing, policy], previous) => {
+    watch([() => foreground.sample, () => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document), () => foreground.hostPolicyRevision], ([, sharing, policy, revision], previous) => {
       // The immediate first run has no previous values.
-      const policyChanged = previous[2] !== undefined && previous[2] !== policy
+      const policyChanged = previous[2] !== undefined && (previous[2] !== policy || previous[3] !== revision)
       if (!sharing || policyChanged)
         forgetReported()
       const nowMs = Date.now()
