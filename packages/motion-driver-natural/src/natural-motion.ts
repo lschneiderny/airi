@@ -35,6 +35,7 @@ import { withHints } from './face-hints'
 import { attentionShare, NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
 import { NaturalGestures } from './gestures'
 import { NaturalHoldLayer } from './hold'
+import { HungBodySmoothing } from './hung-body-smoothing'
 import { IdleBehaviourReports, NaturalIdleActivities } from './idle-activities'
 import { NaturalImpulses } from './impulses'
 import { clamp, lerp, lerpRecord } from './interpolation'
@@ -242,6 +243,10 @@ export class NaturalMotion {
   private onCursor = 0
   private approach = 0
   private bodyFromHeadPhysics: NaturalRigTraits['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
+  /** The rig's physics hangs a body axis from the head, so the idle posture is smoothed before the rig reads it. */
+  private hungBody = false
+  private readonly postureSmoothing = new HungBodySmoothing()
+  private readonly slowPoseSmoothing = new HungBodySmoothing()
   private shiftCount = 0
   private readonly u = Object.fromEntries(Object.keys(followers).map(axis => [axis, 0])) as Record<Axis, number>
   private readonly x = { ...this.u }
@@ -857,6 +862,12 @@ export class NaturalMotion {
    */
   setRigTraits(traits: NaturalRigTraits) {
     this.bodyFromHeadPhysics = { ...traits.bodyFromHeadPhysics }
+    const hung = traits.bodyFromHeadPhysics.x || traits.bodyFromHeadPhysics.y || traits.bodyFromHeadPhysics.z
+    if (hung !== this.hungBody) {
+      this.hungBody = hung
+      this.postureSmoothing.reset()
+      this.slowPoseSmoothing.reset()
+    }
   }
 
   /** Advances every process by one grid step and returns the new grid state. */
@@ -1113,11 +1124,17 @@ export class NaturalMotion {
       const looking = this.gaze.onCursor ? { x: 0, y: 0 } : this.gaze.fixationPoint
       this.posture.aim = owned ? null : [headAimShare.x * looking.x, headAimShare.y * looking.y]
     }
-    const posture = this.posture.step(step, this.yawBias !== 0
+    let posture = this.posture.step(step, this.yawBias !== 0
       ? [this.x.cursorX + this.yawBias, this.x.cursorY, 0]
       : [this.x.cursorX, this.x.cursorY, 0])
     // Read after this step's posture.step: the slow pose is the posture without the continuous wobble.
-    const slowPose = this.posture.slowPose
+    let slowPose = this.posture.slowPose
+    // Only the idle posture is smoothed. Gestures, reactions, emphasis and the pet keep their timing and size, and the
+    // eyes counter-rotate for the smoothed slow pose, so they stay on their fixation while the head arrives late.
+    if (this.hungBody) {
+      posture = this.postureSmoothing.step(posture, step)
+      slowPose = this.slowPoseSmoothing.step(slowPose, step)
+    }
     const impulse = this.impulses.headOffset(stepStart + step)
     const petHead = this.pet.headOffset()
     const heldPosture = this.performanceSettings.heldEmotions ? this.hold.posture() : [0, 0, 0]
