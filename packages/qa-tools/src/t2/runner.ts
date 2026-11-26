@@ -28,8 +28,7 @@ import { T2SetupError } from './errors'
 import { readRig } from './rig'
 import { runScenarioSink } from './scenario-sink'
 
-/** Fixed SDK step in seconds: T2 simulates at 60 Hz whatever the render rate would be. */
-const t2Step = 1 / 60
+/** Default simulation rate: T2 steps the SDK at a fixed 60 Hz whatever the render rate would be. */
 const t2Hz = 60
 
 /** `LogLevel_Off` in the Cubism framework; the enum is not exported by pixi-live2d-display. */
@@ -38,8 +37,15 @@ const cubismLogLevelOff = 5
 /** Default wall-clock bound of one run, in seconds; a run at the measured speed needs a small fraction of it. */
 const defaultMaxWallSeconds = 900
 
+/** The drawable arrays of a Cubism core model that deformation fills. Positions are x, y pairs in canvas units. */
+export interface DrawableSource {
+  count: number
+  opacities: ArrayLike<number>
+  vertexPositions: ArrayLike<ArrayLike<number>>
+}
+
 interface CubismCoreModel {
-  getModel: () => { parameters: Omit<CubismParameterTable, 'ids'> & { ids: string[], values: Float32Array } }
+  getModel: () => { parameters: Omit<CubismParameterTable, 'ids'> & { ids: string[], values: Float32Array }, drawables: DrawableSource }
   getParameterValueByIndex: (index: number) => number
   setParameterValueByIndex: (index: number, value: number) => void
   getParameterValueById: (id: string) => number
@@ -115,6 +121,12 @@ export interface RunT2Options {
   deform?: boolean
   /** Called with the live parameter values every frame at the sample point, before deformation. For identity checks. */
   observe?: (values: ArrayLike<number>, simTime: number) => void
+  /** Called with the core's drawables after every frame. They hold the frame's picture only with `deform`. */
+  afterFrame?: (drawables: DrawableSource, simTime: number) => void
+  /** The character's pep, 0 to 1. @default 0 */
+  pep?: number
+  /** Simulation steps per second, for a frame-rate comparison. Traces at another rate are not comparable. @default 60 */
+  hz?: number
   /** Wall-clock bound in seconds; the run throws when it is exceeded. @default 900 */
   maxWallSeconds?: number
   /** Liveliness gates only: the start of the scored idle window. */
@@ -149,6 +161,14 @@ function countMovingChannels(trace: NaturalTrace) {
   return Object.values(trace.channels).filter(values => Math.max(...values) - Math.min(...values) > 0).length
 }
 
+/** Starts the Cubism framework once per process; a model cannot be created before it. */
+export function startCubismFramework(cubism4: Cubism4Module) {
+  if (cubism4.CubismFramework.isStarted())
+    return
+  cubism4.CubismFramework.startUp({ logFunction: () => {}, loggingLevel: cubismLogLevelOff })
+  cubism4.CubismFramework.initialize()
+}
+
 /**
  * Runs one motion scenario on the real ForBOOTH model at a fixed 1/60 s step, without a renderer or GPU.
  * The scenario sink is the one T1 uses (conductor, scene, hold performer, Natural adapter); the model is a real
@@ -166,18 +186,16 @@ function countMovingChannels(trace: NaturalTrace) {
  * entries are not modelled (slot leases and fades are). `observe` and `deform` exist for the parameter-identity check.
  */
 export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2Options = {}): NaturalTrace {
-  const { catalog = [], deform = false, maxWallSeconds = defaultMaxWallSeconds } = options
+  const { catalog = [], deform = false, maxWallSeconds = defaultMaxWallSeconds, hz = t2Hz } = options
   const { cubism4, rig } = runtime
   const trace = runScenarioSink(input, {
     level: 't2',
-    simHz: t2Hz,
+    simHz: hz,
+    pep: options.pep,
     catalog,
     idleAfterSeconds: options.idleAfterSeconds,
     createHost: ({ settings }): ScenarioHost => {
-      if (!cubism4.CubismFramework.isStarted()) {
-        cubism4.CubismFramework.startUp({ logFunction: () => {}, loggingLevel: cubismLogLevelOff })
-        cubism4.CubismFramework.initialize()
-      }
+      startCubismFramework(cubism4)
       const modelSettings = new cubism4.Cubism4ModelSettings({ ...rig.modelJson, url: rig.modelUrl })
       const moc = cubism4.CubismMoc.create(rig.moc)
       const coreModel = moc.createModel()
@@ -264,7 +282,8 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
           currentAdapter = adapter
           slots.tickLeases(simTime)
           composer.restoreBases((id, value) => core.setParameterValueById(id, value))
-          internalModel.update(t2Step * 1000, simTime * 1000)
+          internalModel.update(1000 / hz, simTime * 1000)
+          options.afterFrame?.(internalModel.coreModel.getModel().drawables, simTime)
         },
         dispose: () => {
           composer.define([])

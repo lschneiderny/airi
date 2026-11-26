@@ -187,6 +187,7 @@ Every root `qa:*` script runs its entry directly with `node --import tsx`, from 
 | `pnpm qa:setup cubism [--force]` | Download Cubism Core for the desktop app without opening a window. Skip present copies; `--force` downloads again. |
 | `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, temporary directory and compile cache space (`temp-space`), installation, built packages, Cubism Core, Chromium, the Live2D rig directory (`AIRI_QA_RIG_FORBOOTH`) and MMD model file (`AIRI_QA_MMD_MODEL`), and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
 | `pnpm qa:live2d-rig [--emotion angry] [--band strong] [--seed 1] [--out <trace.json>]` | Run one 10 s emotion trial through the Natural driver on the headless ForBOOTH rig and Cubism Core, and print the samples, moving channels, trace hash, and speed. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. See [T2 status](#t2-status). |
+| `pnpm qa:live2d-rig --idle <seconds> [--rig <folder>] [--pep 0] [--hz 60] [--seed 1] [--out <trace.json>]` | Run Natural's idle on a headless Live2D rig with mesh deformation and print how the picture moved, in % of model height. `--rig` measures a rig folder other than ForBOOTH. See [Live2D idle on screen](#live2d-idle-on-screen). |
 | `pnpm qa:motion3d clearance (--models <dir> \| --list <file>) --out <new dir> [--scenarios idle-drive,speak,walk] [--seconds 40] [--seed 1] [--parallel 1-3] [--compare <clearance.json>] [--fail-above <share>]` | Measure how often the arms pass through her body and clothing on every model of a folder or list, and compare two sweeps rig by rig. See [Arm clearance](#arm-clearance). |
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified] [--expect-backend <backend>] [--expect-verified <proofs>]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. On Linux, also check the desktop backend and the signals it verifies. |
 | `pnpm qa:smoke [--model <path>] [--stage-host window\|desktop] [--expect-host window\|desktop] [--xwayland] [--electron-arg=<switch>...] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
@@ -1141,6 +1142,22 @@ The `deleteAllData` verb runs "Delete all data" in the stage window through the 
 ## T2 status
 
 T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU using two documented global shims. Across 600 frames and 281 parameters, Node and Chromium differed by 0; the negative control differed by 30. The measured Natural, adapter, and physics loop reached 55.19x real time. The runner skips mesh deformation because it reads but does not write parameters and costs about 90% of a frame. `pnpm qa:live2d-rig` runs it on one emotion trial; `src/t2/runner.test.ts` runs it when `AIRI_QA_RIG_FORBOOTH` is set. The statistical Live2D gates, the T1 simulator, the scorer validation, and the rendered Live2D T3 harness were removed on 2026-11-17; Live2D gates come back on `lab:motion3d`'s gate pattern when needed. The [motion QA levels ADR](../../docs/ai/adr/2026-10-20-motion-qa-levels.md) records the removed design.
+
+### Live2D idle on screen
+
+A parameter trace does not say what a viewer sees: the same head angle moves one rig's picture four times as far as another's, and a rig's physics can turn a smooth head into a ringing arm. `pnpm qa:live2d-rig --idle <seconds>` measures the picture. It runs Natural's idle from the product posture home (posture, gaze, blink, and breath; the sink performs no idle acts) for 30 to 3600 s, deforms the mesh every frame, follows the centre of every drawn part, and leaves out the first 5 s while the physics settles. Every distance is in % of the model's drawn height, so rigs compare. On a character drawn 400 px tall, 0.25 % is one pixel.
+
+| Field | Meaning |
+| --- | --- |
+| `headMarker` | The parameter whose drawables mark the head: `ParamMouthOpenY`, else `ParamMouthForm`, else `ParamEyeBallX`. A silent idle leaves the mouth shut, so those parts move only with the head. |
+| `head.perMinute`, `head.median`, `head.p90` | Head moves per minute and the net travel of the median and 90th-percentile move. A move is a span faster than 0.3 %/s that travels at least 0.1 %; pauses under 0.1 s do not split it. A shorter span is under a pixel on a character 1000 px tall and is not counted: continuous sub-second head motion breaks into such spans on a rig that moves far per degree. |
+| `head.smallShare` | Share of head moves under 0.25 %: moves a viewer sees as a twitch, not as a move. |
+| `head.stillShare`, `head.sd` | Share of frames outside a move, and the spread of the head's position. |
+| `picture.sd`, `picture.speed` | Spread and mean speed (%/s) of the drawn parts, each weighted by its area. |
+| `picture.quickReversalsPerMinute` | Direction changes of a part along its main axis that come at most 0.6 s after the previous one, with at least 0.2 % of swing, weighted by area. Ringing physics scores high; a slow sway scores zero. |
+| `channels` | How far each posture channel and breath moves the picture from its minimum to its maximum with the physics settled: the area-weighted `mean` and the `max` of one part. `null` marks a channel the rig's physics owns. |
+
+Compare two runs of one rig, seed, duration, and `--hz`. `--hz` steps the model at another frame rate, which shows whether a rig's physics depends on it. The numbers describe size and jerk, not feel; feel goes to the [review backlog](../../docs/ai/context/testing.md#motion-feel).
 
 ## Architecture
 
