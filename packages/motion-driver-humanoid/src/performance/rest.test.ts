@@ -167,6 +167,15 @@ describe('the rest layer', () => {
     expect(woken.channels[c(free)] / DEG).toBeGreaterThan(-1)
   })
 
+  it('dozes the same way again after a reset', () => {
+    const performer = createBodyPerformer({ traits: chisaTraits, seed: 5, layers: createPerformanceLayers({ traits: chisaTraits, seed: 5 }) })
+    const script = resting('doze', 0.5, 10, quietInput)
+    const pelvis = () => Array.from({ length: at(6) }, (_, tick) => performer.step(script(tick * BODY_TICK)).channels[c('pelvisY')])
+    const first = pelvis()
+    performer.reset()
+    expect(pelvis()).toEqual(first)
+  })
+
   it('keeps the dozing knees and chest giving through the long pauses between nods', () => {
     const still = run(quietInput, 60)
     const doze = run(resting('doze', 2, 60, quietInput), 60)
