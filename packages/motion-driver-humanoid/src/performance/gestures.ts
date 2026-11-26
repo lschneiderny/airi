@@ -171,6 +171,20 @@ const CALM = { drive: 0.4, floor: 0.5 } as const
 const RISE = { defer: 0.6, settle: 1.1 } as const
 
 /**
+ * A hand at its ready key does not hold still there. From the moment it arrives it sinks toward its hang by minimum
+ * jerk over `seconds`, its fingers relaxing to the hang's hand over the wait (`RISE.settle`). A hand with nothing more
+ * to stress lets go about two fifths of the way down and goes on home in the time the sink had left, carrying its
+ * speed, so a thought's last accent runs into one fall; that way home is a retraction like any other, corrected as
+ * often. A pause or the end of speech lowers a hand that has not waited out its wait at a retraction's pace, so the
+ * next unit is not kept waiting. A stroke still leaves from wherever the sinking hand is (`strokeTrack`).
+ *
+ * Before, the hand stood at its ready key, elbow bent, for up to 1.1 s after the last stroke and then dropped in a
+ * retraction's time: it read as waiting to speak again, most plainly in profile. A sink over 4 s was an eighth of the
+ * way down at the let-go and still read as a wait; fingers that relaxed over the whole sink barely moved.
+ */
+const SINK = { seconds: 2.4 } as const
+
+/**
  * A leaning hand moves `share` of the way from its rest to its ready key, over the time its whole preparation takes:
  * the elbow bends and the hand comes a little forward, a shift of the arm's hang rather than a raised forearm. It waits
  * there as a ready hand waits (`RISE.settle`), and its rise from there takes the rest of the way.
@@ -353,6 +367,14 @@ class ArmTrack {
   }
 
   /**
+   * Whether every channel of the current motion had arrived by the previous tick, so the target is the key itself: a
+   * segment's last ticks carry its feedforward's lead, and a motion started from them would keep it.
+   */
+  arrived(now: number): boolean {
+    return this.correctAt === Infinity && now - BODY_TICK >= this.segment.start + Math.max(...this.segment.durations) - 1e-9
+  }
+
+  /**
    * The share of the wrist-placing joints fed past their cascade links (`LayerOutput.fed`): 0 through the preparation,
    * which keeps the links' proximal-to-distal order as before, then rising over `FED_RAMP` once the arm is prepared,
    * while the links' lag on the preparation's end has settled to a fraction of a degree; back to 0 at the retraction.
@@ -363,7 +385,10 @@ class ArmTrack {
   preparedAt = Infinity
   /** A retraction still on its way back to the ready key, from where it goes home on the preparation's cleared path. */
   viaReady = false
-  /** An arm on its way home: it comes to rest there before its weight ramps out (`retractTrack`). */
+  /**
+   * An arm on its way home: a ready arm sinking toward it (`SINK`), or a retracting one, which comes to rest there before
+   * its weight ramps out (`retractTrack`). Home is cleared against the body every tick on the way.
+   */
   settle = false
   /** A corrected transition's second submovement: its target, when it starts (Infinity while none waits) and its end. */
   readonly correctTo = pose()
@@ -438,6 +463,16 @@ class ArmTrack {
       const peak = MIN_JERK_PEAK_SLOPE * (j >= 9 ? ORDER_PEAK_SLOPE : 1)
       s.durations[j] = j >= 2 && j <= 5 ? fed : Math.max(fed, peak * Math.abs(s.to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
     }
+  }
+
+  /**
+   * Brings the current segment's hand channels in within `seconds` of its start, or as soon as their followers take
+   * them (`schedule`); the arm keeps its own time.
+   */
+  handWithin(seconds: number): void {
+    const s = this.segment
+    for (let j = 9; j < 26; j++)
+      s.durations[j] = Math.max(Math.min(s.durations[j], seconds), MIN_JERK_PEAK_SLOPE * ORDER_PEAK_SLOPE * Math.abs(s.to[j] - s.from[j]) / FOLLOWER_INPUT_SLOPE)
   }
 
   /** Writes the plan of channel `j` at `time` on the current segment, and its velocity and acceleration, into the release scratch. */
@@ -1196,6 +1231,7 @@ class GesturePerformer {
       }
       if (unit.sides.includes(side)) {
         track.pending = null
+        track.settle = false
         const from = track.planned.slice()
         const placed = this.placeAt(track, unit.drive, phrase, twoHand, from)
         const seconds = placed ? (0.25 + 0.35 * this.travel(side, from, track.ready)) / tempo : TIMING.recovery / tempo
@@ -1420,8 +1456,15 @@ class GesturePerformer {
     const tempo = gestureTempo(this.unit.drive)
     const second = this.unit.twoHand && track.side !== this.dominant
     const theme = this.setTheme()
-    const base = track.readyKey ?? keys.readyKey(this.unit.drive)
-    for (const candidate of form === 'beat' ? ['beat'] as const : [form, 'beat'] as const) {
+    const key = track.readyKey ?? keys.readyKey(this.unit.drive)
+    // A sinking hand (`SINK`) strokes from where it is: the stroke's key comes down as far as the wrist has, so the beat
+    // keeps most of its size. Moved in and back with the wrist as well, the key asked a palm-up stroke's elbow for 4 % more turn.
+    const origin = track.state === 'ready' && track.settle ? track.planned.slice() : track.ready
+    // Where no form's lowered key clears the body, the stroke rises to its ready key's.
+    const sunk = keys.wrist(track.side, origin)[1] - keys.wrist(track.side, track.ready)[1]
+    const bases: ArmKey[] = sunk === 0 ? [key] : [{ ...key, hand: [key.hand[0], key.hand[1] + sunk, key.hand[2]] }, key]
+    const forms = form === 'beat' ? ['beat'] as const : [form, 'beat'] as const
+    for (const [base, candidate] of bases.flatMap(base => forms.map(candidate => [base, candidate] as const))) {
       const ready = candidate === 'frame' ? { ...base, hand: [base.hand[0] + 0.1, base.hand[1], base.hand[2]] as const } : base
       const yaw = candidate === 'point' ? this.pointYaw(context.input, track.side) : 0
       // A beat takes the path after its hand's last beat's (`BEAT_PATHS`).
@@ -1443,7 +1486,7 @@ class GesturePerformer {
       // The path is cleared from where the arm is: a stroke may cut a recovery short, and a recovery now goes to a
       // floated ready key, so the hold it left and the ready key may both lie off the stroke's straight way.
       const aimed = setBeat ? { ...strokeKey, pron: ready.pron, wflex: ready.wflex + SET.beatFlex, wdev: ready.wdev } : strokeKey
-      const from = track.state === 'ready' ? track.ready : track.planned
+      const from = track.planned
       const start = track.drift.slice()
       if (!keys.solve(track.side, aimed, track.drift, from, KEY_HEADROOM)) {
         track.drift.set(start)
@@ -1453,9 +1496,10 @@ class GesturePerformer {
       if (candidate === 'beat')
         track.beatPath = beatPath
       track.silent = false
+      track.settle = false
       track.key.set(track.drift)
       for (let j = 2; j <= 5; j++)
-        track.key[j] = track.ready[j] + (track.drift[j] - track.ready[j]) * size / (size + drift)
+        track.key[j] = origin[j] + (track.drift[j] - origin[j]) * size / (size + drift)
       // Through the hold the fingers ease part of the way back toward the ready hand; the recovery opens them fully.
       for (let j = 9; j < 26; j++)
         track.drift[j] += HOLD_SOFTEN * (track.ready[j] - track.drift[j])
@@ -1619,8 +1663,12 @@ class GesturePerformer {
       return
     }
     track.viaReady = false
+    track.pending = null
+    track.exitSeconds = TIMING.exit
+    // A hand that has sunk through its whole wait goes on home in the time its sink had left (`SINK`).
+    const falling = track.state === 'ready' && track.settle && track.waited >= RISE.settle
     track.settle = true
-    const seconds = Math.max(TIMING.exit + BODY_TICK, TIMING.retractionScale * track.prepSeconds)
+    const seconds = Math.max(TIMING.exit + BODY_TICK, falling ? track.phaseEnd - now : TIMING.retractionScale * track.prepSeconds)
     // A speech unit's home leg may carry a corrective submovement (`transit`); an emotion arm form's way home stays one
     // plain segment and draws nothing from the corrections' stream, and the hair tuck's goes back the way it came.
     const form = track.state === 'form'
@@ -1628,10 +1676,8 @@ class GesturePerformer {
       ? track.through(track.tuckVia, track.home, now, seconds, this.tension, true)
       : form ? track.release(track.home, now, seconds, this.tension) : track.transit(track.home, now, seconds, this.tension, this.correct())
     track.state = 'retraction'
-    track.pending = null
     track.phaseEnd = now + duration
     track.dropAt = track.phaseEnd
-    track.exitSeconds = TIMING.exit
   }
 
   private step(track: ArmTrack, context: PerformanceContext, now: number): void {
@@ -1672,6 +1718,13 @@ class GesturePerformer {
     else if ((track.state === 'recovery' || track.state === 'preparation') && now >= track.phaseEnd) {
       track.state = track.leaning ? 'lean' : 'ready'
     }
+    // A ready hand sinks toward its hang until a stroke catches it or it lets go (`SINK`), once every channel has
+    // arrived: the long sink would carry a forearm, wrist or finger turn still on its way on for a second.
+    if (track.state === 'ready' && !track.settle && track.arrived(now)) {
+      track.phaseEnd = now + track.move(track.home, now, SINK.seconds, this.tension)
+      track.handWithin(RISE.settle)
+      track.settle = true
+    }
     const prepared = track.state === 'stroke' || track.state === 'hold' || track.state === 'recovery' || track.state === 'ready'
     if (!prepared)
       track.preparedAt = Infinity
@@ -1691,7 +1744,7 @@ class GesturePerformer {
     }
     // Home is where the arm rested before the unit, cleared against the trunk as it was then; the trunk has moved since,
     // so the arm comes home clear of the body as it is now, with a settled key's headroom (`clearOfBody`).
-    if (track.state === 'retraction' && track.settle && this.keys) {
+    if ((track.state === 'retraction' || track.state === 'ready') && track.settle && this.keys) {
       this.scratch.set(track.home)
       this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)
       track.aim(this.scratch)
