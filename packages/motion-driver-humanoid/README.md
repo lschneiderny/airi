@@ -842,7 +842,8 @@ follower the held hand to chest settles into the body: the layer solves, once pe
 rig, a key 0.08 to 0.02 arm lengths lower on the chest with the elbow as low as
 the joint limits let it hang and the wrist flexed 20 degrees more, cleared with
 the settling headroom along the way from the held key, and sends its offset with
-the request (`armForm.settle`). Silent, the request carries none. Neutral writes nothing, nor does any emotion term reach a group
+the request (`armForm.settle`). Silent, the request carries none, and the gesture
+layer holds the form's own key again. Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and
 awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches
 it), through `plan.armForm` while their weight exceeds 0.5; the far arm beside a

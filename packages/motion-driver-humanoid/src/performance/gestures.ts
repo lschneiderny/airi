@@ -1755,11 +1755,12 @@ class GesturePerformer {
       this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)
       track.aim(this.scratch)
     }
-    // The emotion that asked for the held form may settle it (`MergedPerformancePlan.armForm.settle`).
+    // The emotion that asked for the held form may settle it (`MergedPerformancePlan.armForm.settle`); a request
+    // without one holds the form's own key.
     const settle = context.plan.armForm?.settle
-    if (track.state === 'form' && settle) {
+    if (track.state === 'form') {
       for (let j = 0; j < 26; j++)
-        this.scratch[j] = track.key[j] + settle[j]
+        this.scratch[j] = track.key[j] + (settle?.[j] ?? 0)
       track.aim(this.scratch)
     }
     if (track.active || track.weight > 0)

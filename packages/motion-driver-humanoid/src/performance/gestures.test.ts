@@ -29,7 +29,7 @@ interface Utterance {
 interface Script {
   readonly utterances: readonly Utterance[]
   readonly owned?: (time: number) => Partial<BodyPerformanceInput['owned']>
-  readonly armForm?: (time: number) => { side: BodyGestureHand, form: BodyArmForm } | null
+  readonly armForm?: (time: number) => { side: BodyGestureHand, form: BodyArmForm, settle?: ArrayLike<number> } | null
   /** Natural's mood tension; its speak scenario reports 0. */
   readonly tension?: number
   readonly mood?: { readonly valence: number, readonly arousal: number }
@@ -1736,5 +1736,23 @@ describe('co-speech gestures', () => {
     expect(planned.every(stroke => stroke.hand === 'left')).toBe(true)
     expect(run.frames.at(-1)?.gesture.activation.right).toBe(0)
     expect(run.frames.at(-1)?.holds).toBe(0)
+  })
+
+  /** A hand to chest held from 0.2 s to 8 s, with `settle` in its request while `settling(time)`. */
+  const settledHold = (settling: (time: number) => boolean) => {
+    const settle = new Float64Array(26)
+    settle[3] = 6 * DEG
+    settle[5] = -8 * DEG
+    const script: Script = { utterances: [], still: true, armForm: time => time > 0.2 && time < 8 ? { side: 'right', form: 'hand-to-chest', ...(settling(time) ? { settle } : {}) } : null }
+    return perform(script, 9, { traits: chisaTraits }).frames.map(frame => frame.channels.slice(ARM_START.right + 2, ARM_START.right + 6))
+  }
+  const armGap = (a: Float32Array, b: Float32Array) => Math.max(...[0, 1, 2, 3].map(j => Math.abs(a[j] - b[j]))) / DEG
+
+  it('returns a settled arm form to its own key when its request stops settling it', () => {
+    const plain = settledHold(() => false)
+    const settled = settledHold(time => time >= 2 && time < 4)
+    const at = (time: number) => Math.round(time / BODY_TICK) - 1
+    expect(armGap(settled[at(3.9)], plain[at(3.9)])).toBeGreaterThan(4)
+    expect(armGap(settled[at(7)], plain[at(7)])).toBeLessThan(0.05)
   })
 })
