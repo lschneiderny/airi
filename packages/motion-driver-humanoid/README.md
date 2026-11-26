@@ -844,7 +844,9 @@ follower the held hand to chest settles into the body: the layer solves, once pe
 rig, a key 0.08 to 0.02 arm lengths lower on the chest with the elbow as low as
 the joint limits let it hang and the wrist flexed 20 degrees more, cleared with
 the settling headroom along the way from the held key, and sends its offset with
-the request (`armForm.settle`). Silent, the request carries none, and the gesture
+the request (`armForm.settle`). The gesture layer adds it only once the hand has
+reached the form's key, goes on from there in a new segment, and takes each
+settled key only where the way from its own held key keeps that headroom. Silent, the request carries none, and the gesture
 layer holds the form's own key again. Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and
 awkward the hair touch (only where `capabilities.hairTouch` says the rig reaches

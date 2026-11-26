@@ -387,7 +387,8 @@ class ArmTrack {
   viaReady = false
   /**
    * An arm on its way home: a ready arm sinking toward it (`SINK`), or a retracting one, which comes to rest there before
-   * its weight ramps out (`retractTrack`). Home is cleared against the body every tick on the way.
+   * its weight ramps out (`retractTrack`). Home is cleared against the body every tick on the way. An arm holding a form
+   * sets it once it has gone on from the form's key to the settled key its request asks for (`step`).
    */
   settle = false
   /** A corrected transition's second submovement: its target, when it starts (Infinity while none waits) and its end. */
@@ -1755,13 +1756,26 @@ class GesturePerformer {
       this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)
       track.aim(this.scratch)
     }
-    // The emotion that asked for the held form may settle it (`MergedPerformancePlan.armForm.settle`); a request
-    // without one holds the form's own key.
+    // Once the arm reaches the form's key, a new segment takes it on by the request's settle (`armForm.settle`), so no
+    // step starts. It takes a settled key only where the way from its own key keeps `KEY_HEADROOM`. Without a settle the
+    // form holds its key.
     const settle = context.plan.armForm?.settle
-    if (track.state === 'form') {
-      for (let j = 0; j < 26; j++)
-        this.scratch[j] = track.key[j] + (settle?.[j] ?? 0)
-      track.aim(this.scratch)
+    if (track.state === 'form' && this.keys) {
+      if (!settle) {
+        track.settle = false
+        track.aim(track.key)
+      }
+      else {
+        for (let j = 0; j < 26; j++)
+          this.scratch[j] = track.key[j] + settle[j]
+        if ((track.settle || track.arrived(now)) && this.keys.pathDepth(track.side, track.key, this.scratch, KEY_HEADROOM) === 0) {
+          if (track.settle)
+            track.aim(this.scratch)
+          else
+            track.move(this.scratch, now, 0, this.tension)
+          track.settle = true
+        }
+      }
     }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)
