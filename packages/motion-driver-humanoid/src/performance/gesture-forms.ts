@@ -669,16 +669,20 @@ export class GestureKeys {
   }
 
   /**
-   * The largest forward share of the palm's normal on the way from the tuck's via to `touch` and from `sweep` back to
-   * it, the via taken from the rest arm (`tuckVia`, written into `via`): 1 when the palm faces the viewer square on.
+   * The largest forward share of the palm's normal on the paths the performer moves the hand along: in from the via of
+   * `touch` to it, and home from `sweep` to the sweep's own via, each via taken from the rest arm (`tuckVia`, written
+   * into `via`), or straight between the key and the rest arm where its via is refused. 1 when the palm faces the
+   * viewer square on.
    */
-  private palmOut(side: BodySide, touch: ArmPose, sweep: ArmPose, via: ArmPose): number {
-    this.tuckVia(side, this.restArms[side], touch, via)
+  palmOut(side: BodySide, touch: ArmPose, sweep: ArmPose, via: ArmPose): number {
+    const rest = this.restArms[side]
     const sigma = side === 'left' ? 1 : -1
     let out = -1
-    for (const [from, to] of [[via, touch], [sweep, via]] as const) {
+    for (const key of [touch, sweep]) {
+      // The way home runs from the sweep to its via backward; the samples are the same.
+      const from = this.tuckVia(side, rest, key, via) ? via : rest
       for (let sample = 0; sample <= PATH_SAMPLES; sample++) {
-        this.load(side, from, to, sample / PATH_SAMPLES)
+        this.load(side, from, key, sample / PATH_SAMPLES)
         // The palm faces the hand frame's -sigma x; the body faces +z.
         out = Math.max(out, -sigma * this.skeleton.arm(side, this.scratch).hand[6])
       }

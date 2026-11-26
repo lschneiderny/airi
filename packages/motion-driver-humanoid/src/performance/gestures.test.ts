@@ -1671,19 +1671,23 @@ describe('co-speech gestures', () => {
         expect(keys.armForm(side, 'hair-touch', touch), side).toBe(true)
         const sweep = touch.slice()
         expect(keys.armForm(side, 'hair-sweep', sweep), side).toBe(true)
-        const via = new Float64Array(26)
-        keys.tuckVia(side, from, touch, via)
+        // In through the touch's via, home through the sweep's, as the performer moves the hand; straight where a via is
+        // refused.
         let out = -1
-        for (const [a, b] of [[via, touch], [sweep, via]] as const) {
+        for (const key of [touch, sweep]) {
+          const via = new Float64Array(26)
+          const a = keys.tuckVia(side, from, key, via) ? via : from
           for (let k = 0; k <= 10; k++) {
             const channels = rest.slice()
             for (let j = 0; j < 26; j++)
-              channels[start + j] = a[j] + (b[j] - a[j]) * k / 10
+              channels[start + j] = a[j] + (key[j] - a[j]) * k / 10
             skeleton.update(channels)
             out = Math.max(out, -sigma * skeleton.arm(side, channels).hand[6])
           }
         }
         expect(out, side).toBeLessThanOrEqual(most)
+        // The ranking scores those same paths: scored through the touch's via both ways, Chisa's read 0.18 for 0.20.
+        expect(keys.palmOut(side, touch, sweep, new Float64Array(26)), side).toBeCloseTo(out, 9)
       }
     }
   })
