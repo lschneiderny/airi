@@ -901,14 +901,18 @@ planner. They follow architecture 4a with plan 3.1, and the
 [speech gesture phrases ADR](../../docs/ai/adr/2026-11-24-speech-gesture-phrases.md).
 Register all three, in order. Gesture liveliness is the drive, the energy
 raised 0.3 x arousal and 0.1 x valence (`gestureDrive`). A unit starts on an
-utterance's speaking edge, or later on an onset that strokes (never a weak
-one), outside a refractory of
+utterance's speaking edge, or later on an onset that strokes, outside a
+refractory of
 2.5 s + 3 s x (1 - drive) after speaking ended, or 0.4 s + 1.2 s x (1 - drive)
 after a unit lowered while speech went on. Below drive 0.4 a unit opens only on
 an emphasis or a loud onset, and a stroke needs a voice level up to 0.5 above
 the S2 rule unless it carries an emphasis, so a calm speaker gestures seldom.
 A one-hand unit whose hand has no ready key that clears from where it hangs
 opens with the other free hand.
+A weaker onset past the speaking edge opens a unit whose hands only lean, 0.3
+of the way to their ready keys (`LEAN`); the next onset that strokes raises
+them the rest of the way, and they stroke it. Leaning hands let go as ready
+hands do, and a unit that only leaned leaves no refractory.
 A unit plays phrases (`src/performance/phrases.ts`): each has its hands, a
 place (`centre`, `low`, `side`, `high`, or two hands' `inner`), a theme and two
 to four strokes, drawn from their own seeded stream with drive weighting each
