@@ -858,7 +858,9 @@ class GesturePerformer {
       const walking = input.gait !== null && input.gait.mode !== 'idle'
       if (this.phrase && walking === Number.isFinite(this.phrase.length)) {
         this.phrase = { ...this.phrase, length: walking ? Infinity : this.phraseStrokes }
-        this.aimBody(context, now, Math.max(TIMING.exit, ...unit.sides.map(side => this.tracks[side].prepSeconds)))
+        // Hands that only lean have not taken the body's hold; it comes as they rise (`riseFor`).
+        if (!unit.leaning)
+          this.aimBody(context, now, Math.max(TIMING.exit, ...unit.sides.map(side => this.tracks[side].prepSeconds)))
       }
       const ended = !voice.speaking && now - this.speechEnded >= TIMING.afterSpeech
       const capped = (unit.strokes >= TIMING.unitStrokes && now - this.lastStroke >= 0.6) || now - unit.start >= TIMING.unitSeconds
