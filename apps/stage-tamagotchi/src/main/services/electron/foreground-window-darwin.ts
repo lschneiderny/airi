@@ -96,7 +96,9 @@ export interface DarwinBinding {
     readonly terminated: boolean
   }) => ForegroundWindowSample | null) => ForegroundWindowSample | null
   readonly readDisplays: () => { readonly status: number, readonly displays: readonly { readonly id: number, readonly bounds: Rect }[] }
+  /** On-screen windows, frontmost first. */
   readonly readWindows: () => readonly {
+    readonly number: number | null
     readonly pid: number | null
     readonly layer: number | null
     readonly alpha: number | null
@@ -107,6 +109,15 @@ export interface DarwinBinding {
 }
 
 const FULLSCREEN_TOLERANCE_PT = 1
+
+/**
+ * The window number of the front app's frontmost normal window, as the sample's `windowId`. The window list runs
+ * front to back, so the first visible layer-0 window of the front pid is the one the user works in.
+ */
+function frontWindowId(windows: NonNullable<ReturnType<DarwinBinding['readWindows']>>, frontPid: number): string | null {
+  const front = windows.find(window => window.pid === frontPid && window.layer === 0 && window.alpha !== null && window.alpha > 0 && window.number !== null)
+  return front?.number == null ? null : String(front.number)
+}
 
 function coversDisplay(windows: NonNullable<ReturnType<DarwinBinding['readWindows']>>, frontPid: number, displays: ReturnType<DarwinBinding['readDisplays']>['displays']): boolean {
   return windows.some((window) => {
@@ -175,7 +186,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
       CGDisplayBounds: cg.func('CGDisplayBounds', CGRect, ['uint32_t']),
     }
 
-    // These eight +1 references intentionally live for the process lifetime.
+    // These +1 references intentionally live for the process lifetime.
     const keys = {
       AXFocusedWindow: native.CFStringCreateWithCString(null, 'AXFocusedWindow', kCFStringEncodingUTF8),
       AXTitle: native.CFStringCreateWithCString(null, 'AXTitle', kCFStringEncodingUTF8),
@@ -183,6 +194,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
       kCGWindowOwnerPID: native.CFStringCreateWithCString(null, 'kCGWindowOwnerPID', kCFStringEncodingUTF8),
       kCGWindowBounds: native.CFStringCreateWithCString(null, 'kCGWindowBounds', kCFStringEncodingUTF8),
       kCGWindowAlpha: native.CFStringCreateWithCString(null, 'kCGWindowAlpha', kCFStringEncodingUTF8),
+      kCGWindowNumber: native.CFStringCreateWithCString(null, 'kCGWindowNumber', kCFStringEncodingUTF8),
       kCGSSessionOnConsoleKey: native.CFStringCreateWithCString(null, 'kCGSSessionOnConsoleKey', kCFStringEncodingUTF8),
       CGSSessionScreenIsLocked: native.CFStringCreateWithCString(null, 'CGSSessionScreenIsLocked', kCFStringEncodingUTF8),
     }
@@ -284,6 +296,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
               pid: readNumber(native.CFDictionaryGetValue(row, keys.kCGWindowOwnerPID), kCFNumberSInt64Type),
               layer: readNumber(native.CFDictionaryGetValue(row, keys.kCGWindowLayer), kCFNumberSInt64Type),
               alpha: readNumber(native.CFDictionaryGetValue(row, keys.kCGWindowAlpha), kCFNumberDoubleType),
+              number: readNumber(native.CFDictionaryGetValue(row, keys.kCGWindowNumber), kCFNumberSInt64Type),
               bounds,
             }
           })
@@ -372,12 +385,14 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
 
       // Own windows must never block AIRI or make AX call back into this thread.
       let busy: ForegroundWindowSample['busy'] = 'accepts'
+      let windowId: string | null = null
       if (!ownProcess) {
         const windows = binding.readWindows()
         if (windows === null) {
           busy = null
         }
         else {
+          windowId = frontWindowId(windows, pid)
           // NOTICE:
           // Native full screen on a notched display may stop below the camera band, so this can report accepts.
           // Window geometry is the only full-screen signal: AXFullScreen was never read successfully while trusted.
@@ -412,6 +427,7 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
         exePath,
         exeName: exePath === null ? null : posix.basename(exePath),
         pid,
+        windowId,
         ownProcess,
         title,
         busy,

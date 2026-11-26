@@ -16,6 +16,11 @@ export interface ForegroundWindowSample {
   /** Window title; empty when the window has none or the request did not set `includeTitle`. */
   title: string
   pid: number
+  /**
+   * The host's opaque id for this window, stable while the window lives, or `null` when the host cannot tell windows
+   * apart. It names no app or title. Presence hides match it to hide one window.
+   */
+  windowId: string | null
   /** `true` when the window belongs to one of AIRI's own Electron processes. */
   ownProcess: boolean
   /**

@@ -11,6 +11,7 @@ import {
   useElectronRelativeMouse,
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
 import { foregroundReadPolicyKey, useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
@@ -74,7 +75,8 @@ export function useStageHostWiring(page: 'index' | 'stage'): StageHostWiring {
   // last sample. A changed read policy restarts it, which drops a sample or pending reply read under the old policy.
   const foregroundWindowProducer = useForegroundWindowProducerStore()
   const situationSettings = useSituationSettings()
-  watch([() => situationSettings.document.shareForegroundWindow, () => foregroundReadPolicyKey(situationSettings.document)], ([sharing]) => {
+  const foregroundWindow = useForegroundWindowStore()
+  watch([() => situationSettings.document.shareForegroundWindow, () => foregroundReadPolicyKey(situationSettings.document), () => foregroundWindow.hostPolicyRevision], ([sharing]) => {
     foregroundWindowProducer.stop()
     if (sharing)
       foregroundWindowProducer.start()

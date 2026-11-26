@@ -32,14 +32,14 @@ describe('sway tree projection', () => {
       }],
     }
     expect(readTree(tree, [123])).toEqual({
-      active: { caption: 'airi-bind-1', resourceClass: 'ai.moeru.airi', desktopFileName: 'ai.moeru.airi', pid: 123, fullScreen: true },
+      active: { windowId: '42', caption: 'airi-bind-1', resourceClass: 'ai.moeru.airi', desktopFileName: 'ai.moeru.airi', pid: 123, fullScreen: true },
       ownWindows: [{ id: '42', caption: 'airi-bind-1', pid: 123, ...rect, keepAbove: false, outputScale: 1.5 }],
     })
   })
 
   it('uses XWayland class and ignores focused workspace containers', () => {
     expect(readTree({ ...window, app_id: null, window_properties: { class: 'Konsole' } }, []).active)
-      .toEqual({ caption: 'airi-bind-1', resourceClass: 'Konsole', desktopFileName: '', pid: 123, fullScreen: true })
+      .toEqual({ windowId: '42', caption: 'airi-bind-1', resourceClass: 'Konsole', desktopFileName: '', pid: 123, fullScreen: true })
     expect(readTree({ id: 1, type: 'workspace', focused: true, rect }, []).active).toBeNull()
   })
 

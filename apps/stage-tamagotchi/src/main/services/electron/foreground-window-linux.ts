@@ -38,29 +38,39 @@ function readExePath(pid: number): string | null {
  * - A synchronous read of the last pushed reading; it never queries the compositor.
  *   The title is untrusted and raw; presence consumers normalize and cap it and nothing here logs it.
  * - `appNames` lists every name the block list may match: the executable, the window class, and the desktop
- *   file name. Apps that share one `electron` or `python` executable differ only in the last two.
+ *   file name. Apps that share one `electron` or `python` executable differ only in the last two. A window that
+ *   reports no desktop file name, such as an XWayland or X11 window, takes every id `desktopIdsFor` finds for its class.
+ *   `appKey` is the first of the desktop file name, the window class, and the executable that the host read.
  *   These names stay in the main process; only `sample` crosses IPC.
  * - `titleCut` is true when the caption is as long as a backend passes on, so its end may be missing.
  */
-export function createLinuxSampler(bridge: Pick<LinuxDesktopBridge, 'activeWindow' | 'busyHint'>, isOwnProcess: (pid: number) => boolean) {
-  return function read(): { sample: ForegroundWindowSample, appNames: readonly (string | null)[], titleCut: boolean } | null {
+export function createLinuxSampler(
+  bridge: Pick<LinuxDesktopBridge, 'activeWindow' | 'busyHint'>,
+  isOwnProcess: (pid: number) => boolean,
+  desktopIdsFor: (windowClass: string) => readonly string[] = () => [],
+) {
+  return function read(): { sample: ForegroundWindowSample, appNames: readonly (string | null)[], appKey: string | null, titleCut: boolean } | null {
     const active = bridge.activeWindow()
     if (!active)
       return null
 
     const exePath = readExePath(active.pid)
     const exeName = exePath != null ? posix.basename(exePath) : active.resourceClass || null
+    const desktopIds = active.desktopFileName ? [active.desktopFileName] : active.resourceClass ? desktopIdsFor(active.resourceClass) : []
     return {
       sample: {
         exePath,
         exeName,
         title: active.caption,
         pid: active.pid,
+        windowId: active.windowId,
         ownProcess: isOwnProcess(active.pid),
         busy: active.fullScreen ? 'fullscreen' : bridge.busyHint() ?? 'accepts',
         sampledAtMs: Date.now(),
       },
-      appNames: [exeName, active.resourceClass, active.desktopFileName],
+      appNames: [exeName, active.resourceClass, ...desktopIds],
+      // The desktop file name tells apart apps that share one `electron` or `python` executable.
+      appKey: desktopIds[0] || active.resourceClass || exeName,
       titleCut: active.caption.length >= CAPTION_MAX_UNITS,
     }
   }

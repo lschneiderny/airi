@@ -121,6 +121,7 @@ describe('kwin scripts', () => {
     while (harness.calls.length)
       messages.push(harness.replyNext())
     expect(parseActive(messages.find(call => call.method === 'Active')?.payload)).toEqual({
+      windowId: '{window-99}',
       caption: 'untrusted',
       resourceClass: 'konsole',
       desktopFileName: 'org.kde.konsole',

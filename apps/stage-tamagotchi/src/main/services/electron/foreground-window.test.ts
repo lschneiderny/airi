@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createForegroundWindowService } from './foreground-window'
 import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
+import { presenceHides } from './presence-hides'
 
 const host = vi.hoisted(() => ({
   isWindows: true,
@@ -38,6 +39,13 @@ vi.mock('./host-capabilities', () => ({
     snapshot.foregroundUnavailable = true
   },
   reportLinuxDesktop: snapshot.reportLinuxDesktop,
+}))
+
+// The host's own launcher files must not decide a test's app names.
+vi.mock('./installed-apps', () => ({
+  desktopIdsForClass: () => [],
+  installedAppName: () => null,
+  listInstalledApps: async () => [],
 }))
 
 const appMock = vi.hoisted(() => ({
@@ -126,7 +134,7 @@ vi.mock('std-env', () => ({
 /** Above the 64-bit kernel's pid_max, so `/proc/<pid>/exe` can never resolve on the test host. */
 const MISSING_PID = 4194305
 
-function createBridge(backend: string, active: { caption: string, resourceClass: string, desktopFileName: string, pid: number, fullScreen: boolean } | null) {
+function createBridge(backend: string, active: { windowId?: string, caption: string, resourceClass: string, desktopFileName: string, pid: number, fullScreen: boolean } | null) {
   return {
     backend,
     activeWindow: () => active,
@@ -185,7 +193,7 @@ describe('createForegroundWindowService', () => {
   }
 
   describe('on Linux', () => {
-    const konsole = { caption: 'luke@host:~', resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: MISSING_PID, fullScreen: false }
+    const konsole = { windowId: '{konsole}', caption: 'user@host:~', resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: MISSING_PID, fullScreen: false }
 
     beforeEach(() => {
       host.isWindows = false
@@ -196,8 +204,9 @@ describe('createForegroundWindowService', () => {
       await expect(createReader(undefined, createBridge(backend, konsole))()).resolves.toEqual({
         exePath: null,
         exeName: 'org.kde.konsole',
-        title: 'luke@host:~',
+        title: 'user@host:~',
         pid: MISSING_PID,
+        windowId: '{konsole}',
         ownProcess: false,
         busy: 'accepts',
         sampledAtMs: expect.any(Number),
@@ -255,6 +264,20 @@ describe('createForegroundWindowService', () => {
       await expect(createReader(undefined, createBridge('kwin', { ...konsole, pid: process.pid }))(['*'])).resolves.toMatchObject({ ownProcess: true })
     })
 
+    it('resolves null for an app under a presence hide, and offers the app it last read', async () => {
+      const read = createReader(undefined, createBridge('kwin', konsole))
+
+      await expect(read()).resolves.toMatchObject({ exeName: 'org.kde.konsole', windowId: '{konsole}' })
+      expect(presenceHides.state().front).toMatchObject({ appKey: 'org.kde.konsole', canHideWindow: true })
+
+      const [hide] = presenceHides.add('app', null).hides
+      await expect(read()).resolves.toBeNull()
+      expect(presenceHides.state().front).toBeNull()
+
+      presenceHides.remove(hide!.id)
+      await expect(read()).resolves.toMatchObject({ exeName: 'org.kde.konsole' })
+    })
+
     it('verifies the foreground reading when an AIRI window gains focus and is active', () => {
       const listeners = new Map<string, () => void>()
       const window = {
@@ -287,6 +310,7 @@ describe('createForegroundWindowService', () => {
       exeName: 'Notepad.exe',
       title: 'notes.txt - Notepad',
       pid: 4321,
+      windowId: null,
       ownProcess: false,
       busy: 'accepts',
       sampledAtMs: expect.any(Number),

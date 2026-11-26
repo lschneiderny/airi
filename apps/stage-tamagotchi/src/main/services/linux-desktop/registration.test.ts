@@ -103,14 +103,14 @@ describe('linux desktop backend registration', () => {
   describe('x11-ewmh', () => {
     it('opens the injected display and reads the active window on demand', async () => {
       x11.start.mockResolvedValue(undefined)
-      x11.active.mockReturnValue({ caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: true })
+      x11.active.mockReturnValue({ windowId: '7', caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: true })
       const bridge = create({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' })
       await bridge.start()
       expect(x11.options).toEqual([{ sessionType: 'x11', display: ':91' }])
       expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'x11-ewmh', bridge: 'ready' }))
       const pushed = vi.fn()
       bridge.onActive(pushed)
-      expect(bridge.activeWindow()).toEqual({ caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 7, fullScreen: true })
+      expect(bridge.activeWindow()).toEqual({ windowId: '7', caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 7, fullScreen: true })
       expect(bridge.activeWindow()).toMatchObject({ pid: 7 })
       expect(pushed).toHaveBeenCalledOnce()
     })
@@ -150,7 +150,7 @@ describe('linux desktop backend registration', () => {
 
     it('revokes readiness when a read fails instead of keeping the last window', async () => {
       x11.start.mockResolvedValue(undefined)
-      x11.active.mockReturnValueOnce({ caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: false })
+      x11.active.mockReturnValueOnce({ windowId: '7', caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: false })
       const bridge = create({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' })
       await bridge.start()
       expect(bridge.activeWindow()).toMatchObject({ pid: 7 })
@@ -188,7 +188,7 @@ describe('linux desktop backend registration', () => {
       const bridge = create({ SWAYSOCK: path })
       await bridge.start()
       expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'sway', bridge: 'ready' }))
-      expect(bridge.activeWindow()).toEqual({ caption: 'AIRI', resourceClass: 'airi', desktopFileName: 'airi', pid, fullScreen: false })
+      expect(bridge.activeWindow()).toEqual({ windowId: '9', caption: 'AIRI', resourceClass: 'airi', desktopFileName: 'airi', pid, fullScreen: false })
       expect(bridge.ownWindows()).toEqual([expect.objectContaining({ id: '9', pid, ...rect })])
       const failed = nextFact(patch => patch.bridge === 'failed')
       for (const socket of sockets)
@@ -251,7 +251,7 @@ describe('linux desktop backend registration', () => {
       const bridge = create({ HYPRLAND_INSTANCE_SIGNATURE: 'instance' })
       await bridge.start()
       expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'hyprland', bridge: 'ready' }))
-      expect(bridge.activeWindow()).toEqual({ caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 42, fullScreen: false })
+      expect(bridge.activeWindow()).toEqual({ windowId: '0xabc', caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 42, fullScreen: false })
       expect(bridge.ownWindows()).toEqual([{ id: '0xdef', pid, caption: 'AIRI', x: 0, y: 0, width: 800, height: 600 }])
       const focused = Promise.withResolvers<void>()
       bridge.onActive(active => active?.pid === pid && focused.resolve())

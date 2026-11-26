@@ -45,6 +45,7 @@ export function readTree(tree: unknown, ownPids: readonly number[]): { active: A
       continue
     if (node.focused) {
       active = {
+        windowId: String(node.id),
         caption: node.name ?? '',
         resourceClass: node.app_id ?? node.window_properties?.class ?? '',
         desktopFileName: node.app_id ?? '',

@@ -15,7 +15,7 @@ import { isLinux, isMacOS, isWindows } from 'std-env'
 import { focusWindow } from '../../libs/electron/focus'
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
-import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
+import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createPresenceHidesService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
 import { readWindowRect, requestKeepAbove } from '../../services/electron/coordinates'
 import { WindowBackdropService } from '../../services/electron/window-backdrop'
 import { placeWindow } from './placement'
@@ -219,6 +219,7 @@ export async function setupBaseWindowElectronInvokes(params: {
   createPowerMonitorService({ context: params.context, window: params.window, bridge })
   createDesktopActivityService({ context: params.context, window: params.window })
   createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid, bridge })
+  createPresenceHidesService({ context: params.context, window: params.window })
   createSystemPreferencesService({ context: params.context, window: params.window })
   WindowBackdropService.install(params.window)
 

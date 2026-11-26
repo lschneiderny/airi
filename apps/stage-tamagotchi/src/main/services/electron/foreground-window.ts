@@ -3,6 +3,7 @@ import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
 import type { BrowserWindow } from 'electron'
 
 import type { LinuxDesktopBridge } from '../linux-desktop'
+import type { PresenceReading } from './presence-hides'
 
 import process from 'node:process'
 
@@ -20,6 +21,8 @@ import { createDarwinSampler, TITLE_MAX_UNITS as DARWIN_TITLE_MAX_UNITS, loadDar
 import { createLinuxForegroundVerifier, createLinuxSampler } from './foreground-window-linux'
 import { createWin32Sampler, loadWin32Binding, TITLE_MAX_UNITS as WIN32_TITLE_MAX_UNITS } from './foreground-window-win32'
 import { getCurrentHostCapabilities, reportForegroundBindingFailed, reportLinuxDesktop } from './host-capabilities'
+import { desktopIdsForClass, listInstalledApps } from './installed-apps'
+import { presenceHides } from './presence-hides'
 
 /** Linux backends whose bridge reports the active window. */
 const LINUX_FOREGROUND_BACKENDS: ReadonlySet<LinuxDesktopBridge['backend']> = new Set(['kwin', 'x11-ewmh', 'sway', 'hyprland'])
@@ -38,10 +41,7 @@ function linuxVerifierFor(bridge: LinuxDesktopBridge) {
 }
 
 /** A sample and what the main process needs to decide whether to hide it. Only the sample crosses IPC. */
-interface ForegroundReading {
-  sample: ForegroundWindowSample
-  /** Every name the block list may match for the app. */
-  appNames: readonly (string | null)[]
+interface ForegroundReading extends PresenceReading {
   /** The host's read cap may have cut the title, so a private-window marker at its end may be missing. */
   titleCut: boolean
 }
@@ -53,7 +53,7 @@ interface ForegroundReading {
 function withExeNames(read: () => ForegroundWindowSample | null, titleMaxUnits: number) {
   return (): ForegroundReading | null => {
     const sample = read()
-    return sample && { sample, appNames: [sample.exeName, sample.exePath], titleCut: sample.title.length >= titleMaxUnits - 1 }
+    return sample && { sample, appNames: [sample.exeName, sample.exePath], appKey: sample.exeName, titleCut: sample.title.length >= titleMaxUnits - 1 }
   }
 }
 
@@ -88,8 +88,9 @@ function isHiddenFromPresence(reading: ForegroundReading, blockedApps: readonly 
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
  *   Reads resolve `null` off Windows/macOS and after a failed koffi load, instead of rejecting.
- *   They also resolve `null` for a blocked app, a private browser window, and a window whose title the read cap
- *   may have cut, so none of them reaches a renderer.
+ *   They also resolve `null` for a blocked app, a window or app under a temporary presence hide, a private browser
+ *   window, and a window whose title the read cap may have cut, so none of them reaches a renderer.
+ *   Every foreign reading, hidden or not, updates the front app of `presenceHides`.
  *   The title is empty unless the read asks for it; the private-window check still reads it here.
  */
 export function createForegroundWindowService(params: {
@@ -118,7 +119,8 @@ export function createForegroundWindowService(params: {
       ? loadWin32Binding().then(binding => withExeNames(createWin32Sampler(binding, isOwnProcess), WIN32_TITLE_MAX_UNITS))
       : isMacOS
         ? loadDarwinBinding().then(binding => withExeNames(createDarwinSampler(binding, isOwnProcess), DARWIN_TITLE_MAX_UNITS))
-        : Promise.resolve(linuxBridge ? createLinuxSampler(linuxBridge, isOwnProcess) : null)).catch((error) => {
+        // The installed apps map a window class to its desktop file id, so load them before the first read.
+        : linuxBridge ? listInstalledApps().then(() => createLinuxSampler(linuxBridge, isOwnProcess, desktopIdsForClass)) : Promise.resolve(null)).catch((error) => {
       reportForegroundBindingFailed()
       log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
       return null
@@ -132,7 +134,11 @@ export function createForegroundWindowService(params: {
       return null
     const read = await getSampler()
     const reading = read?.() ?? null
-    if (!reading || isHiddenFromPresence(reading, blockedApps))
+    if (!reading)
+      return null
+    const hidden = isHiddenFromPresence(reading, blockedApps) || presenceHides.isHidden(reading)
+    presenceHides.observe(reading, hidden, blockedApps)
+    if (hidden)
       return null
     return includeTitle ? reading.sample : { ...reading.sample, title: '' }
   })

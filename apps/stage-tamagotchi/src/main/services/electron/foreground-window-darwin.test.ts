@@ -89,6 +89,7 @@ const native = vi.hoisted(() => ({
         case 'kCGWindowOwnerPID': return row?.pid == null ? null : { number: row.pid }
         case 'kCGWindowLayer': return row?.layer == null ? null : { number: row.layer }
         case 'kCGWindowAlpha': return row?.alpha == null ? null : { number: row.alpha }
+        case 'kCGWindowNumber': return row?.number == null ? null : { number: row.number }
         case 'kCGWindowBounds': return row?.bounds
       }
     }
@@ -341,10 +342,23 @@ describe('darwin foreground sampler', () => {
     expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(2)
   })
 
+  it('reports the front app\'s frontmost visible normal window as the window id', () => {
+    desktop.windows = [
+      { number: 5, pid: 999, layer: 0, alpha: 1, bounds: null },
+      { number: 6, pid: 4321, layer: 25, alpha: 1, bounds: null },
+      { number: 7, pid: 4321, layer: 0, alpha: 0, bounds: null },
+      { number: 8, pid: 4321, layer: 0, alpha: 1, bounds: null },
+      { number: 9, pid: 4321, layer: 0, alpha: 1, bounds: null },
+    ]
+
+    expect(createDarwinSampler(binding, () => false)()?.windowId).toBe('8')
+    expect(createDarwinSampler(binding, () => true)()?.windowId).toBeNull()
+  })
+
   it('reads a trusted CFString title without logging or changing geometry busy', () => {
     desktop.trusted = true
     desktop.axTitle = 'Synthetic \u65E5\u672C\u8A9E \u{1F600}'
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'info'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error')]
 
     const sample = createDarwinSampler(binding, () => false)()
@@ -644,6 +658,7 @@ describe('darwin foreground sampler', () => {
       exePath: '/Applications/Safari.app',
       exeName: 'Safari.app',
       pid: 4321,
+      windowId: null,
       ownProcess: false,
       title: '',
       busy: 'accepts',
@@ -723,7 +738,7 @@ describe('darwin foreground sampler', () => {
   })
 
   it('balances every copied reference and autorelease pool across 200 reads', () => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     const read = createDarwinSampler(binding, () => false)
 
     const samples = Array.from({ length: 200 }, () => read())
@@ -786,6 +801,7 @@ describe('darwin foreground sampler', () => {
     ['2 pt short', 2, 'accepts'],
   ] as const)('classifies %s with the one-point tolerance', (_name, short, busy) => {
     desktop.windows = [{
+      number: 77,
       pid: 4321,
       layer: 0,
       alpha: 1,
@@ -816,7 +832,7 @@ describe('darwin foreground sampler', () => {
     ['bottom edge 2 pt short', { bounds: { origin: { x: 0, y: 0 }, size: { width: 1680, height: 1048 } } }],
     ['oversized by 2 pt', { bounds: { origin: { x: -2, y: 0 }, size: { width: 1684, height: 1050 } } }],
   ] satisfies readonly (readonly [string, Partial<WindowRow>])[])('ignores %s geometry', (_name, fields) => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null, ...fields }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null, ...fields }]
 
     const sample = createDarwinSampler(binding, () => false)()
 
@@ -829,7 +845,7 @@ describe('darwin foreground sampler', () => {
     ['com.apple.Safari', 'fullscreen'],
   ] as const)('classifies covering %s as %s', (bundleId, busy) => {
     desktop.bundleId = bundleId
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 0.5, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 0.5, bounds: desktop.displays[0] ?? null }]
 
     const sample = createDarwinSampler(binding, () => false)()
 
@@ -840,7 +856,7 @@ describe('darwin foreground sampler', () => {
   it('covers the second display at a negative origin', () => {
     const bounds = { origin: { x: -1920, y: -200 }, size: { width: 1920, height: 1080 } }
     desktop.displays.push(bounds)
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds }]
 
     const sample = createDarwinSampler(binding, () => false)()
 
@@ -848,7 +864,7 @@ describe('darwin foreground sampler', () => {
   })
 
   it('accepts own-process covering windows without enumerating geometry', () => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
 
     const sample = createDarwinSampler(binding, () => true)()
 
@@ -872,7 +888,7 @@ describe('darwin foreground sampler', () => {
     ['count', { displayCountStatus: 1000 }, 1],
     ['list', { displayListStatus: 1000 }, 2],
   ] as const)('reports unknown busy when the display %s query fails despite a covering window', (_pass, fields, calls) => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     Object.assign(desktop, fields)
 
     const sample = createDarwinSampler(binding, () => false)()
@@ -883,7 +899,7 @@ describe('darwin foreground sampler', () => {
   })
 
   it('accepts when display enumeration succeeds with no active displays', () => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     desktop.displays = []
 
     const sample = createDarwinSampler(binding, () => false)()
@@ -894,7 +910,7 @@ describe('darwin foreground sampler', () => {
   })
 
   it('releases the window list and pool when bounds decoding throws', () => {
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     desktop.failAt = 'bounds'
 
     expect(createDarwinSampler(binding, () => false)).toThrow('bounds read failed')
@@ -906,7 +922,7 @@ describe('darwin foreground sampler', () => {
 
   it('rechecks window geometry and presentation identity without stale state', () => {
     const read = createDarwinSampler(binding, () => false)
-    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.windows = [{ number: 77, pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     expect(read()?.busy).toBe('fullscreen')
     desktop.bundleId = 'com.apple.iWork.Keynote'
     expect(read()?.busy).toBe('presentation')

@@ -153,13 +153,13 @@ describe('sway socket client', () => {
     expect(backend.start()).toBe(start)
     const [socket] = await connection
     await start
-    expect(await first).toEqual([{ caption: 'first', resourceClass: 'foot', desktopFileName: 'foot', pid: 123, fullScreen: false }])
+    expect(await first).toEqual([{ windowId: '9', caption: 'first', resourceClass: 'foot', desktopFileName: 'foot', pid: 123, fullScreen: false }])
     expect(await own).toEqual([[{ id: '9', caption: 'first', pid: 123, ...rect, keepAbove: false, outputScale: 1 }]])
     for (const change of ['focus', 'title', 'fullscreen_mode']) {
       setTree({ ...node, name: change, app_id: 'org.kde.konsole', fullscreen_mode: 1 })
       const updated = next(events, 'active')
       socket.write(encodeFrame(0x80000003, { change, container: node }))
-      expect(await updated).toEqual([{ caption: change, resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: 123, fullScreen: true }])
+      expect(await updated).toEqual([{ windowId: '9', caption: change, resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: 123, fullScreen: true }])
     }
     expect(requests).toEqual([
       { type: 2, body: '["window","output"]' },

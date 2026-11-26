@@ -74,6 +74,7 @@
   function sendActive() {
     enqueue('Active', active
       ? {
+          windowId: String(active.internalId),
           caption: String(active.caption).slice(0, 4096),
           resourceClass: String(active.resourceClass).slice(0, 4096),
           desktopFileName: String(active.desktopFileName).slice(0, 4096),

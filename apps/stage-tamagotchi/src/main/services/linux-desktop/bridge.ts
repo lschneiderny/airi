@@ -67,7 +67,7 @@ function failureOf(error: unknown): BridgeFailure {
 }
 
 function sameActive(left: Active, right: Active) {
-  return left === right || (left !== null && right !== null && left.pid === right.pid && left.caption === right.caption
+  return left === right || (left !== null && right !== null && left.windowId === right.windowId && left.pid === right.pid && left.caption === right.caption
     && left.resourceClass === right.resourceClass && left.desktopFileName === right.desktopFileName && left.fullScreen === right.fullScreen)
 }
 

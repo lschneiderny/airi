@@ -27,6 +27,7 @@ function windowSample(exeName: string): ForegroundWindowSample {
     exeName,
     title: `${exeName} window`,
     pid: 4242,
+    windowId: null,
     ownProcess: false,
     busy: 'accepts',
     sampledAtMs: Date.now(),

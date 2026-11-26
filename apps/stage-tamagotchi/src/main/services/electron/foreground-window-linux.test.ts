@@ -18,7 +18,7 @@ vi.mock('node:fs', () => ({
   readFileSync: fsMock.readFileSync,
 }))
 
-type Active = { caption: string, resourceClass: string, desktopFileName: string, pid: number, fullScreen: boolean } | null
+type Active = { windowId: string, caption: string, resourceClass: string, desktopFileName: string, pid: number, fullScreen: boolean } | null
 
 function createBridge() {
   const listeners = new Set<(value: Active) => void>()
@@ -43,7 +43,7 @@ function createBridge() {
   return bridge
 }
 
-const konsole = { caption: 'luke@host:~', resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: 4321, fullScreen: false }
+const konsole = { windowId: 'w1', caption: 'user@host:~', resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: 4321, fullScreen: false }
 
 describe('createLinuxSampler', () => {
   beforeEach(() => {
@@ -57,8 +57,9 @@ describe('createLinuxSampler', () => {
     bridge.active = konsole
 
     expect(createLinuxSampler(bridge, () => false)()?.sample).toEqual({
-      title: 'luke@host:~',
+      title: 'user@host:~',
       pid: 4321,
+      windowId: 'w1',
       exePath: '/usr/bin/konsole',
       exeName: 'konsole',
       ownProcess: false,
@@ -71,10 +72,21 @@ describe('createLinuxSampler', () => {
   it('lists the executable, the window class and the desktop file name for the block list', () => {
     const bridge = createBridge()
     // An Electron app started through the shared runtime: only the class and desktop file name identify it.
-    bridge.active = { caption: 'Vault', resourceClass: 'Bitwarden', desktopFileName: 'bitwarden', pid: 4321, fullScreen: false }
+    bridge.active = { windowId: 'w1', caption: 'Vault', resourceClass: 'Bitwarden', desktopFileName: 'bitwarden', pid: 4321, fullScreen: false }
     fsMock.links.set('/proc/4321/exe', '/usr/lib/electron/electron')
 
     expect(createLinuxSampler(bridge, () => false)()?.appNames).toEqual(['electron', 'Bitwarden', 'bitwarden'])
+  })
+
+  it('names a window without a desktop file name by every desktop file that declares its class', () => {
+    const bridge = createBridge()
+    // An XWayland Flatpak app: the class is all the window reports, and the picker blocks the desktop file id.
+    bridge.active = { windowId: 'w1', caption: 'Chat', resourceClass: 'discord', desktopFileName: '', pid: 4321, fullScreen: false }
+    fsMock.links.set('/proc/4321/exe', '/app/discord/Discord')
+    const reading = createLinuxSampler(bridge, () => false, windowClass => windowClass === 'discord' ? ['com.discordapp.Discord', 'discord-system'] : [])()
+
+    expect(reading?.appNames).toEqual(['Discord', 'discord', 'com.discordapp.Discord', 'discord-system'])
+    expect(reading?.appKey).toBe('com.discordapp.Discord')
   })
 
   it('returns null when no window is active', () => {

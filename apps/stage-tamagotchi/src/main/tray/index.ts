@@ -27,12 +27,14 @@ import { shouldOpenDevTools } from '../libs/electron/devtools'
 import { showWindow } from '../libs/electron/focus'
 import { createAppContext } from '../libs/electron/window-context'
 import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } from '../services/electron/coordinates'
+import { presenceHides } from '../services/electron/presence-hides'
 import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
 import { placeWindow } from '../windows/shared/placement'
 import { toggleWindowShow } from '../windows/shared/window'
 import { isStageWindow, showUserFacingWindow } from '../windows/stage/identity'
+import { presenceMenuItems } from './presence-menu'
 import { resolveAlignedWindowBounds, windowLayoutMenuItems } from './window-layout'
 
 function applyWindowSize(window: BrowserWindow, width: number, height: number, x?: number, y?: number): void {
@@ -123,6 +125,17 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
         align: position => animateMainWindowTo(currentDisplay.workArea, position),
       }),
       { type: 'separator' },
+      {
+        type: 'submenu',
+        label: params.i18n.t('tamagotchi.electron.tray.menu.presence.title'),
+        submenu: Menu.buildFromTemplate(presenceMenuItems({
+          state: presenceHides.state(),
+          t: (key, named) => named ? params.i18n.t(key, named) : params.i18n.t(key),
+          add: (scope, durationMs) => presenceHides.add(scope, durationMs),
+          remove: id => presenceHides.remove(id),
+          openSettings: () => void params.settingsWindow.openWindow('/settings/presence'),
+        })),
+      },
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.settings'), click: () => void params.settingsWindow.openWindow('/settings') },
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.about'), click: () => params.aboutWindow().then(window => toggleWindowShow(window)) },
       { type: 'separator' },
@@ -161,6 +174,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
   params.mainWindow.on('resize', rebuildContextMenu)
   params.mainWindow.on('move', rebuildContextMenu)
   const visibilityChangeUnListener = params.captionWindow.onVisibilityChanged(rebuildContextMenu)
+  const presenceHidesUnListener = presenceHides.onChange(rebuildContextMenu)
 
   rebuildContextMenu()
 
@@ -185,6 +199,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
     params.mainWindow.off('move', rebuildContextMenu)
 
     visibilityChangeUnListener()
+    presenceHidesUnListener()
     stopLocaleEffect()
 
     rebuildContextMenu.cancel()
