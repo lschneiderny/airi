@@ -176,6 +176,7 @@ watch(model, async (newValue) => {
   <SpeechProviderSettings
     :provider-id="providerId"
     :default-model="defaultModel"
+    hide-api-key
   >
     <template #voice-settings>
       <!-- Model Selection -->
