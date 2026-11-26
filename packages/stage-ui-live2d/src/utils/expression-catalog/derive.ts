@@ -29,6 +29,47 @@ export function readVtubeHotkeyLabels(vtube: unknown): Map<string, string> {
   return labels
 }
 
+const animationPrefix = 'animation:'
+
+/** The motion file an animation entry loops, or `undefined` for every other entry id. */
+export function animationFileOf(id: string): string | undefined {
+  return id.startsWith(animationPrefix) ? id.slice(animationPrefix.length) : undefined
+}
+
+/**
+ * Catalog entries for the rig's own animations: the motion files its `.vtube.json` binds to a `TriggerAnimation`
+ * hotkey, which is how a rig's author names the loops drawn for it (eating, sleeping). `motionFiles` are the motion
+ * files the loaded model can play; a hotkey whose file is not among them yields no entry.
+ *
+ * An entry carries no parameters, so the composer ignores it; the scene loops its motion while the entry shows. It
+ * starts as a prop the chat model cannot ask for and she never uses on her own, until the user says otherwise. The
+ * entries share one group, so one animation shows at a time.
+ */
+export function deriveAnimationEntries(vtube: unknown, motionFiles: readonly string[]): CatalogEntry[] {
+  const motionBaseName = (path: string) => path.split(/[\\/]/).pop()!.toLowerCase()
+  const seen = new Set<string>()
+  const entries = parseVtubeHotkeys(vtube).flatMap((hotkey): CatalogEntry[] => {
+    const file = hotkey.Action === 'TriggerAnimation' ? motionFiles.find(candidate => motionBaseName(candidate) === motionBaseName(hotkey.File)) : undefined
+    if (file === undefined || seen.has(file))
+      return []
+    seen.add(file)
+    return [{
+      id: `${animationPrefix}${file}`,
+      label: cleanLabel(hotkey.Name) || motionBaseName(file).replace(/\.motion3\.json$/, ''),
+      labelSource: 'vtube',
+      kind: 'prop',
+      area: 'props',
+      group: null,
+      confirmed: false,
+      exposedToLlm: false,
+      mappings: [],
+      fileName: '',
+      parameterIds: [],
+    }]
+  })
+  return entries.map(entry => ({ ...entry, group: entries.length > 1 ? `group:${entries[0].id}` : null }))
+}
+
 const rules: [ExpressionKind, string[]][] = [
   ['system', ['watermark', '水印']],
   ['prop', ['phone', 'bag', 'game', 'pillow', 'board', 'note', 'box', 'mouse', 'chat box', 'chat text', 'chat icon', 'pen', 'eat']],

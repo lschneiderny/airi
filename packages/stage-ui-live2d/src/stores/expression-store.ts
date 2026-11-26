@@ -15,7 +15,7 @@ import { computed, markRaw, ref, shallowRef, toRaw } from 'vue'
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
 import { slotNames } from '../composables/live2d/expression/slots'
 import { suggestArea } from '../utils/expression-catalog/area'
-import { deriveCatalog, suggestKind } from '../utils/expression-catalog/derive'
+import { animationFileOf, deriveAnimationEntries, deriveCatalog, suggestKind } from '../utils/expression-catalog/derive'
 import { createCatalogPersistence, removeItemsByAsset } from './expression-catalog-persistence'
 import { createSlotLeases, emptyLeases } from './expression-slot-leases'
 
@@ -166,7 +166,11 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     entry.area ??= suggestArea(entry.kind, entry.parameterIds, entry.label)
     return entry
   }
-  const catalog = computed(() => mergeCatalog(derived.value, curated.value, [...validCustoms.value.map(withKindArea), ...validItems.value.map(itemEntry)]))
+  // The rig's own animations: its `.vtube.json` names them and the scene reports the motion files it can play.
+  const rigVtube = shallowRef<unknown>()
+  const motionFiles = shallowRef<readonly string[]>([])
+  const animations = computed(() => deriveAnimationEntries(rigVtube.value, motionFiles.value))
+  const catalog = computed(() => mergeCatalog([...derived.value, ...animations.value], curated.value, [...validCustoms.value.map(withKindArea), ...validItems.value.map(itemEntry)]))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
   // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.
@@ -208,6 +212,21 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       .filter(item => resolved.value.effective.has(item.id))
       .map(document => ({ document, weight: weights.get(document.id) ?? 1 }))
   })
+
+  /**
+   * The motion file of the rig animation that shows, for the scene to loop, or null. The composer ignores animation
+   * ids, because no definition names them.
+   */
+  const animationTarget = computed(() => {
+    const shown = animations.value.find(entry => resolved.value.effective.has(entry.id))
+    return shown ? animationFileOf(shown.id) ?? null : null
+  })
+
+  /** Takes the motion files the loaded model can play; the scene calls it at each model load. */
+  function setMotionFiles(files: readonly string[]) {
+    motionFiles.value = [...files]
+    reconcile()
+  }
 
   function shownItemCounts(effective: ReadonlySet<string>) {
     let all = 0
@@ -251,7 +270,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       { expressionId, layer: 1, seq: claimSeq + 1 },
     ),
   })
-  const persistence = createCatalogPersistence({ modelId, derived, curated, catalog })
+  const persistence = createCatalogPersistence({ modelId, derived: computed(() => [...derived.value, ...animations.value]), curated, catalog })
   function updateEntry(id: string, patch: EntryPatch) {
     persistence.updateEntry(id, patch)
     if (patch.keepSeparate !== undefined)
@@ -491,6 +510,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     parameters.value = modelParameters.map(parameter => ({ ...parameter }))
     freeParameters.value = modelFreeParameters.map(parameter => ({ ...parameter }))
     deriveInputs = { defs, model3Refs, vtube, displayInfo }
+    rigVtube.value = vtube
     curated.value = { version: 1, overrides: [] }
     leases.value = emptyLeases()
     try {
@@ -676,6 +696,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     leases.value = emptyLeases()
     derived.value = []
     deriveInputs = undefined
+    rigVtube.value = undefined
     curated.value = { version: 1, overrides: [] }
     composer.define([])
   }
@@ -715,5 +736,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, itemTargets, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, setAvailableItemAssets, removeItemAssets, reportItemStates, setModelCanvas, dispose, applySettingsCommand, onItemRefusal: itemRefusals.on }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, idleActive, setIdleClaims, leases, contextPreview, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, itemTargets, animationTarget, setMotionFiles, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, setAvailableItemAssets, removeItemAssets, reportItemStates, setModelCanvas, dispose, applySettingsCommand, onItemRefusal: itemRefusals.on }
 })
