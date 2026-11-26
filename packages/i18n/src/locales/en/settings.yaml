@@ -226,8 +226,8 @@ model-select:
       Currently, {zip} (for Live2D and Spine models), {vrm} (for VRM models),
       and {mmd} (for MMD models, zipped with their textures) are supported.
     model-type-example: >
-      Neuro-sama uses 2D model driven by framework developed by Live2D Inc,
-      while Grok Ani (in Grok Companion) uses 3D model driven by VRM / MMD open formats.
+      Live2D models are layered 2D illustrations that move like a drawn
+      character. VRM and MMD models are full 3D bodies that can walk and turn.
   select-model:
     title: Model Selector
     description: Select a model or import one from your files.
