@@ -68,7 +68,7 @@ class TurnPlanner {
   private readonly feet = { left: Number.NaN, right: Number.NaN }
   /** Seconds left of the weight settling before a square-up step, or null when none is due. */
   private squareUp: number | null = null
-  /** Steps left in a home turn, planned at its first step as equal steps of at most `stepYawLimit`. */
+  /** Steps left in a home turn, planned as equal steps of at most `stepYawLimit` over what is left to turn. */
   private homeSteps = 0
   private readonly steps: TurnStep[] = []
   private readonly frame: { facingYaw: number, turning: boolean, turnStarted: boolean, turnSteps: TurnStep[], stance: TurnStep['foot'] | null } = { facingYaw: 0, turning: false, turnStarted: false, turnSteps: this.steps, stance: null }
@@ -148,8 +148,9 @@ class TurnPlanner {
       if (!this.activeStep) {
         if (!input.home)
           this.homeSteps = 0
-        else if (this.homeSteps === 0)
-          this.homeSteps = Math.ceil(magnitude / stepYawLimit)
+        else
+          // Counted again at each step, so a home target that moves away mid-turn adds steps instead of lengthening one.
+          this.homeSteps = Math.max(this.homeSteps, Math.ceil(magnitude / stepYawLimit - 1e-9))
         if (input.home ? this.homeSteps === 0 : magnitude < turnStop) {
           this.frame.turning = false
           this.refractoryUntil = this.time + refractoryDuration
