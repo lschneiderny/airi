@@ -69,6 +69,10 @@ describe('the rest layer', () => {
     expect(steps).toHaveLength(1)
     expect(steps[0].foot).toBe(stance > 0 ? 'right' : 'left')
     expect(Math.min(...frames.slice(at(13), at(20)).map(frame => -stance * frame.support))).toBeGreaterThan(0.9)
+    // The head's tilt follows the weight across, so it never jumps as the support changes sign.
+    const roll = frames.map(frame => (frame.channels[c('headRoll')] + frame.channels[c('neckRoll')]) / DEG)
+    expect(Math.sign(roll[at(19)])).toBe(-Math.sign(roll[at(9)]))
+    expect(Math.max(...roll.slice(1).map((value, k) => Math.abs(value - roll[k])))).toBeLessThan(0.2)
   })
 
   it('rests with her hands clasped low in front or hanging, chosen by the seed (4f)', () => {
