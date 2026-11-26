@@ -1755,4 +1755,16 @@ describe('co-speech gestures', () => {
     expect(armGap(settled[at(3.9)], plain[at(3.9)])).toBeGreaterThan(4)
     expect(armGap(settled[at(7)], plain[at(7)])).toBeLessThan(0.05)
   })
+
+  it('reaches an arm form\'s own key before it settles the key its request asks for from the start', () => {
+    const plain = settledHold(() => false)
+    const settled = settledHold(() => true)
+    const home = plain[0]
+    const heldKey = plain[Math.round(2 / BODY_TICK)]
+    const apart = settled.findIndex((pose, i) => armGap(pose, plain[i]) > 1e-9)
+    expect(apart).toBeGreaterThan(0)
+    // By the first tick the runs part, the plain hand has come all but the followers' last lag of its way.
+    expect(armGap(plain[apart], heldKey) / armGap(home, heldKey)).toBeLessThan(0.05)
+    expect(armGap(settled[Math.round(4 / BODY_TICK)], plain[Math.round(4 / BODY_TICK)])).toBeGreaterThan(4)
+  })
 })
