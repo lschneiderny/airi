@@ -118,7 +118,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
   let staged = true
   let nods: { at: number, sink: number }[] = []
   let tick = -1
-  const drift = createDriftNoise({ seed: deriveSeed(options.seed, 500) })
+  let drift = createDriftNoise({ seed: deriveSeed(options.seed, 500) })
 
   /** One arm's share of the settled shoulders, and of the heavy hang (`SETTLED`) when the hand hangs. */
   function settleArm(arm: BodySide, clavicle: number, settled: { protraction: number, twist: number, elbow: number }, hanging: boolean) {
@@ -273,6 +273,7 @@ export function createRestLayer(options: RestLayerOptions): PerformanceLayer {
       clasped = false
       nods = []
       tick = -1
+      drift = createDriftNoise({ seed: deriveSeed(options.seed, 500) })
       plan = {}
       channels.fill(0)
       output.modulation = undefined
