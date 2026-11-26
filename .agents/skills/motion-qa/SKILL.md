@@ -16,6 +16,7 @@ Check doctor's `pointer-platform` row before rendered pointer QA. Cursor parking
 ```bash
 pnpm qa:doctor
 pnpm qa:live2d-rig [--emotion angry] [--band strong] [--seed 1] [--out <trace.json>]
+pnpm qa:live2d-rig --idle <seconds> [--rig <folder>] [--pep 0] [--hz 60] [--seed 1]
 pnpm qa:motion3d run --model <pmx> --scenario <id> --seed <n> --out <dir>
 pnpm qa:motion3d clearance (--models <dir> | --list <file>) --out <dir> [--compare <clearance.json>]
 pnpm lab:motion3d gate <run dir>...
@@ -25,7 +26,7 @@ pnpm qa:stage measure | gate | capture ...
 pnpm qa:host smoke
 ```
 
-Live2D has a headless runner but no statistical gate. `pnpm qa:live2d-rig` runs one emotion trial through the Natural driver on the ForBOOTH rig and Cubism Core in Node and prints the samples, moving channels, trace hash, and speed. Use it to check that a Natural or Live2D motion change still drives the rig; `pnpm verify --gate` runs the rig test through `pnpm qa:test:model` when `AIRI_QA_RIG_FORBOOTH` is set. To show a Live2D change working in the app, use `qa:app` or the `airi-qa` MCP server with a Live2D model. How it feels goes to the [review backlog](../../../docs/ai/context/testing.md#motion-feel) and never blocks landing.
+Live2D has a headless runner but no statistical gate. `pnpm qa:live2d-rig` runs one emotion trial through the Natural driver on the ForBOOTH rig and Cubism Core in Node and prints the samples, moving channels, trace hash, and speed. Use it to check that a Natural or Live2D motion change still drives the rig; `pnpm verify --gate` runs the rig test through `pnpm qa:test:model` when `AIRI_QA_RIG_FORBOOTH` is set. For a change to Live2D idle motion or physics, run `pnpm qa:live2d-rig --idle 300 --rig <folder>` at the base and the tip on each rig the change targets, and report the head moves per minute, their median size and small share, and the picture's quick reversals; the [qa-tools README](../../../packages/qa-tools/README.md#live2d-idle-on-screen) defines the fields. To show a Live2D change working in the app, use `qa:app` or the `airi-qa` MCP server with a Live2D model. How it feels goes to the [review backlog](../../../docs/ai/context/testing.md#motion-feel) and never blocks landing.
 
 For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, and `stage-action-preempt`. `pnpm qa:stage capture --port <cdp port> --scenario idle --seconds 30 --out <dir>` records final MMD bones, shots and a contact sheet; `walk` needs stage mode and `attach` records without cues. Capture requires the Natural MMD driver, established by MMD diagnostics, not the Live2D fields of the motion QA bridge. Run measurements and captures inside the isolated QA display on Linux, with a temporary profile; stop the app and display afterward. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
 
