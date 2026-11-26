@@ -834,9 +834,11 @@ its intensity (`startleSeq`, `startle` in the layer's modulation); the stack cou
 every new one whatever the layer's weight, the performer reports the latest in
 `frame.startle`, and the host hands that to the gait, which checks the stride. While she speaks, love's chest lifts 4 degrees and its trunk
 turns 5 degrees toward the far, speaking hand, eased in and out over about half
-a second (`speech`). Each stroke of the speaking hand turns the chest 3 degrees
-more toward it at love's weight (`beat`), starting as the last frame's gesture
-report enters `stroke`, peaking 0.12 s later with the stroke's hit and returning
+a second (`speech`). Each stroke turns the chest 3 degrees more toward the
+stroking hand at love's weight (`beat`): the hand the last frame's gesture report
+names, which for a gesture under way as love came may be love's own side. A
+two-hand stroke does not turn it. The beat starts as that report enters
+`stroke`, peaking 0.12 s later with the stroke's hit and returning
 over 0.5 s, so the hand on the chest rides the line's emphasis. On the same
 follower the held hand to chest settles into the body: the layer solves, once per
 rig, a key 0.08 to 0.02 arm lengths lower on the chest with the elbow as low as

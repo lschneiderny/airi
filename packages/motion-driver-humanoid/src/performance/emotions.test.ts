@@ -239,7 +239,8 @@ describe('emotion posture layer', () => {
     expect(delta(end, 'midPitch') + delta(end, 'upperPitch')).toBeCloseTo(-4, 0)
   })
 
-  it('beats love\'s chest toward the speaking hand with each stroke of that hand', () => {
+  // Love holds her right hand to the chest; a right-hand stroke is a gesture that was under way as love came.
+  it.each([['left', 1], ['right', -1]] as const)('beats love\'s chest toward the hand that strokes, with each of its strokes (%s)', (hand, sign) => {
     const at = 5
     const stroke = (strokes: boolean): PerformanceLayer => ({
       id: 'stroke',
@@ -250,7 +251,7 @@ describe('emotion posture layer', () => {
         channels: new Float64Array(BODY_CHANNELS.length),
         weight: 0,
         sequence: 0,
-        gesture: { unitSeq: 1, strokeSeq: 0, form: 'beat', hand: 'left', phase: strokes && context.time >= at && context.time < at + 0.15 ? 'stroke' : 'hold', plannedHit: null },
+        gesture: { unitSeq: 1, strokeSeq: 0, form: 'beat', hand, phase: strokes && context.time >= at && context.time < at + 0.15 ? 'stroke' : 'hold', plannedHit: null },
       }),
       reset() {},
     })
@@ -271,7 +272,7 @@ describe('emotion posture layer', () => {
     const delta = (time: number, channel: BodyChannel) => (beaten[Math.round(time * 120)][c(channel)] - plain[Math.round(time * 120)][c(channel)]) / DEG
     expect(delta(at, 'midYaw')).toBe(0)
     // Love's `beat`, 3 degrees at full weight, peaking a beat stroke's time after the stroke starts (the report is a frame old).
-    expect(delta(at + 0.13, 'midYaw')).toBeCloseTo(3, 0)
+    expect(delta(at + 0.13, 'midYaw')).toBeCloseTo(3 * sign, 0)
     expect(delta(at + 0.13, 'midPitch') + delta(at + 0.13, 'upperPitch')).toBe(0)
     expect(Math.abs(delta(at + 0.7, 'midYaw'))).toBeLessThan(0.05)
   })

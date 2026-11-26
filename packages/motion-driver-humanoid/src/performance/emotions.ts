@@ -192,7 +192,8 @@ const SPEECH = secondOrderCoefficients({ f: 1, zeta: 1, r: 0 }, BODY_TICK)
  * speech arm turns the ribs toward it too, and the hand on the chest rides them: it starts as the gesture layer reports the stroke (`BodyGestureReport.phase`, the last
  * frame's), rises over `rise` seconds, a beat stroke's time, so it peaks with the stroke's hit, and returns over
  * `decay`, as that stroke's own torso pulse does (`gestures.ts` `AMPLITUDE.torsoDecay`). A new stroke rises from where
- * the beat is. Natural's voice emphasis reaches the body on few of the onsets the hand strokes, so it is not the cue.
+ * the beat is. It turns toward the hand the report names at the stroke's start, not the emotion's far side: a gesture
+ * under way as the emotion came may stroke with the emotion's own hand. A two-hand stroke does not turn it. Natural's voice emphasis reaches the body on few of the onsets the hand strokes, so it is not the cue.
  * The beat turns and does not lift: the stroke's own torso pulse pitches the chest forward, and a lift against it
  * halved the chest's pitch on each stroke.
  */
@@ -347,16 +348,19 @@ export function createEmotionLayer(): EmotionLayer {
   const settle = new Float64Array(26)
   /** Whether the speaking hand was in a stroke on the last frame (`BEAT`). */
   let wasStroking = false
-  /** The chest's beat on the latest stroke (`BEAT`): when it started and the beat it rose from. */
-  const beat = { start: Number.NEGATIVE_INFINITY, from: 0 }
-  /** The beat this tick, a share of `speech.beat`. */
+  /**
+   * The chest's beat on the latest stroke (`BEAT`): when it started, the beat it rose from, and the way it turns, toward
+   * the stroke's hand (1 the left, -1 the right, 0 for both hands).
+   */
+  const beat = { start: Number.NEGATIVE_INFINITY, from: 0, toward: 0 }
+  /** The beat this tick, a signed share of `speech.beat`: positive turns the chest toward the left hand. */
   let ribs = 0
 
   function beatAt(t: number): number {
     const age = t - beat.start
     if (age < BEAT.rise)
-      return beat.from + (1 - beat.from) * minJerk(age / BEAT.rise)
-    return 1 - minJerk((age - BEAT.rise) / BEAT.decay)
+      return beat.from + (beat.toward - beat.from) * minJerk(age / BEAT.rise)
+    return beat.toward * (1 - minJerk((age - BEAT.rise) / BEAT.decay))
   }
 
   /** The settled hand to chest on `side` less the held one (`SETTLE`), or null where the form or no settled key solves. */
@@ -565,7 +569,7 @@ export function createEmotionLayer(): EmotionLayer {
     channels[c('neckPitch')] += k * (p.neckPitch ?? 0)
     const line = track.spec.speech
     if (line && (speech.y !== 0 || ribs !== 0)) {
-      channels[c('midYaw')] += k * s * (line.turn * speech.y + line.beat * ribs)
+      channels[c('midYaw')] += k * (s * line.turn * speech.y + line.beat * ribs)
       channels[c('midPitch')] -= 0.5 * k * line.lift * speech.y
       channels[c('upperPitch')] -= 0.5 * k * line.lift * speech.y
     }
@@ -645,9 +649,11 @@ export function createEmotionLayer(): EmotionLayer {
       advanceSecondOrder(speech, context.input.voice.speaking ? 1 : 0, SPEECH)
       if (!context.input.voice.speaking && Math.abs(speech.y) < REST && Math.abs(speech.v) < REST)
         speech.y = speech.v = speech.x = 0
-      const stroking = context.previous.diagnostics.gesture.phase === 'stroke'
+      const { phase, hand } = context.previous.diagnostics.gesture
+      const stroking = phase === 'stroke'
       if (stroking && !wasStroking) {
         beat.from = beatAt(time)
+        beat.toward = hand === 'left' ? 1 : hand === 'right' ? -1 : 0
         beat.start = time
       }
       wasStroking = stroking
@@ -698,7 +704,7 @@ export function createEmotionLayer(): EmotionLayer {
       walking = 0
       speech.y = speech.v = speech.x = 0
       wasStroking = false
-      Object.assign(beat, { start: Number.NEGATIVE_INFINITY, from: 0 })
+      Object.assign(beat, { start: Number.NEGATIVE_INFINITY, from: 0, toward: 0 })
       ribs = 0
       Object.assign(modulation, { tempo: 1, amplitude: 1, tension: BODY_EMOTIONS.neutral.tension, breath: 1, sighSeq: 0, startleSeq: 0, startle: 0 })
       Object.assign(report, { seq: 0, emotion: null, phase: null })
