@@ -12,7 +12,7 @@ changing the bridge.
   Stale-script cleanup must stay inside the owning session.
 - Use pushed signals, coalescing and bounded handshakes. Never poll KWin.
 - (a) Report the currently active window, whatever app owns it, through
-  `Active`: caption, resourceClass, desktopFileName, pid and fullScreen.
+  `Active`: windowId, caption, resourceClass, desktopFileName, pid and fullScreen.
   Update on activation, captionChanged and fullScreenChanged. App-side
   presence rules enforce sharing, the block list and 120-character titles.
 - (b) Own-window discovery may enumerate windows reading only pid for an
