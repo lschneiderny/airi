@@ -158,6 +158,20 @@ describe('body turns', () => {
     expect(steps.map(step => step.yaw / rad)).toEqual([expect.closeTo(22.5, 9), expect.closeTo(22.5, 9), expect.closeTo(18, 9), 0])
   })
 
+  it('adds steps when a home target moves away during the turn, each within the step limit', () => {
+    const planner = createTurnPlanner()
+    let facingYaw = 0
+    const steps: TurnStep[] = []
+    for (let i = 0; i < 5 * 120; i++) {
+      // Thirty degrees are planned as two steps; the target moves to ninety once the first has started.
+      const frame = planner.step({ targetYaw: (steps.length ? 90 : 30) * rad, facingYaw, home: true }, 1 / 120)
+      steps.push(...frame.turnSteps)
+      facingYaw = frame.facingYaw
+    }
+    expect(Math.max(...steps.map(step => Math.abs(step.yaw))) / rad).toBeLessThanOrEqual(22.5 + 1e-9)
+    expect(facingYaw).toBeCloseTo(90 * rad, 9)
+  })
+
   it('leaves a home target within twenty degrees to the head and eyes', () => {
     const planner = createTurnPlanner()
     for (let i = 0; i < 1200; i++) {
