@@ -76,4 +76,6 @@ it('loads Kokoro voices in a fresh follower without sending an absent model conf
 
   await expect.poll(() => useSpeechStore(followerPinia).availableVoices['kokoro-local']?.map(voice => voice.id)).toEqual(['af_heart'])
   expect(errors.mock.calls.filter(args => String(args[0]).includes('[Kokoro Settings]'))).toEqual([])
+  // Kokoro runs locally and takes no credentials.
+  expect(screen.container.querySelector('input[type="password"]')).toBeNull()
 })
