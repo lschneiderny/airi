@@ -16,6 +16,7 @@ import catalogJson from '../../fixtures/forbooth-catalog.json'
 import { defaultCorePath, loadCubismCoreInNode } from './core-node'
 import { T2SetupError } from './errors'
 import { loadT2Runtime, runT2 } from './runner'
+import { measureRigScreenProfile, ScreenMotionRecorder } from './screen-motion'
 
 const catalog = catalogJson as CatalogEntry[]
 const rigRoot = process.env.AIRI_QA_RIG_FORBOOTH
@@ -109,5 +110,18 @@ describe('runT2', () => {
 
     expect(without.length).toBeGreaterThan(0)
     expect(record(true)).toEqual(without)
+  }, 120_000)
+
+  it.skipIf(skipReason)('measures how an idle run moves the picture of the rig', () => {
+    const profile = measureRigScreenProfile(runtime)
+    const seconds = 30
+    const recorder = new ScreenMotionRecorder(profile, seconds * 60 + 1)
+    runT2({ version: 1, id: 'idle', seed: 1, durationSeconds: seconds, levels: ['t2'], events: [] }, runtime, { deform: true, afterFrame: drawables => recorder.sample(drawables) })
+    const summary = recorder.summarize(60, 5)
+
+    // The head channel moves the picture on this rig, and Natural's idle moves the head.
+    expect(profile.channels.headX?.mean).toBeGreaterThan(0)
+    expect(summary.head.perMinute).toBeGreaterThan(0)
+    expect(summary.picture.speed).toBeGreaterThan(0)
   }, 120_000)
 })

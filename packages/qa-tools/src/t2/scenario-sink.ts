@@ -90,6 +90,8 @@ export interface ScenarioSinkOptions {
   onTouch?: (touch: NaturalTouchGesture, simTime: number) => void
   /** Liveliness gates only: refuse any non-idle frame from this scored-window start. */
   idleAfterSeconds?: number
+  /** The character's pep, 0 to 1. @default 0, the calm default every scenario gate runs */
+  pep?: number
 }
 
 /** Simulated timers fire in due order, ties in arming order; canceled native handles only identify them. */
@@ -233,8 +235,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       exclusive: false,
       performance,
       energy,
-      // Scenarios run the calm default.
-      pep: 0,
+      pep: options.pep ?? 0,
       // The sim has no lipsync plugin, so it replays that plugin's release and hold on the sim clock.
       voice: { speaking: speeches.size > 0, level: speechLevel(), lipSyncOwnsMouth: speeches.size > 0 || (speechEndedAt !== null && simTime - speechEndedAt <= (lipSyncReleaseMs + lipSyncHandoffHoldMs) / 1000) },
       autoBlink: true,
