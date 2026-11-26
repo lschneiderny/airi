@@ -56,8 +56,10 @@ export const BEAT_PATHS: readonly (readonly [number, number, number])[] = [GESTU
  * The held arm forms (4a, 4e): hand shape, palm orientation and the contact anchor they reach for; the thinking hand
  * stops 0.04 A short of its chin anchor. `anchor` moves the seed toward the arm's own side and up, in arm lengths: the
  * hand rests on the upper chest beside the sternum, and comes to the chin and jaw from the side. The hand to chest
- * goes 0.15 A up, which puts the wrist on the upper chest above the bust: at 0.05 A the march stopped on the
- * bust's front on chested rigs and left the hand floating in front of the chest. The yawn's hand covers
+ * goes 0.075 A up, onto the upper chest: at 0.05 A the march stopped on the bust's front of the authored bodies on
+ * chested rigs and left the hand floating in front of the chest, and at 0.15 A, against the body model's trunk, the
+ * hand met the author's neck and hair bodies and the forearm a mid-chest volume as the trunk and head moved under the
+ * held key (`emotion-bands`, 2026-11-25: up to 983 guard scans on five of eight rigs). The yawn's hand covers
  * the mouth 0.06 A in front of it (4e act 9), at the chin seed, palm toward the face as the thinking hand holds it; it
  * comes 0.08 A to its own side, the nearest offset from the midline, in 0.02 A steps, at which Chisa's and Ellen's arms
  * solve a key inside their limits (E/g4/a/scratch/probe-cover.ts).
@@ -92,7 +94,7 @@ export const BEAT_PATHS: readonly (readonly [number, number, number])[] = [GESTU
  * pronation and flexion.
  */
 export const ARM_FORMS: Readonly<Record<BodyArmForm, { readonly shape: HandShape | Readonly<Record<BodySide, HandShape>>, readonly pron: number, readonly wflex: number, readonly swivel: number, readonly short: number, readonly seed: 'chest' | 'chin' | 'front-low' | 'tragion', readonly anchor: { readonly side: number, readonly up: number }, readonly hands: 'one' | 'both', readonly sweep?: number, readonly after?: BodyArmForm }>> = {
-  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.15 }, hands: 'one' },
+  'hand-to-chest': { shape: 'relaxed', pron: 75 * DEG, wflex: -10 * DEG, swivel: 25 * DEG, short: 0, seed: 'chest', anchor: { side: 0.05, up: 0.075 }, hands: 'one' },
   'thinking-hand': { shape: 'thinking', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.04, seed: 'chin', anchor: { side: 0.1, up: 0 }, hands: 'one' },
   'cover-mouth': { shape: 'relaxed', pron: 20 * DEG, wflex: -20 * DEG, swivel: 10 * DEG, short: 0.06, seed: 'chin', anchor: { side: 0.08, up: 0 }, hands: 'one' },
   'hair-touch': { shape: 'comb', pron: 20 * DEG, wflex: 0, swivel: 10 * DEG, short: 0, seed: 'tragion', anchor: { side: 0, up: 0 }, hands: 'one' },
@@ -302,9 +304,11 @@ export class GestureKeys {
    *   arm's own side and up, and a two-hand form's wrist half a hand length further to its own side.
    * - The key: from the anchor (the thinking hand `short` of it) the hand backs off along the approach in 0.01 A
    *   steps, and at each step the elbow swings out from the form's swivel to 80 degrees. A key counts when every joint
-   *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies' margin (a
-   *   contact form touches the body, so it takes no settling headroom); the first step with one wins, with the swivel
-   *   that leaves the most limit margin.
+   *   is 2 degrees inside its limit and the pose and the angle path from the rest arm clear the proxies' margin; the
+   *   first step with one wins, with the swivel that leaves the most limit margin. A form at the chest seed also keeps
+   *   the settling headroom (`KEY_HEADROOM`): the trunk breathes, sways and bends under the held hand, and its forearm
+   *   lies across volumes that move with the lower spine, not with the shoulder. The chin and front-low contacts take
+   *   none.
    * - The thinking hand first puts the index fingertip on the face (`fingertip`), and takes the wrist anchor above only
    *   where no such key exists; the clasp solves both hands together (`clasp`), and the hair tuck its two keys (`tuck`).
    *
@@ -347,6 +351,7 @@ export class GestureKeys {
     seed.x += sigma * (spec.anchor.side * length + (spec.hands === 'both' ? 0.5 * traits.arms[side].handLength : 0))
     seed.y += spec.anchor.up * length
     const reach = HAND_RADIUS * this.lengths[side].forearm + ANCHOR.clearance * length
+    const headroom = spec.seed === 'chest' ? KEY_HEADROOM : 0
     let surface = seed.z
     for (let z = seed.z + ANCHOR.start * length; z > seed.z; z -= ANCHOR.step * length) {
       if (this.collision.distance(seed.x, seed.y, z) <= reach) {
@@ -362,7 +367,7 @@ export class GestureKeys {
         if (!this.solveOnce(side, { hand, swivel: candidate, pron: spec.pron, wflex: spec.wflex, wdev: 0 }, pose))
           continue
         const inside = this.limitMargin(side, pose)
-        if (inside >= LIMIT_MARGIN && inside > margin && this.deepest(side, pose, this.restArms[side]) === null) {
+        if (inside >= LIMIT_MARGIN && inside > margin && this.deepest(side, pose, this.restArms[side], headroom) === null) {
           margin = inside
           swivel = candidate
         }

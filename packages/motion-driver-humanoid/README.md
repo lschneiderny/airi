@@ -1024,8 +1024,9 @@ hold `plan.armForm` (hand to chest, thinking hand) at contact anchors found as
 architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
 the body's surface, and the key backs off from it while the elbow swings out,
 until the pose and its path from rest clear the proxies' margin with every
-joint 2 degrees inside its limit; a contact form touches the body, so it takes
-no settling headroom. The thinking hand puts the index fingertip on the face
+joint 2 degrees inside its limit. The hand to chest also keeps the settling
+headroom (`KEY_HEADROOM`), because the trunk breathes, sways and bends under the
+held hand; the chin and front-low contacts take none. The thinking hand puts the index fingertip on the face
 instead of the wrist at an anchor: the fingertip point marches in at the chin
 seed, toward the midline where the face is narrower than the anchor's side
 offset, and the wrist tries a hand length from it in 600 directions, the hand
