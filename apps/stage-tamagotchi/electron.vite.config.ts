@@ -382,7 +382,8 @@ export default defineConfig(({ command }) => ({
         extendRoute: settingsSearch.extendRoute,
       }),
 
-      VitePluginVueDevTools(),
+      // `AIRI_VUE_DEVTOOLS=0` drops the floating DevTools button, for example in a recorded demo.
+      env.AIRI_VUE_DEVTOOLS !== '0' && VitePluginVueDevTools(),
 
       // https://github.com/JohnCampionJr/vite-plugin-vue-layouts
       Layouts({
