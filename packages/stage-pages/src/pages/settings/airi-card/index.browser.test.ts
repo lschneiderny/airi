@@ -89,3 +89,34 @@ it('restores imported memories and character state under the newly created card 
     clearTimeout(timeout)
   }
 })
+
+it('gives a card imported without a model the model on the stage', async () => {
+  vi.mocked(importAiriCardPackage).mockResolvedValue({ card: exportToJSON({ name: 'Imported Rin', version: '1.0.0' }), memories: [], characterState: null })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: AiriCards }] })
+  await router.push('/')
+  const screen = await render(AiriCards, {
+    global: {
+      plugins: [pinia, router, createI18n({ legacy: false, locale: 'en', messages: { en } })],
+    },
+  })
+  const cards = useAiriCardStore(pinia)
+  cards.cards.set('default', cards.builtInCard)
+  cards.selectedAvatarModelId = 'default-live2d-avatar-model'
+  let newCardId = ''
+  cards.$onAction(({ name, after }) => {
+    if (name === 'addCard')
+      after((id) => { newCardId = id })
+  })
+  const imported = new Promise<void>((resolve) => {
+    vi.mocked(toast).mockImplementationOnce(() => {
+      resolve()
+      return 'imported'
+    })
+  })
+
+  await userEvent.upload(screen.container.querySelector('input[type="file"]')!, new File(['zip'], 'card.zip'))
+  await imported
+
+  const airi = cards.getCard(newCardId)?.extensions.airi
+  expect(airi?.avatarModels.find(model => model.id === airi.defaultAvatarModelId)?.displayModelId).toBe('preset-live2d-1')
+})

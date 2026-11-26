@@ -86,8 +86,10 @@ watch(inputFiles, async (newFiles) => {
     return
 
   try {
-    const { card, memories, characterState: stateRecord } = await importAiriCardPackage({ file, displayModelsStore })
-    const newCardId = await addCard(card, 'import')
+    const { card, memories, characterState: stateRecord, displayModelId } = await importAiriCardPackage({ file, displayModelsStore })
+    // A package without a model keeps the model on the stage. Otherwise activating the
+    // imported character would empty the stage.
+    const newCardId = await addCard(card, 'import', displayModelId ? undefined : cardStore.selectedAvatarModel?.displayModelId)
     // A package without a state record starts the card's state fresh from its profile.
     await characterState.importRecord(newCardId, stateRecord)
     for (const entry of memories)
