@@ -1696,6 +1696,13 @@ class GesturePerformer {
       this.keys.clearOfBody(track.side, this.scratch, context.previous.channels)
       track.aim(this.scratch)
     }
+    // The emotion that asked for the held form may settle it (`MergedPerformancePlan.armForm.settle`).
+    const settle = context.plan.armForm?.settle
+    if (track.state === 'form' && settle) {
+      for (let j = 0; j < 26; j++)
+        this.scratch[j] = track.key[j] + settle[j]
+      track.aim(this.scratch)
+    }
     if (track.active || track.weight > 0)
       track.advance(now, this.tension)
     track.participate(now, freeShare(context.input.owned.head))

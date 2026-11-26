@@ -10,8 +10,11 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 export interface MergedPerformancePlan {
   readonly support: number | null
   readonly gaze: BodyGazeGoal | null
-  /** `both` holds a two-hand form on both arms; a request for one side of a held two-hand form lets the other hand go. */
-  readonly armForm: { readonly side: BodyGestureHand, readonly form: BodyArmForm } | null
+  /**
+   * `both` holds a two-hand form on both arms; a request for one side of a held two-hand form lets the other hand go.
+   * `settle` moves the held key: radians per arm block channel, added to the form's key while the arm holds it.
+   */
+  readonly armForm: { readonly side: BodyGestureHand, readonly form: BodyArmForm, readonly settle?: ArrayLike<number> } | null
   readonly suppressHeadCue: boolean
   readonly suppressHeadEmphasis: boolean
   readonly holdGaze: boolean
