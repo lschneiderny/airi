@@ -169,9 +169,9 @@ export function createReactionLayer(): PerformanceLayer {
     const f = flinch.scale * flinch.far.y
     const degrees = flinch.region === 'head' ? HEAD_GUARD : BODY_GUARD
     guard(poked, g * (0.5 + 0.5 * near), degrees)
-    // A central poke guards both sides alike; toward a side the far arm takes its own low share.
-    const farShare = GUARD.far.share + (1 - GUARD.far.share) * (1 - near)
-    guard(far, f * farShare, flinch.region === 'head' ? degrees : degrees.map((d, j) => d + near * (FAR_GUARD[j] - d)))
+    // At the midline the far arm takes the near arm's half share in the near arm's response, so which side of the
+    // middle a central poke lands on does not pick the arm that leads; toward a side it takes its own late, low share.
+    guard(far, (1 - near) * 0.5 * g + near * GUARD.far.share * f, flinch.region === 'head' ? degrees : degrees.map((d, j) => d + near * (FAR_GUARD[j] - d)))
     if (flinch.region === 'head') {
       // The trunk leans a little away from the hit as the head is knocked.
       channels[c('midRoll')] += k * -1.5 * s * DEG

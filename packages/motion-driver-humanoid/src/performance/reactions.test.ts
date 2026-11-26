@@ -111,6 +111,17 @@ describe('touch reaction layer', () => {
     }
   })
 
+  it('guards both sides alike for a poke on the midline, whichever side of it the touch lands', () => {
+    const [left, right] = [0.001, -0.001].map(x => layerEffect(poking([{ at: 0.5, region: 'body', x, y: 0 }]), 2))
+    for (const elbow of ['leftElbow', 'rightElbow'] as const) {
+      expect(peak(left[c(elbow)])).toBeGreaterThan(15 * DEG)
+      // The same arm answers the two pokes alike: crossing the midline does not swap a leading and a following arm.
+      expect(Math.max(...left[c(elbow)].map((v, k) => Math.abs(v - right[c(elbow)][k])))).toBeLessThan(0.1 * DEG)
+    }
+    // The two arms differ only by what the standing pose gives each.
+    expect(Math.abs(peak(left[c('leftElbow')]) - peak(left[c('rightElbow')]))).toBeLessThan(1.5 * DEG)
+  })
+
   it('brings the poked side\'s hand to the head after a head poke, for a moment and on a rig that reaches it', () => {
     const forms = armForms(poking([{ at: 0.5, region: 'head', x: 1, y: 0 }]), 3)
     const at = (t: number) => forms[Math.round(t * 120)]
