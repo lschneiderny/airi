@@ -1057,7 +1057,9 @@ on that cleared path. Every other
 channel of a segment also stays within that slope, so a large forearm, wrist or
 finger turn arrives after the hit, and each new segment continues the planned
 motion's velocity, never the inverse's. The report marks a stroke at the apex the lead wrist actually shows
-on the performer's output, so a marker's time is the motion's. The layers also
+on the performer's output, so a marker's time is the motion's. Its hand names
+the hands that stroke from the stroke's start, so a two-hand unit's one-hand
+stroke reports that hand as it enters `stroke`. The layers also
 hold `plan.armForm` (hand to chest, thinking hand) at contact anchors found as
 architecture 6.3 says: a hand point marches in from 1 A in front of the seed to
 the body's surface, and the key backs off from it while the elbow swings out,

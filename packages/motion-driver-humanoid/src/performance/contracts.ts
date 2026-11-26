@@ -28,7 +28,8 @@ export type BodyReactionKind = 'body-poke' | 'head-poke' | 'pet' | 'drag'
 
 /**
  * A gesture layer's report of its unit. `unitSeq` increments when a unit starts and `strokeSeq` when a stroke is
- * planned; `plannedHit` is that stroke's planned hit in performer seconds, null between strokes.
+ * planned; `plannedHit` is that stroke's planned hit in performer seconds, null between strokes. `hand` names the
+ * unit's hands, and from a stroke's start the hands that stroke.
  */
 export interface BodyGestureReport {
   readonly unitSeq: number
