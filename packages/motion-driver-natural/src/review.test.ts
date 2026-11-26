@@ -128,30 +128,3 @@ describe('review state', () => {
     expect([...targets].sort()).toEqual(['camera', 'desk', 'side'])
   })
 })
-
-describe('follow candidate', () => {
-  /** Mean cosine between the held head pose and an off-camera eye fixation, both relative to their rest. */
-  function agreement(follow: number) {
-    const motion = controller()
-    motion.setReviewGains({ ...neutralReviewGains, follow, drift: 0, wobble: 0 })
-    let sum = 0
-    let count = 0
-    for (let i = 1; i <= 600 * 60; i++) {
-      const { fixation } = motion.advance(i / 60)
-      const head = motion.bodyIntent().head.slow
-      const offset = [head[0] - postureHomes.product[0], head[1] - postureHomes.product[1]]
-      const sizes = Math.hypot(...offset) * Math.hypot(fixation.x, fixation.y)
-      // A look at the camera has no direction to agree with.
-      if (motion.reviewState().head.moving || Math.hypot(fixation.x, fixation.y) < 0.08 || sizes === 0)
-        continue
-      sum += (offset[0] * fixation.x + offset[1] * fixation.y) / sizes
-      count++
-    }
-    return sum / count
-  }
-
-  it('turns the head toward what the eyes look at, where the shipped shifts are unrelated to it', () => {
-    expect(Math.abs(agreement(0))).toBeLessThan(0.2)
-    expect(agreement(1)).toBeGreaterThan(0.5)
-  })
-})

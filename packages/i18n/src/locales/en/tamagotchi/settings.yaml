@@ -697,9 +697,6 @@ devtools:
           title: Show one layer alone
           reset: Reset all
         layers:
-          follow:
-            title: Head follows the eyes (candidate)
-            description: The share of each head move that goes where the eyes look instead of in a random direction. 0% is the current motion.
           shifts:
             title: Posture shifts
             description: The size of the moves from one held head pose to the next.

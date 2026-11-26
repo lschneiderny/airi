@@ -126,7 +126,19 @@ and what each renderer performs is in
 Pep is a character's baseline amount of extra motion, a number in [0, 1].
 `motion.setPep(pep, nowSeconds)` sets it from the next grid step, and the grid
 eases the applied value toward it over 1 s, so a card switch never pops. Pep
-adds three things:
+adds four things:
+
+- Attention-led head motion ([ADR](../../docs/ai/adr/2026-11-25-attention-led-head-motion.md)),
+  at the share `min(1, pep / 0.25)`. Every posture shift becomes an attention
+  shift: the eyes go first (`NaturalAttentionShifts` `share` rises from 0.3 to
+  1) to a wide fixation (`NaturalGazeLayer` `beginAttentionShift`: desk and
+  side fixations up to 2.5 times as far from the camera, held up to 0.8 s
+  longer), and the shift follows to where they look (`NaturalPostureLayers`
+  `aimShare` and `aim`, one head unit of yaw and 0.8 of pitch per eye unit,
+  with a fifth of the random offset kept). The head stays when the aim moved
+  less than 0.08 head units since the previous shift, and while a glance, the
+  chat or the petting hand holds the eyes. Holds between shifts are up to 6
+  times as long and at most 12 s (`holdLimit`). It adds no random stream.
 
 - A whole-upper-body sway (`./sway`, `NaturalSwayLayer`, stream `sway`): the
   body leans to a drawn side and size through an underdamped follower, the
@@ -324,10 +336,6 @@ const { head, eyes, act, owner } = motion.reviewState()
   It draws nothing.
 - The idle acts have no gain. A host withholds the idle drive to switch them
   off.
-
-### Follow candidate
-
-`follow` in the review gains is a candidate motion, not a layer. At 0, its default, a posture shift goes in a random direction, as it ships. At 1, each shift lands near where the eyes look (`headAimShare` head units per eye unit, with a fifth of the random offset kept), and a new fixation starts the next shift 50 ms after the eyes leave. It adds no random draws and no shifts. Do not make it the default without an ADR: it moves the liveliness statistics.
 
 ## Reference statistics
 

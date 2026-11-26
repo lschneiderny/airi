@@ -35,6 +35,8 @@ const shiftAxisGain: Vec3 = [1.05, 0.7, 0.3]
 const shiftTargetLimit = 0.75
 /** Share of a shift's random offset that an aimed shift keeps around its aim. */
 const aimScatter = 0.2
+/** Head units: an aim that moved less than this since the previous shift is the same place, and the head stays. */
+const aimStay = 0.08
 /** Regime samples kept for nominal-time reads: 20 s at the facade's 120 Hz grid. */
 const regimeHistory = 2400
 
@@ -53,6 +55,8 @@ function activityGain(e: number) {
  *   progress, and holds between shifts, so a held pose never starts shivering mid-hold.
  * - `r`: heavy-tailed posture shifts. Each shift moves `r` to `0.7 r + A diag(1.05, 0.7, 0.3) d`,
  *   clamped so `|mu + r|` stays within 0.75, along a min-jerk path, then holds; there is no overshoot.
+ *   With `aimShare` above 0 that share of the shift goes where the eyes look (`aim`) instead, or nowhere while the
+ *   eyes stay on one place, so the head moves when her attention does.
  * - Activity spells: a unit OU `x` (tau 120 s) on its own stream sets `rate = exp(0.8 x - 0.32)` and
  *   `amp = exp(0.45 x - 0.10125)`, both mean 1. At each shift start the next hold is divided by `rate` and the
  *   shift amplitude multiplied by `amp`. Shift draws and continuous motion are unchanged, so spells only
@@ -82,12 +86,18 @@ export class NaturalPostureLayers {
    */
   layerGains = { drift: 1, continuous: 1, shift: 1 }
   /**
-   * Review candidate: the share of each new shift that lands near `aim` instead of at the random target. At 0 the
-   * shift is the random one, bit for bit; the draws are the same at every share. @default 0
+   * Attention-led head motion: the share of each new shift that follows `aim` instead of going to the random target.
+   * At 0 the shift is the random one, bit for bit; the draws are the same at every share. @default 0
    */
   aimShare = 0
-  /** Where the eyes look, as head yaw and pitch relative to the home. Read when a shift begins. */
-  aim: readonly [number, number] = [0, 0]
+  /**
+   * Where the eyes look, as head yaw and pitch relative to the home, or `null` while another layer owns the eyes and
+   * moves the head itself. Read when a shift begins: the aimed part of the shift goes there, and stays where the head
+   * is when the aim is `null` or has not moved since the previous shift.
+   */
+  aim: readonly [number, number] | null = [0, 0]
+  /** Longest hold between shifts, in seconds, after the rate scales. @default no limit */
+  holdLimit = Number.POSITIVE_INFINITY
 
   private readonly drift: FilteredOu[]
   private readonly continuous: FilteredOu[]
@@ -106,6 +116,8 @@ export class NaturalPostureLayers {
   private shiftTo: Vec3 = [0, 0, 0]
   private shiftStart = 0
   private shiftDuration = 0
+  /** The aim the previous aimed shift read, or `null` before the first. */
+  private lastAim: readonly [number, number] | null = null
   private nextShiftAt: number
   /** Net seconds owed to the following holds: positive after `advanceShift`, negative after `postponeShift`. */
   private holdCarry = 0
@@ -244,11 +256,20 @@ export class NaturalPostureLayers {
     const direction = unitVector3(this.shiftRandom)
     // The heavier tail would push the desk-home pitch into the head limit (above 1% near-limit), so each
     // target is clamped to within shiftTargetLimit of center, inside the softLimit knee.
-    const aimed = [this.aim[0], this.aim[1], 0]
+    const aim = this.aim
+    // The head follows attention: it stays while the eyes stay on one place or another layer owns them.
+    const stay = aim === null || (this.lastAim !== null && Math.hypot(aim[0] - this.lastAim[0], aim[1] - this.lastAim[1]) < aimStay)
+    if (this.aimShare !== 0 && aim !== null)
+      this.lastAim = aim
+    const aimed = aim === null ? [0, 0, 0] : [aim[0], aim[1], 0]
     const to = from.map((value, axis) => {
       const random = 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]
+      if (this.aimShare === 0)
+        return Math.min(shiftTargetLimit - this.home[axis], Math.max(-shiftTargetLimit - this.home[axis], random))
       // The aimed target keeps a part of the random offset, so two looks at one place do not land on one pose.
-      const target = this.aimShare === 0 ? random : random + this.aimShare * (aimed[axis] + aimScatter * amplitude * shiftAxisGain[axis] * direction[axis] - random)
+      const followed = stay ? value : aimed[axis] + aimScatter * amplitude * shiftAxisGain[axis] * direction[axis]
+      // Written so that a full share is exactly the followed target, and a head that stays does not creep.
+      const target = (1 - this.aimShare) * random + this.aimShare * followed
       return Math.min(shiftTargetLimit - this.home[axis], Math.max(-shiftTargetLimit - this.home[axis], target))
     }) as Vec3
     // Larger moves take longer. Tuned from 0.22 + 0.4 sqrt on rendered rigs: the flatter curve keeps
@@ -260,7 +281,7 @@ export class NaturalPostureLayers {
     this.shiftStartGain = this.gain
     this.shiftStart = at
     this.shiftDuration = 0.35 + 0.25 * Math.sqrt(distance / 0.35)
-    const hold = this.drawHold() / regimeRate + this.holdCarry
+    const hold = Math.min(this.holdLimit, this.drawHold() / regimeRate) + this.holdCarry
     // A postponement longer than this hold carries the rest to the next one.
     this.holdCarry = Math.min(0, hold)
     this.nextShiftAt = at + this.shiftDuration + Math.max(0, hold)

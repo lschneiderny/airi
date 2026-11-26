@@ -125,10 +125,17 @@ export interface GlanceRequest {
  */
 export type GazeTargetKind = 'camera' | 'desk' | 'screen' | 'side' | 'side-up' | 'cursor' | 'chat' | 'aside' | 'glance' | 'override'
 
-// Share of posture shifts that are attention shifts: the gaze moves first and the
-// posture shift starts 30-80 ms later. Other shifts keep the current fixation.
-const attentionShare = 0.3
+/**
+ * Share of posture shifts that are attention shifts without pep: the gaze moves first and the
+ * posture shift starts 30-80 ms later. Other shifts keep the current fixation.
+ */
+export const attentionShare = 0.3
 const attentionLead = { min: 0.03, max: 0.08 }
+// A fully wide attention shift places its desk and side fixations this many times as far from the camera, so the head
+// that follows it makes a move a viewer sees.
+const wideReach = 2.5
+// Seconds a fully wide attention shift adds to its fixation, so the eyes are still there when the head arrives.
+const wideHoldSeconds = 0.8
 
 /**
  * Gaze as fixations joined by min-jerk saccades, independent of head motion.
@@ -359,10 +366,12 @@ export class NaturalGazeLayer {
 
   /**
    * Starts an attention shift at `at`: the gaze moves to a newly drawn target first,
-   * and the caller starts the matching posture shift slightly later.
+   * and the caller starts the matching posture shift slightly later. `wide`, 0 to 1, is how far the shift carries
+   * the head: a wide shift places its desk and side fixations up to 2.5 times as far from the camera and holds the
+   * fixation up to 0.8 s longer. At 0 the shift is an ordinary fixation, with the same draws.
    */
-  beginAttentionShift(at: number) {
-    this.fixateNext(at)
+  beginAttentionShift(at: number, wide = 0) {
+    this.fixateNext(at, wide)
   }
 
   /**
@@ -539,7 +548,8 @@ export class NaturalGazeLayer {
     this.saccadeCount++
   }
 
-  private drawTarget(): Target {
+  /** `reach` multiplies how far the desk and side fixations lie from the camera. */
+  private drawTarget(reach = 1): Target {
     this.onChat = false
     if (this.override) {
       this.targetKind = 'override'
@@ -569,13 +579,13 @@ export class NaturalGazeLayer {
     const total = desk + peripheral + peripheralUp
     if (choice < this.cameraFixationProbability + rest * desk / total) {
       this.targetKind = this.screenPointActive ? 'screen' : 'desk'
-      return this.jittered(this.screenPointActive ? this.screenPoint() : targets.desk)
+      return this.jittered(this.screenPointActive ? this.screenPoint() : { x: targets.desk.x, y: reach * targets.desk.y })
     }
     const side = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
     const up = peripheralUp > 0 && choice >= this.cameraFixationProbability + rest * (desk + peripheral) / total
     const sideTarget = up ? targets.peripheralUp : targets.peripheral
     this.targetKind = up ? 'side-up' : 'side'
-    return this.jittered({ x: side * sideTarget.x, y: sideTarget.y })
+    return this.jittered({ x: reach * side * sideTarget.x, y: reach * sideTarget.y })
   }
 
   private jittered(point: GazePoint): GazePoint {
@@ -586,11 +596,11 @@ export class NaturalGazeLayer {
     return { x: point.x + targetJitter * gaussian(random), y: point.y + targetJitter * gaussian(random) }
   }
 
-  private fixateNext(at: number) {
+  private fixateNext(at: number, wide = 0) {
     this.claimed = null
-    const target = this.drawTarget()
+    const target = this.drawTarget(1 + (wideReach - 1) * wide)
     const onChat = this.onChat
-    const hold = onChat ? this.drawHold(this.chatRandom) : undefined
+    const hold = onChat ? this.drawHold(this.chatRandom) : wide === 0 ? undefined : this.drawHold() + wideHoldSeconds * wide
     this.saccadeTo(target, at, hold)
     this.onChat = onChat
     if (onChat && target !== 'cursor' && hold !== undefined)
@@ -608,11 +618,15 @@ function saccadeSeconds(amplitude: number) {
 }
 
 /**
- * Turns about 30% of posture shifts into gaze-led attention shifts.
+ * Turns a share of posture shifts into gaze-led attention shifts: about 30% without pep.
  * Call `update` once per grid step, before stepping posture and gaze over `[stepStart, stepStart + dt]`.
  * The gaze saccade starts at the scheduled shift time, and the shift is postponed by 30-80 ms (uniform).
  */
 export class NaturalAttentionShifts {
+  /** Share of posture shifts the gaze leads. @default 0.3 */
+  share = attentionShare
+  /** How wide each led shift is, 0 to 1; see {@link NaturalGazeLayer.beginAttentionShift}. @default 0 */
+  wide = 0
   private decidedFor = -1
   /** `shiftCount` of the latest posture shift that the gaze led, or -1 before the first. */
   ledShift = -1
@@ -625,9 +639,9 @@ export class NaturalAttentionShifts {
     if (this.decidedFor === posture.shiftCount || untilShift > dt)
       return
     this.decidedFor = posture.shiftCount
-    if (this.random() >= attentionShare)
+    if (this.random() >= this.share)
       return
-    gaze.beginAttentionShift(stepStart + untilShift)
+    gaze.beginAttentionShift(stepStart + untilShift, this.wide)
     this.ledShift = posture.shiftCount + 1
     posture.postponeShift(attentionLead.min + (attentionLead.max - attentionLead.min) * this.random())
   }
