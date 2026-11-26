@@ -1670,10 +1670,10 @@ class GesturePerformer {
     track.viaReady = false
     track.pending = null
     track.exitSeconds = TIMING.exit
-    // A hand that has sunk through its whole wait goes on home in the time its sink had left (`SINK`).
+    // A hand that has sunk through its whole wait goes on home in the time its sink, the current segment, had left (`SINK`).
     const falling = track.state === 'ready' && track.settle && track.waited >= RISE.settle
     track.settle = true
-    const seconds = Math.max(TIMING.exit + BODY_TICK, falling ? track.phaseEnd - now : TIMING.retractionScale * track.prepSeconds)
+    const seconds = Math.max(TIMING.exit + BODY_TICK, falling ? track.segment.start + track.segment.durations[2] - now : TIMING.retractionScale * track.prepSeconds)
     // A speech unit's home leg may carry a corrective submovement (`transit`); an emotion arm form's way home stays one
     // plain segment and draws nothing from the corrections' stream, and the hair tuck's goes back the way it came.
     const form = track.state === 'form'
@@ -1726,7 +1726,8 @@ class GesturePerformer {
     // A ready hand sinks toward its hang until a stroke catches it or it lets go (`SINK`), once every channel has
     // arrived: the long sink would carry a forearm, wrist or finger turn still on its way on for a second.
     if (track.state === 'ready' && !track.settle && track.arrived(now)) {
-      track.phaseEnd = now + track.move(track.home, now, SINK.seconds, this.tension)
+      // `phaseEnd` stays at the arrival: a hand's phase end aims the body's phrase hold.
+      track.move(track.home, now, SINK.seconds, this.tension)
       track.handWithin(RISE.settle)
       track.settle = true
     }
