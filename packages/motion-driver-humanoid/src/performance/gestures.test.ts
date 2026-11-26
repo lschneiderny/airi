@@ -1104,6 +1104,28 @@ describe('co-speech gestures', () => {
     }
   })
 
+  it('lowers a hand leaning in to take the thought over and lets the trunk go when a clip claims the hand that has it', () => {
+    // Seed 3 hands the thought from the right hand to the left at its 4 s stroke: the left leans in from 4.2 s, waiting
+    // for the next stress. A clip claims the right arm before it comes.
+    const onsets = [...[1, 2, 3, 4, 5, 6].map(at => ({ at, major: at % 2 === 1 })), ...[7.2, 8.4].map(at => ({ at, weak: true }))]
+    const claimAt = 4.3
+    const claim = (time: number) => {
+      const u = Math.max(0, Math.min(1, (time - claimAt) / 0.25))
+      return u * u * (3 - 2 * u)
+    }
+    const script: Script = { utterances: [{ start: 0.5, end: 9.5, energy: 0.65, onsets }], still: true, owned: time => ({ rightArm: claim(time), rightFingers: claim(time) }) }
+    const run = perform(script, 12, { seed: 3 })
+    const bare = perform(script, 12, { seed: 3, layers: false })
+    const claimed = run.frames.find(frame => frame.time >= claimAt)!
+    expect(claimed.gesture.hand).toBe('right')
+    expect(claimed.gesture.activation.left).toBeGreaterThan(0)
+    // Speech ended 2.5 s ago: every unit has lowered its hands and the trunk is the performer's own.
+    const last = run.frames.at(-1)!
+    expect(last.gesture.phase).toBe('rest')
+    expect(last.gesture.activation).toEqual({ left: 0, right: 0 })
+    expect(Math.abs(last.channels[channelIndex('upperYaw')] - bare.frames.at(-1)!.channels[channelIndex('upperYaw')])).toBeLessThan(1e-6)
+  })
+
   it('nods the head with each stroke, its apex on the hit, 3 degrees for a major stroke', () => {
     const pitch = [channelIndex('neckPitch'), channelIndex('headPitch')]
     const yaw = [channelIndex('neckYaw'), channelIndex('headYaw')]
