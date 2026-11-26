@@ -534,6 +534,8 @@ export class BodyCollision {
    * contact's depth into the skin of thickness `s`, it is pushed back by `x^2 / 4s` until `x = 2s` and by `x - s` beyond:
    * the push and its slope are 0 at the skin's edge and the arm keeps at most the skin's depth, so it ends clear of the
    * margin. A body that moves into the arm slows it while it crosses the skin instead of stopping it in one tick.
+   * `headroom`, a share of each segment's length as `measure`'s `extra`, is added to the arm's radius under any skin, so
+   * the arm ends that far outside the margin.
    *
    * Every contact asks for its own smallest clearing rotation, and the step is their mean weighted by each rotation's
    * fourth power: the most demanding contact governs, and a contact's share grows from nothing as it enters the skin and
@@ -542,7 +544,7 @@ export class BodyCollision {
    * lever: a walking arm's push went from 4 to 34 degrees per second in one tick as its forearm left a tail and its
    * upper arm stayed in it (Ellen, walk, seed 1).
    */
-  project(side: BodySide, channels: Float32Array, skinWeight = 0): boolean {
+  project(side: BodySide, channels: Float32Array, skinWeight = 0, headroom = 0): boolean {
     const start = ARM_START[side]
     const skin = this.skin[side] * skinWeight
     const contacts = this.contacts
@@ -551,7 +553,7 @@ export class BodyCollision {
     let capped = false
     this.keep.fill(Number.NaN)
     for (let attempt = 0; attempt < 3; attempt++) {
-      this.measure(side, channels, SKIN * skinWeight, -1, true)
+      this.measure(side, channels, headroom + SKIN * skinWeight, -1, true)
       let weights = 0
       let flex = 0
       let abduct = 0

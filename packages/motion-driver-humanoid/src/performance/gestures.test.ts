@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
-import { BodyCollision } from './collision'
+import { BodyCollision, KEY_HEADROOM } from './collision'
 import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, writeArmFormHand, writeHandShare } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { writeHandShape } from './hand-shapes'
@@ -753,6 +753,45 @@ describe('co-speech gestures', () => {
         expect(kick / BODY_TICK).toBeLessThanOrEqual(15 * DEG)
       }
     }
+  })
+
+  it('brings an arm home a settled key\'s headroom clear of a hip that rolls in under it', () => {
+    // A retraction often shifts her weight onto the foot under the retracting arm, rolling that hip out under its home.
+    // Home cleared only to the corrector's margin left the settling arm no room, and the corrector kicked it (the cut
+    // stroke above).
+    const rest = createBodyPerformer({ traits: ellenTraits, seed: 3 }).restChannels()
+    const keys = new GestureKeys(ellenTraits, rest)
+    const body = new BodyCollision(ellenTraits, rest)
+    const start = ARM_START.left
+    const home = Float64Array.from(rest.subarray(start, start + 26))
+    const channels = rest.slice()
+    const posed = rest.slice()
+    const hipsRoll = channelIndex('hipsRoll')
+    let reached = -1
+    let moved = -1
+    let inside = 0
+    for (let tick = 0; tick <= 120; tick++) {
+      // A steady roll of the hips toward her left arm, 8 degrees in a second, takes the hip into the hang's margin.
+      channels[hipsRoll] = rest[hipsRoll] + 8 * DEG * tick / 120
+      body.prepare(channels)
+      if (reached < 0 && body.measure('left', channels).depth > 0)
+        reached = tick
+      const pose = home.slice()
+      keys.clearOfBody('left', pose, channels)
+      if (moved < 0 && [2, 3, 4, 5].some(j => Math.abs(pose[j] - home[j]) > 1e-6))
+        moved = tick
+      posed.set(channels)
+      for (let j = 2; j <= 5; j++)
+        posed[start + j] = pose[j]
+      body.prepare(posed)
+      inside = Math.max(inside, body.measure('left', posed, KEY_HEADROOM).depth)
+    }
+    expect(reached).toBeGreaterThan(0)
+    // Home, which keeps its headroom from the rest trunk, moves out before the hip reaches its margin, and keeps that
+    // headroom from the hip all the way.
+    expect(moved).toBeGreaterThan(0)
+    expect(moved).toBeLessThan(reached)
+    expect(inside).toBeLessThanOrEqual(1e-4)
   })
 
   it.each([['chisa', chisaTraits], ['ellen', ellenTraits]] as const)('hands a retracted arm back to the hang only once it is home on %s\'s real rig', (_, rig) => {
