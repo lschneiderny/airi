@@ -7,11 +7,12 @@ import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmma
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 
-export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 5 } as const
+export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 6 } as const
 const REJECTED_TOKENS_MAX = 5
 /**
  * A native MOOD marker: `<|MOOD` followed by whitespace or the closing `|>`. The character-state layer consumes it,
- * so it is never a stage rejection. Its body is not validated here; `parseMoodCue` decides validity.
+ * so it is never a stage rejection. Its body is not validated here; `parseMoodCue` decides validity. A near-miss
+ * spelling that the runtime recovers, such as `<|MOOD brighter: x>`, counts like the native marker (since version 6).
  */
 const MOOD_MARKER = /^<\|MOOD(?:\s|\|>)/
 // Longest first, so `^_^` is not counted as the shorter `^^`.

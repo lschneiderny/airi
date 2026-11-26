@@ -151,6 +151,32 @@ describe('useLlmmarkerParser', () => {
       expect(result.recovered).toBe(0)
     })
 
+    it('keeps a long well-formed marker of a recovered name, as the parser without recovery does', async () => {
+      const long = `<|ACT brighter: ${'a'.repeat(80)}|>`
+      for (const [a, b] of splitsOf(`${long} tail`)) {
+        const result = await run([a, b])
+        expect(result.specials).toEqual([long])
+        expect(result.literal).toBe(' tail')
+      }
+    })
+
+    it('parses a JSON marker the same way at every split point when its closer comes late', async () => {
+      const input = `<|ACT {"emotion":"happy"}${' '.repeat(65)}|> tail`
+      const outcomes = new Set<string>()
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        outcomes.add(JSON.stringify(result.specials))
+      }
+      expect([...outcomes]).toHaveLength(1)
+    })
+
+    it('still speaks a long reply after a `<|NAME` opener that never closes', async () => {
+      const prose = ' and then I kept talking for a good while without ever closing it, really.'
+      const result = await run(['<|ACT happy', prose])
+      expect(result.specials).toEqual([])
+      expect(result.literal).toBe(`<|ACT happy${prose}`)
+    })
+
     it('recovers when the closer ends at exactly 63 and 64 characters but not 65', async () => {
       for (const [length, ok] of [[63, true], [64, true], [65, false]] as const) {
         const body = 'a'.repeat(length - 6)

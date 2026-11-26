@@ -267,8 +267,10 @@ describe('cue contract scorer', () => {
     ['<|MOOD happy|> Hi', 1, 0, []],
     ['<|MOOD|> Hi', 1, 0, []],
     ['Hi <|MOOD brighter: a|> <|MOOD lower: b|>', 2, 0, []],
+    // A bracketed near-miss stays prose; an angle-bracket one is recovered and counts like the native marker (scorer version 6).
     ['[MOOD brighter: you came back] Hi', 0, 0, []],
-    ['<MOOD brighter: you came back> Hi', 0, 0, []],
+    ['<MOOD brighter: you came back> Hi', 1, 0, []],
+    ['<|MOOD brighter: you came back> Hi', 1, 0, []],
     ['<|MOODY brighter|> Hi', 0, 1, ['<|MOODY brighter|>']],
     ['<|mood brighter: x|> Hi', 0, 1, ['<|mood brighter: x|>']],
   ])('counts every native MOOD marker, well-formed or not, and never as a stage rejection: %s', async (text, mood, stageRejected, unknownMarkers) => {
@@ -290,8 +292,8 @@ describe('action scoring', () => {
   const actText = (action: string) => `<|ACT {"emotion":"happy","action":"${action}"}|>Hi!`
   const performAction = (action: unknown) => ({ name: 'perform_action', arguments: { action } })
 
-  it('pins the scorer version at 5', () => {
-    expect(CUE_CONTRACT_SCORER).toEqual({ id: 'cue-contract-score', version: 5 })
+  it('pins the scorer version at 6', () => {
+    expect(CUE_CONTRACT_SCORER).toEqual({ id: 'cue-contract-score', version: 6 })
   })
 
   it.each([

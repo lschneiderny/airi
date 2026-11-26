@@ -7,7 +7,7 @@ import { cueContractFixtures } from './cue-contract-fixtures'
 import { replayReply } from './reply-replay'
 
 /** Mirrors the stage rules that AIRI hosts pass; core-agent cannot import them from stage-shared. */
-const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY', 'SILENT'] }
+const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY', 'SILENT', 'MOOD'] }
 
 describe('canonicalCueText', () => {
   it.each([
@@ -21,6 +21,7 @@ describe('canonicalCueText', () => {
     ['a swapped decline marker before speech', '|<ACT happy|>\n|<SILENT|>\nGreat news!', '<|ACT happy|>\n<|SILENT|>\nGreat news!'],
     ['a closer that ends the reply after its last word', '<|ACT happy|>Good morning to you too!|>\n', '<|ACT happy|>Good morning to you too!'],
     ['a recovered cue before an unfinished marker', '[ACT happy] Hi <|ACT sa', '<|ACT happy|> Hi '],
+    ['a MOOD missing its closing pipe', 'Oh! <|MOOD brighter: you came back> Sorry.', 'Oh! <|MOOD brighter: you came back|> Sorry.'],
   ])('rewrites %s', async (_case, raw, canonical) => {
     expect(await canonicalCueText(raw, stage.recoverCueNames)).toBe(canonical)
     // A canonical reply is a fixed point, so the history prefix stays stable on every later request.
@@ -36,7 +37,7 @@ describe('canonicalCueText', () => {
     ['an unfinished marker', 'Hi there <|ACT happy'],
     ['a closer after whitespace or before more text', '<|ACT happy|> Write x|> f, the pipe operator is |>'],
     ['a pipe before a tag that is no cue', 'Run sort |<b>file</b> now'],
-    ['a name that is not recoverable', '[MOOD brighter: you came back] Hi'],
+    ['a name that is not recoverable', '[NOTE brighter: you came back] Hi'],
   ])('returns a reply with %s unchanged', async (_case, text) => {
     expect(await canonicalCueText(text, stage.recoverCueNames)).toBe(text)
   })

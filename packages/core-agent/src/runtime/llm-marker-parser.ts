@@ -223,7 +223,8 @@ function closeMalformedJson(body: string, opener: FullCueOpener, stray: number) 
  *   the cue fires and the prose after it is spoken. The body counts as malformed once a stray closer appears, once it
  *   can grow no further, or once 64 characters follow its first closer without the JSON balancing. Until then the
  *   parser waits, up to 1024 characters, because a long well-formed body may still balance.
- * - Any other body must close within 64 characters of the opener.
+ * - Any other body must close within 64 characters of the opener. A well-formed `<|NAME …|>` may close within 1024
+ *   characters instead, as it would without recovery, so a `<|NAME` opener waits that long for its closer.
  * - `flush` speaks the opener as literal so the rest is rescanned and never swallowed.
  * - With `final` set no more text arrives. An unterminated canonical `<|NAME` tail with no closer is then dropped,
  *   as unfinished `<|...` markers always were. A near-miss, or a balanced JSON body whose closer is missing, is flushed.
@@ -257,14 +258,17 @@ function resolveCue(buffer: string, opener: FullCueOpener, final: boolean, cues:
     limit = jsonEnd + MAX_RECOVERY_LENGTH
   }
 
+  // A well-formed `<|NAME …|>` text body may close past the limit, as it does in the parser without recovery,
+  // so its opener waits that long for its `|>`. Other bodies must close within the limit.
+  const pipedText = opener.piped && jsonStart < 0
   const close = findCueClose(body, opener, from)
-  if (close && close.end <= limit)
+  if (close && (close.end <= limit || (pipedText && close.piped && close.end <= MAX_JSON_BODY_LENGTH)))
     return { kind: 'close', ...close }
-  if (close || body.length > limit)
+  if (close || body.length > (pipedText ? MAX_JSON_BODY_LENGTH : limit))
     return { kind: 'flush' }
   if (!settled)
     return { kind: 'wait' }
-  return { kind: stop < 0 && opener.piped && jsonStart < 0 ? 'drop' : 'flush' }
+  return { kind: stop < 0 && pipedText && body.length <= limit ? 'drop' : 'flush' }
 }
 
 interface StreamController<T> {
