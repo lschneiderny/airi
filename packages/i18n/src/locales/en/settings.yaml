@@ -46,8 +46,7 @@ dialogs:
       AIRI is open sourced at {github}, if you want to check how we handle your
       credentials, feel free to inspect our code.
     enableChatCheck: >-
-      Allow airi to send a "ping" message to the first available chat model to
-      check availability
+      Allow AIRI to send a "ping" message to a chat model to check availability
     start: Let's do it!
     loginPrompt: Sign in to use the official AIRI provider for the best experience.
     loginAction: Sign in
