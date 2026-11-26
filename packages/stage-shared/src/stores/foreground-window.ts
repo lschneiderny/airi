@@ -38,6 +38,12 @@ export interface ForegroundWindowSample {
  */
 export const useForegroundWindowStore = defineStore('foreground-window', () => {
   const sample = shallowRef<ForegroundWindowSample | null>(null)
+  /**
+   * Advances when the host hides more or less of the desktop for a reason outside the presence settings, such as
+   * the Electron host's temporary hides. Every holder of a reading treats it as a changed read policy and drops what
+   * it read, because that reading may name an app that is hidden now.
+   */
+  const hostPolicyRevision = shallowRef(0)
 
   function setSample(next: ForegroundWindowSample) {
     sample.value = next
@@ -47,9 +53,17 @@ export const useForegroundWindowStore = defineStore('foreground-window', () => {
     sample.value = null
   }
 
+  /** Records a host policy change and drops the sample read under the previous one. */
+  function hostPolicyChanged() {
+    hostPolicyRevision.value += 1
+    sample.value = null
+  }
+
   return {
     sample,
+    hostPolicyRevision,
     setSample,
     reset,
+    hostPolicyChanged,
   }
 })

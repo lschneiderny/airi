@@ -747,6 +747,26 @@ describe('situation store', () => {
     expect(store.state.activity).toMatchObject({ appId: 'code', title: 'main.ts' })
   })
 
+  it('forgets the foreground app when the host hides more of the desktop, and reads the next app again', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+    const foreground = useForegroundWindowStore()
+    foreground.setSample(foregroundSample({ title: 'secret plans.txt - Notepad' }))
+    expect(store.state.activity).toMatchObject({ appId: 'notepad' })
+
+    // A temporary hide lives in the host, outside the settings, so it reaches the state only through this revision.
+    foreground.hostPolicyChanged()
+
+    expect(foreground.sample).toBeNull()
+    expect(store.state.activity).toBeNull()
+    expect(JSON.stringify({ block: store.renderForRequest(Date.now()), state: store.state })).not.toMatch(/notepad|secret/iu)
+
+    foreground.setSample(foregroundSample({ exePath: 'C:\\Apps\\Code.exe', exeName: 'Code.exe', title: 'main.ts' }))
+    expect(store.state.activity).toMatchObject({ appId: 'code', title: 'main.ts' })
+  })
+
   it('forgets a title it holds when window titles stop being shared', async () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()

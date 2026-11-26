@@ -337,10 +337,10 @@ export const useSituationStore = defineStore('situation', () => {
   }, { flush: 'sync', immediate: true })
 
   // What the sensor reported must leave the state too, so the next prompt carries no app or title. A changed read
-  // policy does the same: the host stays silent about a newly blocked app, so no later reading would replace it.
+  // policy or host hide does the same: the host stays silent about a newly hidden app, so no reading replaces it.
   // Leader only; the situation is not replicated.
-  watch([() => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document)], ([sharing, policy], [, previousPolicy]) => {
-    if ((!sharing || policy !== previousPolicy) && leading.value)
+  watch([() => settings.document.shareForegroundWindow, () => foregroundReadPolicyKey(settings.document), () => foregroundWindow.hostPolicyRevision], ([sharing, policy, revision], [, previousPolicy, previousRevision]) => {
+    if ((!sharing || policy !== previousPolicy || revision !== previousRevision) && leading.value)
       current.value = forgetForeground(current.value)
   }, { flush: 'sync' })
 
