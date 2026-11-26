@@ -593,7 +593,8 @@ export class GestureKeys {
    * all touch and sweep candidates, the pair whose largest joint change from touch to sweep is least, with the angle
    * path between them clear of the proxies, gives both keys. Pairs whose touch and sweep both have the palm facing the
    * side of the head (`TUCK_PALM_ROLL`) go first, so the hand slides back along the hair; a facing touch with a sweep
-   * that cannot face would turn the palm out on the way back.
+   * that cannot face would turn the palm out on the way back. The keys are solved from the rest clavicles, as the
+   * clasp's are, so they are the rig's and do not depend on where the shoulders stand when the tuck is first asked for.
    */
   private tuck(side: BodySide, form: BodyArmForm, pose: ArmPose): boolean {
     const known = this.tucked.get(`${side}:${form}`)
@@ -604,8 +605,10 @@ export class GestureKeys {
     this.headSize ??= this.measureHead()
     if (!this.headSize)
       return false
-    const touches = this.tuckCandidates(side, 'hair-touch', pose, this.headSize)
-    const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', pose, this.headSize) : []
+    const work = pose.slice()
+    work.set(this.restArms[side].subarray(0, 2))
+    const touches = this.tuckCandidates(side, 'hair-touch', work, this.headSize)
+    const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', work, this.headSize) : []
     const pairs: { readonly touch: ArmPose, readonly sweep: ArmPose, readonly change: number, readonly facing: boolean }[] = []
     for (const touch of touches) {
       for (const sweep of sweeps) {
