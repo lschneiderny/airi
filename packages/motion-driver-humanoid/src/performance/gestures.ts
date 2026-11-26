@@ -853,6 +853,13 @@ class GesturePerformer {
     if (this.deferred && (!unit.active || unit.retracting || now - this.deferred.at > RISE.defer))
       this.deferred = null
     if (unit.active && !unit.retracting) {
+      // A phrase is endless exactly while she walks. A walk that starts mid-phrase keeps the phrase going endless, and
+      // an arrival ends the walk's phrase at its next hold; either way the body eases to the new gait's phrase hold.
+      const walking = input.gait !== null && input.gait.mode !== 'idle'
+      if (this.phrase && walking === Number.isFinite(this.phrase.length)) {
+        this.phrase = { ...this.phrase, length: walking ? Infinity : this.phraseStrokes }
+        this.aimBody(context, now, Math.max(TIMING.exit, ...unit.sides.map(side => this.tracks[side].prepSeconds)))
+      }
       const ended = !voice.speaking && now - this.speechEnded >= TIMING.afterSpeech
       const capped = (unit.strokes >= TIMING.unitStrokes && now - this.lastStroke >= 0.6) || now - unit.start >= TIMING.unitSeconds
       const holding = unit.drive >= TIMING.holdDrive

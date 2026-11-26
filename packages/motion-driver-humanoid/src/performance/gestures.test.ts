@@ -39,7 +39,11 @@ interface Script {
   readonly facing?: (time: number) => number
   /** No posture sway, breath or arm noise, so the trunk and the colliders hold still. */
   readonly still?: boolean
+  /** Whether she walks: a gait on its walking mode, or standing on its idle one. */
+  readonly walking?: (time: number) => boolean
 }
+
+const noGait = new Float64Array(77)
 
 /**
  * Speech as Natural maps it into body intent: the speak scenario's shape, a 0.10 voice floor with a bump at each onset,
@@ -70,6 +74,7 @@ function speechInput(script: Script, time: number, state: { onset: number, empha
     mood: { ...base.mood, ...script.mood, tension: script.tension ?? base.mood.tension },
     gaze: { ...base.gaze, kind: utterance?.gaze ?? 'free' },
     owned: { ...base.owned, ...script.owned?.(time) },
+    gait: script.walking ? { mode: script.walking(time) ? 'walking' : 'idle', walkForm: script.walking(time), weight: 1, support: 0, channels: noGait, ankles: null } : base.gait,
   }
 }
 
@@ -554,6 +559,26 @@ describe('co-speech gestures', () => {
     expect(lively.turn).toBeGreaterThan(calm.turn)
     expect(lively.lift).toBeGreaterThan(calm.lift)
   }, 60_000)
+
+  it('eases the body\'s phrase hold out when a walk starts mid-phrase and in when she arrives, and ends the walk\'s phrase on arrival', () => {
+    // Seed 3 gestures one-handed, so a standing phrase tilts the head toward the hand; only the phrase hold rolls it.
+    const roll = channelIndex('headRoll')
+    const speech = (walking: (time: number) => boolean): Script => ({ utterances: [{ start: 0.5, end: 10, energy: 0.65, onsets: Array.from({ length: 9 }, (_, i) => ({ at: 1 + i, major: i % 2 === 0 })) }], still: true, walking })
+    const held = (script: Script) => {
+      const run = perform(script, 7, { seed: 3 })
+      const bare = perform(script, 7, { seed: 3, layers: false })
+      return { run, at: (time: number) => Math.abs(run.frames[Math.round(time / BODY_TICK) - 1].channels[roll] - bare.frames[Math.round(time / BODY_TICK) - 1].channels[roll]) }
+    }
+    const departing = held(speech(time => time >= 2.6))
+    expect(departing.at(2.5)).toBeGreaterThan(1 * DEG)
+    expect(departing.at(3.6)).toBeLessThan(0.05 * DEG)
+    const arriving = held(speech(time => time < 3))
+    expect(arriving.at(2.9)).toBeLessThan(0.05 * DEG)
+    expect(arriving.at(4)).toBeGreaterThan(1 * DEG)
+    // Standing again, the unit goes on in phrases: its hands prepare for a new one before they lower.
+    const lowered = arriving.run.frames.findIndex(frame => frame.gesture.phase === 'retraction')
+    expect(arriving.run.frames.slice(0, lowered).some(frame => frame.time > 3 && frame.gesture.phase === 'preparation')).toBe(true)
+  })
 
   it('moves the weight to the other foot as the hands come down, in most units', () => {
     let shifted = 0
