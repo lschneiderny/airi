@@ -145,9 +145,9 @@ export const providerKokoroLocal = defineProvider({
     ],
   },
   extraMethods: {
-    listModels: async () => {
+    listModels: async (_config, _provider, context) => {
       const capabilities = getWebGpuState()
-      return kokoroModelsToModelInfo(capabilities.supported, undefined, capabilities.fp16Supported)
+      return kokoroModelsToModelInfo(capabilities.supported, context?.t, capabilities.fp16Supported)
     },
     loadModel: async (config, _provider, hooks) => {
       const model = assertModelSupported(config.model)

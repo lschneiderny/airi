@@ -73,4 +73,12 @@ describe('kokoro local speech provider', () => {
 
     expect(mocks.adapter.loadModel).toHaveBeenCalledWith('q8', 'wasm')
   })
+
+  it('translates model descriptions with the context translator', async () => {
+    const provider = await providerKokoroLocal.createProvider({ model: 'q8', voiceId: '' })
+    const models = await providerKokoroLocal.extraMethods?.listModels?.({ model: 'q8', voiceId: '' }, provider, { t: key => `translated:${key}` })
+
+    expect(models?.find(model => model.id === 'q8')?.description)
+      .toBe('translated:settings.pages.providers.provider.kokoro-local.models.q8.description')
+  })
 })

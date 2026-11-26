@@ -2797,6 +2797,8 @@ pages:
               label: Model Selection
               description: Smaller models load faster but may have slightly lower quality.
         models:
+          fp16-webgpu:
+            description: Half precision model using WebGPU - Fastest on devices that support it
           fp32-webgpu:
             description: >-
               Full precision model using WebGPU - Recommended for supported
