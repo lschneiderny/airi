@@ -400,7 +400,8 @@ describe('co-speech gestures', () => {
 
   it('lets one hand of two go while the other strokes alone', () => {
     // Strokes 1.1 s apart with no pause, so one-hand phrases follow two-hand ones. Since its last stroke a raised hand
-    // holds, recovers, waits at most 1.1 s and starts home; a hand left out of the phrase used to wait 4.4 s.
+    // holds, recovers, and is home by its sink's end, 2.4 s after it reached its ready key (`SINK`); a hand left out of
+    // the phrase waited 4.4 s raised.
     const onsets = Array.from({ length: 10 }, (_, i) => ({ at: 1 + i * 1.1, major: i % 3 === 0 }))
     for (let seed = 1; seed <= 20; seed++) {
       const run = perform({ utterances: [{ start: 0.5, end: 12.5, energy: 0.65, onsets }] }, 12.5, { seed })
@@ -415,16 +416,18 @@ describe('co-speech gestures', () => {
           if (Number.isNaN(raised))
             raised = frame.time
           const last = hits.filter(hit => (hit.hand === side || hit.hand === 'both') && hit.hit <= frame.time).at(-1)?.hit ?? -Infinity
-          expect(frame.time - Math.max(raised, last), `seed ${seed}, ${side} at ${frame.time.toFixed(2)}`).toBeLessThanOrEqual(3.4)
+          // 3.4 s while the hand waited still at its ready key and then dropped in a retraction's time.
+          expect(frame.time - Math.max(raised, last), `seed ${seed}, ${side} at ${frame.time.toFixed(2)}`).toBeLessThanOrEqual(4)
         }
       }
     }
   }, 120_000)
 
-  it('lets a hand go about a second after it is back at its ready key with nothing more to stress', () => {
-    // One stroke, then weak onsets: each hand holds, recovers, rests at its ready key and starts home. Without posture
-    // noise the wrist stands still only at the ready key.
-    let waits = 0
+  it('carries a thought\'s last accent on into one fall of the hand, with no wait at the ready key', () => {
+    // One stroke, then weak onsets: each hand holds, recovers and lets go about a second later. Without posture noise
+    // the wrist stands still only where its plan does. Before the sink (`SINK`) it stood at its ready key for 0.5 to
+    // 1.1 s and then dropped.
+    let hands = 0
     for (const energy of [0.45, 0.85]) {
       for (let seed = 1; seed <= 6; seed++) {
         const onsets = [{ at: 1, major: true }, { at: 2.5, weak: true }, { at: 4, weak: true }]
@@ -433,20 +436,30 @@ describe('co-speech gestures', () => {
         for (const side of SIDES.filter(side => stroke.hand === side || stroke.hand === 'both')) {
           const path = wristPath(run, side)
           const moving = (i: number) => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]) / BODY_TICK >= 1e-3
-          // The longest stretch the wrist stays still after the stroke; a hold's end only touches zero speed.
+          const home = run.frames.findIndex((frame, i) => frame.time > stroke.hit && frame.gesture.activation[side] < 1 && i > 0)
+          // The recovery's top, where the wrist turns down after the stroke's rebound.
+          let top = Math.round(stroke.hit / BODY_TICK)
+          for (let i = top; i < home; i++) {
+            if (path[i][1] > path[top][1])
+              top = i
+          }
           let wait = 0
           let still = 0
-          for (let i = Math.round(stroke.hit / BODY_TICK); i < path.length; i++) {
+          let rise = 0
+          for (let i = top + 1; i < home; i++) {
             still = moving(i) ? 0 : still + BODY_TICK
             wait = Math.max(wait, still)
+            rise = Math.max(rise, path[i][1] - Math.min(...path.slice(top, i).map(p => p[1])))
           }
-          expect(wait, `energy ${energy}, seed ${seed}, ${side}`).toBeGreaterThan(0.5)
-          expect(wait, `energy ${energy}, seed ${seed}, ${side}`).toBeLessThanOrEqual(1.1 + BODY_TICK)
-          waits++
+          expect(home, `energy ${energy}, seed ${seed}, ${side}`).toBeGreaterThan(top)
+          expect(wait, `energy ${energy}, seed ${seed}, ${side}`).toBeLessThanOrEqual(0.1)
+          // The followers' settle as the recovery arrives lifts the wrist by a few thousandths of the fall.
+          expect(rise, `energy ${energy}, seed ${seed}, ${side}`).toBeLessThanOrEqual(0.01 * (path[top][1] - path[home][1]))
+          hands++
         }
       }
     }
-    expect(waits).toBeGreaterThanOrEqual(12)
+    expect(hands).toBeGreaterThanOrEqual(12)
   })
 
   it('raises a hand only into a stroke of its own, also when a new phrase hands the thought to the other hand', () => {
@@ -1036,7 +1049,11 @@ describe('co-speech gestures', () => {
     // The speak scenario's peaks: 0.8 to 1.25 s apart, so a stroke can meet one hand still recovering from its hold.
     // A hand starting its stroke from a recovery sometimes dips in speed mid-stroke, and the nearest apex then falls
     // short of the lag: 2 of 178 two-hand strokes over these 300 seeds before hands leaned in (`RISE`), so the rule is
-    // judged as a share. A hand that had just risen and led the stroke still carried its rise: 13 of 181 missed.
+    // judged as a share. A hand that had just risen and led the stroke still carried its rise: 13 of 181 missed. The
+    // share of 0.02 held 3 of 182 misses with hands that stood still at their ready keys. A sinking hand (`SINK`)
+    // that a phrase bringing in the other hand catches rises again into the new place and strokes off that rise: 8 of
+    // 180. Each miss's planned profiles land 58 to 75 ms apart; the lead's wrist slows into its hold so smoothly that its
+    // first speed minimum comes up to 73 ms later.
     const speak = [0.8, 1.8, 3.03, 3.98, 5.17].map((at, i) => ({ at: 0.3 + at, major: i % 2 === 0 }))
     let both = 0
     let later = 0
@@ -1053,7 +1070,7 @@ describe('co-speech gestures', () => {
       both += strokesOfBoth.length
       later += Math.max(0, strokesOfBoth.length - 1)
     }
-    expect(missed.length / both, missed.join(', ')).toBeLessThanOrEqual(0.02)
+    expect(missed.length / both, missed.join(', ')).toBeLessThanOrEqual(0.05)
     // Strokes after a unit's first are the ones that leave a post-stroke hold.
     expect(later).toBeGreaterThanOrEqual(15)
   }, 300_000)
@@ -1255,7 +1272,9 @@ describe('co-speech gestures', () => {
   })
 
   it('corrects about 40 % of preparations and retractions with an overlapping second submovement, by seed', () => {
-    const script: Script = { utterances: [utterance(0.5, 0.65, [], { end: 2 })], still: true }
+    // Speech ends before the ready hand has waited out its wait, so it retracts at a retraction's pace (`SINK`); a hand
+    // that has waited goes on from its sink's speed, and a corrected leg's two peaks merge. Speech used to end at 2 s.
+    const script: Script = { utterances: [utterance(0.5, 0.65, [], { end: 1.6 })], still: true }
     // Each transition's speed peaks on the arm's output (flex, abduction, twist, elbow), counted by `speedPeaks`.
     const transitions = (seed: number) => {
       const run = perform(script, 5, { seed })
@@ -1298,17 +1317,20 @@ describe('co-speech gestures', () => {
     const state = { onset: 0, emphasis: 0, slow: 0 }
     // Natural reports mood tension 0 in speech without an emotion: the softest active arm followers.
     const script: Script = { utterances: [utterance(0.5, 0.65, [])], tension: 0 }
-    const frames: { channels: Float32Array, unitSeq: number, hand: string | null }[] = []
+    const frames: { channels: Float32Array, unitSeq: number, hand: string | null, phase: string, targets: Record<string, Float64Array> }[] = []
     // Up to 1.75 s: the hands, raised at 0.5 s with nothing to stroke, let go about 1.1 s after they are ready (`RISE`).
     for (let tick = 1; tick <= Math.round(1.75 / BODY_TICK); tick++) {
       const frame = performer.step(speechInput(script, tick * BODY_TICK, state))
-      frames.push({ channels: frame.channels.slice(), unitSeq: frame.diagnostics.gesture.unitSeq, hand: frame.diagnostics.gesture.hand })
+      const g = frame.diagnostics.gesture
+      frames.push({ channels: frame.channels.slice(), unitSeq: g.unitSeq, hand: g.hand, phase: g.phase, targets: { ...targets } })
     }
     const start = frames.findIndex(frame => frame.unitSeq === 1)
     const side = frames[start].hand === 'left' ? 'left' : 'right'
-    // By 1.75 s the layer's target has settled on the ready key; each arm angle stays between where it began and the
-    // key, within the channel's own moving-hold noise.
-    const key = targets[`gesture-${side}`]
+    // The ready key: the layer's target 0.1 s after the preparation's phase, once a submovement the followers made
+    // longer has arrived; the sink (`SINK`) has moved it 0.01 degrees by then. Each arm angle stays between where it
+    // began and the key, within its moving-hold noise.
+    const prepared = frames.findIndex((frame, i) => i > start && frame.phase !== 'preparation')
+    const key = frames[prepared + Math.round(0.1 / BODY_TICK)].targets[`gesture-${side}`]
     ;(['Flex', 'Abduct', 'Twist', 'Elbow'] as const).forEach((name, k) => {
       const c = channelIndex(`${side}${name}`)
       const from = frames[start - 1].channels[c]

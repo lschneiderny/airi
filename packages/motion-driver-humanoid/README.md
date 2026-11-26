@@ -962,11 +962,18 @@ strokes as soon as the preparation lets it, within 0.6 s of the onset, and the
 unit lowers its hands only after that stroke (`RISE`). A unit that has played
 its sixth stroke lowers its hands at its phrase's end instead of drawing another
 phrase, and in a two-hand phrase a hand that has risen and not stroked yet beats
-with the lead, 30 to 90 ms behind it. A hand with nothing more
-to stress lets go: once it has waited at its ready key 1.1 s of speech with no
-stroke leaving, it retracts while speech goes on, alone when the
-other hand of the unit still strokes, and the next stroking onset raises it
-again. A unit's weight ramps out once the arm is home, so the
+with the lead, 30 to 90 ms behind it. A hand does not hold still at its ready
+key: from the moment it arrives it sinks toward its hang over 2.4 s, and its
+fingers relax to the hang's hand over 1.1 s (`SINK`). A stroke still leaves from wherever the sinking hand is, its key
+lowered as far as the wrist has come down (the raised key when the lowered one
+does not clear the body), so the beat keeps most of its size. A hand with nothing more
+to stress lets go: once it has waited 1.1 s of speech with no stroke leaving,
+it retracts while speech goes on, alone when the other hand of the unit still
+strokes, and the next stroking onset raises it again. A hand that lets go
+after the full wait goes home in the time its sink had left, carrying the
+sink's speed, so a thought's last accent runs into one continuous fall; a pause
+or the end of speech lowers a hand that has not waited out its wait at a
+retraction's pace. A unit's weight ramps out once the arm is home, so the
 hang, which the corrector may hold out of the body, takes a resting arm (an
 emotion arm form's arm too). An arm form let go while it still moves (an idle
 behaviour cut short) starts home from where its plan is, with the plan's
