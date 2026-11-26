@@ -157,7 +157,10 @@ describe('touch reaction layer', () => {
     expect(lift[1]).toBeGreaterThan(lift[0])
     expect(lift[2]).toBeGreaterThan(lift[1])
     const full = layerEffect(petting(1, 1), 3)
-    expect(full[c('rightClavElev')].at(-1)).toBeLessThanOrEqual(0)
+    // The far shoulder stays down. It rests about a degree above its lower limit, so its drop saturates, and the
+    // standing contrapposto lifts the shoulder over the free leg by a hair as she leans: under a twentieth of the near
+    // shoulder's lift.
+    expect(full[c('rightClavElev')].at(-1)).toBeLessThan(0.05 * lift[2])
     expect(full[c('neckRoll')].at(-1)).toBeLessThan(-6 * DEG)
     expect(full[c('leftClavProt')].at(-1)).toBeGreaterThan(2 * DEG)
     expect(full[c('rightClavProt')].at(-1)).toBe(0)
