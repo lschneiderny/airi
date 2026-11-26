@@ -47,8 +47,9 @@ export interface BodyPerformerOptions {
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
-type MutableFrame = Mutable<Omit<BodyPerformanceFrame, 'pelvis' | 'gaze' | 'eyes' | 'diagnostics'>> & {
+type MutableFrame = Mutable<Omit<BodyPerformanceFrame, 'pelvis' | 'gaze' | 'eyes' | 'startle' | 'diagnostics'>> & {
   pelvis: Vec3
+  startle: { seq: number, strength: number }
   gaze: { yaw: number, pitch: number }
   eyes: { yaw: number, pitch: number }
   diagnostics: Mutable<BodyPerformanceFrame['diagnostics']>
@@ -183,6 +184,7 @@ class BodyPerformer {
       turnStarted: false,
       turnSteps: [],
       footSteps: [],
+      startle: { seq: 0, strength: 0 },
       lidClose: 0,
       mouthOpen: 0,
       act: null,
@@ -371,6 +373,8 @@ class BodyPerformer {
     frame.turnSteps = turn.turnSteps
     this.turnSupport = turn.stance !== null ? (turn.stance === 'right' ? 1 : -1) * SQUARE_UP_SUPPORT : turn.turning ? 0 : null
     frame.footSteps = stack.footSteps
+    frame.startle.seq = stack.startles
+    frame.startle.strength = stack.startle
     frame.lidClose = Math.max(state.gaze.lidClose, stack.lidClose)
     frame.mouthOpen = stack.mouthOpen
     frame.act = stack.act

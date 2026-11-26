@@ -49,6 +49,13 @@ export interface PerformanceModulation {
   /** Increments once per sighing onset. */
   readonly sighSeq: number
   /**
+   * Increments once per startle: a surprise the walk answers by checking its stride (`BodyPerformanceFrame.startle`).
+   * `startle` is that startle's strength in [0, 1]. Every change counts, whatever the layer's weight: a pulse's posture
+   * starts from zero weight on the tick it raises the startle. An emotion layer raises it; standing, nothing reads it.
+   */
+  readonly startleSeq?: number
+  readonly startle?: number
+  /**
    * 4c's tension K for the arm followers (`PerformanceContext.tension`), `NEUTRAL_K` at baseline. Only the clip-free
    * rest and doze set it (4f: 0.2 and 0.1); an emotion's own K is not wired to the followers.
    */
@@ -131,6 +138,9 @@ export class PerformanceStack {
   readonly modulation = { tempo: 1, amplitude: 1, breath: 1, followerK: NEUTRAL_K }
   /** Sighing onsets of layers with weight, counted from construction. */
   sighs = 0
+  /** Startles the layers raised, counted from construction, and the latest one's strength (`PerformanceModulation.startleSeq`). */
+  startles = 0
+  startle = 0
   lidClose = 0
   mouthOpen = 0
   act: BodyActFeedback | null = null
@@ -153,6 +163,7 @@ export class PerformanceStack {
       elapsed: 0,
       duration: 0,
       sighSeq: 0,
+      startleSeq: 0,
       deepBreaths: 0,
     }))
   }
@@ -255,6 +266,13 @@ export class PerformanceStack {
         if (m.sighSeq !== entry.sighSeq && weight > 0)
           this.sighs++
         entry.sighSeq = m.sighSeq
+        if (m.startleSeq !== undefined) {
+          if (m.startleSeq !== entry.startleSeq) {
+            this.startles++
+            this.startle = Math.max(0, Math.min(1, m.startle ?? 0))
+          }
+          entry.startleSeq = m.startleSeq
+        }
       }
       if (layer.order === 'gesture') {
         const activation = this.gesture.activation

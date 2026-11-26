@@ -181,6 +181,8 @@ export class MMDBody {
   private readonly rootPosition = new Vector3()
   private readonly rootVelocity = { x: 0, y: 0, z: 0 }
   private support = 0
+  /** The performer's latest startle (`BodyPerformanceFrame.startle`), handed to the gait on the next tick. */
+  private readonly startle = { seq: 0, strength: 0 }
   private skate = 0
   private skateContact = 0
   /** The largest per-frame contact skate since the last `resetSkateContactPeak()` (model units per frame). */
@@ -499,6 +501,7 @@ export class MMDBody {
           idleSupport: this.support,
           plantedFeet,
           style: input.walkStyle ?? this.walkStyle,
+          startle: this.startle,
         })
         this.gaitEvents.push(...frame.events)
         this.measureRootVelocity(frame)
@@ -527,6 +530,8 @@ export class MMDBody {
       if (!frame)
         continue
       this.support = frame.support
+      this.startle.seq = frame.startle.seq
+      this.startle.strength = frame.startle.strength
       if (!moving)
         this.facing = frame.facingYaw
       this.turning = frame.turning

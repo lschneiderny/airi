@@ -313,6 +313,12 @@ export interface BodyPerformanceFrame {
   readonly turnStarted: boolean
   readonly turnSteps: readonly TurnStep[]
   readonly footSteps: readonly BodyFootStep[]
+  /**
+   * The latest startle a layer raised (`PerformanceModulation.startleSeq`), for the host to hand its gait on the next
+   * tick (`LocomotionInput.startle`): `seq` counts startles from construction or reset, `strength` is the latest one's,
+   * in [0, 1]. The gait checks a walking stride by it and ignores it while she stands.
+   */
+  readonly startle: { readonly seq: number, readonly strength: number }
   readonly lidClose: number
   readonly mouthOpen: number
   readonly act: BodyActFeedback | null

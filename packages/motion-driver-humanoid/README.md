@@ -213,6 +213,13 @@ finishes the current pair before yielding; disabling or rebasing retains the
 gait's immediate-stop behavior. A farther goal follows the ordinary walk,
 including its arrival turn. Omitting `step` preserves the ordinary gait.
 
+A startle checks a walking stride. `LocomotionInput.startle` takes the performer's `frame.startle` from the previous
+tick (a sequence number and a strength in [0, 1]); a new sequence number while a walk is under way slows the root's
+travel by up to 0.8 and the step rate by up to 0.6 of the strength over a 0.7 s sin² bump (`CATCH`), so the step in the
+air lands late and short and the next keeps the walk's period. The speed law carries on from the unchecked speed.
+Standing, turning on the spot, sidestepping or settling, and with the input omitted or unchanged, the gait is untouched
+([natural walk refit ADR](../../docs/ai/adr/2026-11-23-natural-walk-refit.md)).
+
 No two strides are the same. `createLocomotion({ variability })` (default `youngAdultStrideVariability`) varies stride
 time and stride length independently by healthy young adults' coefficients of variation, 1.8 % and 3.9 % (Beauchet et
 al. 2005, J NeuroEng Rehabil 2:26, n = 49; independent draws reproduce their 4.3 % speed CV), through the package's
@@ -821,8 +828,10 @@ joints hold for 0.3 s, then let go at her next change of stance foot (or 0.6 s
 later) to a fifth of their size through a 1.2 Hz critically damped follower, and
 come back when she stands. Hand shapes, the trunk and the pelvis stay, a held
 form is let go once absorbed, and a surprised pulse dips the pelvis 0.03 leg
-lengths while she walks (`startle`). The step itself does not hitch: that needs
-a locomotion input. While she speaks, love's chest lifts 4 degrees and its trunk
+lengths while she walks (`startle`). Each surprised pulse also raises a startle at
+its intensity (`startleSeq`, `startle` in the layer's modulation); the stack counts
+every new one whatever the layer's weight, the performer reports the latest in
+`frame.startle`, and the host hands that to the gait, which checks the stride. While she speaks, love's chest lifts 4 degrees and its trunk
 turns 5 degrees toward the far, speaking hand, eased in and out over about half
 a second (`speech`). Neutral writes nothing, nor does any emotion term reach a group
 owned above 0.5. Think requests the thinking hand, love the hand to chest and

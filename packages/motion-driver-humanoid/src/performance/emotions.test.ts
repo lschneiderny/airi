@@ -300,6 +300,22 @@ describe('emotion posture layer', () => {
     expect(surprised[c('leftElbow')][Math.round(4.3 * 120)] / DEG).toBeCloseTo(0.6 * 0.35 * 100, 0)
   })
 
+  it('raises one startle at the pulse\'s intensity for a surprise, for the gait, and none for another emotion', () => {
+    const startles = (script: Script) => {
+      const performer = createBodyPerformer({ traits, seed: 1, layers: [createEmotionLayer()] })
+      const seen: { tick: number, seq: number, strength: number }[] = []
+      for (let tick = 1; tick <= 120; tick++) {
+        const { startle } = performer.step(script(tick / 120))
+        if (startle.seq !== (seen.at(-1)?.seq ?? 0))
+          seen.push({ tick, ...startle })
+      }
+      return seen
+    }
+    // The pulse starts at 0.5 s; the frame of that tick carries it.
+    expect(startles(pulse('surprised', 0.5))).toEqual([{ tick: 60, seq: 1, strength: 0.6 }])
+    expect(startles(pulse('happy', 0.5))).toEqual([])
+  })
+
   // Re-pinned: a body poke's startle kept a quarter of its arms, and both hands still opened low into one recoil after
   // the guarding forearm (audit of 2026-11-25). A head poke keeps the quarter.
   it('leaves the arms of a startle from a poke to the touch reaction, and keeps its trunk recoil', () => {
