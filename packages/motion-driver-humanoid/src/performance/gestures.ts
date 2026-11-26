@@ -155,9 +155,10 @@ const CALM = { drive: 0.4, floor: 0.5 } as const
  * with no stroke at all.
  *
  * A hand that would rise before its stress is known only leans (`LEAN`) and rises on the next stroking onset, which it
- * strokes: the hands of a unit opened by a weak onset. Speech that restarts on a weak onset so prepares the hands in
- * time without raising them for nothing; before, they did not move until the first stroking onset, and its stroke came
- * late.
+ * strokes: the hands of a unit opened by a weak onset, and a hand that a new phrase brings in from rest, the other hand
+ * taking over the thought or both joining. Until that onset the hand that has the thought keeps it, so a phrase that
+ * ended on the thought's last stress no longer raises the other hand to its ready key to wait there unstroked, and
+ * speech that restarts on a weak onset prepares the hands in time without raising them for nothing.
  *
  * A raised hand with nothing more to stress lets go: once every hand of a unit has waited at its ready key for
  * `settle` seconds of speech with no stroke leaving, the unit lowers them while speech goes on, and the next stroking
@@ -766,6 +767,11 @@ class GesturePerformer {
   private refractoryEnd = -Infinity
   /** An onset that strokes once the lead hand's preparation lets it (`RISE`): when it came, its form and whether it was major. */
   private deferred: { readonly at: number, readonly form: SpeechGestureForm, readonly major: boolean } | null = null
+  /**
+   * The next phrase, drawn at the current one's end, when it brings in a hand from rest: that hand leans, and the
+   * phrase begins on the next stroking onset (`RISE`).
+   */
+  private handover: { readonly phrase: GesturePhrase, readonly joining: readonly BodySide[] } | null = null
   private readonly majors: number[] = []
   private readonly formTimes = new Map<SpeechGestureForm, number>()
   private armForm: { side: BodyGestureHand, form: BodyArmForm } | null = null
@@ -805,6 +811,7 @@ class GesturePerformer {
     this.quiet = 0
     this.lastStroke = this.refractoryEnd = -Infinity
     this.deferred = null
+    this.handover = null
     this.majors.length = 0
     this.formTimes.clear()
     this.armForm = null
@@ -858,7 +865,7 @@ class GesturePerformer {
       else if (waited.length)
         this.letGo(context, now, waited)
       // Walking keeps its one endless beat phrase.
-      else if (holding && this.quiet >= TIMING.quiet && this.phrase && Number.isFinite(this.phrase.length) && this.phraseStrokes > 0 && unit.sides.every(side => this.tracks[side].state === 'ready'))
+      else if (holding && this.quiet >= TIMING.quiet && this.phrase && Number.isFinite(this.phrase.length) && this.phraseStrokes > 0 && !this.handover && unit.sides.every(side => this.tracks[side].state === 'ready'))
         this.nextPhrase(context, now)
     }
     // A unit opened on this tick's onset owes that onset its stroke (`startUnit`).
@@ -1048,6 +1055,7 @@ class GesturePerformer {
       track.phaseEnd = now + track.prepSeconds
     }
     this.unit = { active: true, sides: started, twoHand: started.length === 2, drive, start: now, strokes: 0, retracting: false, bySpeech: false, leaning: lean }
+    this.handover = null
     this.phrase = { ...phrase, sides: started }
     this.phraseStrokes = 0
     this.phraseSet = false
@@ -1086,9 +1094,24 @@ class GesturePerformer {
     track.state = 'preparation'
   }
 
-  /** Raises the hands of a unit that a weak onset opened (`RISE`) to their ready keys, on a stroking onset. */
+  /**
+   * Raises the hands that leaned for a stress (`RISE`) on a stroking onset: the phrase that waited for one begins, its
+   * joining hand rising, and the hands of a unit that a weak onset opened rise to their ready keys. On the unit's last
+   * stroke the waiting phrase does not begin: its joining hand would rise with nothing to stroke, so it goes home.
+   */
   private riseFor(context: PerformanceContext, now: number): void {
     const unit = this.unit
+    const handover = this.handover
+    if (handover && unit.strokes + 1 >= TIMING.unitStrokes) {
+      for (const side of handover.joining) {
+        if (this.tracks[side].leaning)
+          this.retractTrack(this.tracks[side], now)
+      }
+    }
+    else if (handover) {
+      this.beginPhrase(context, now, handover.phrase, handover.joining.filter(side => this.tracks[side].leaning))
+    }
+    this.handover = null
     if (!unit.leaning)
       return
     unit.leaning = false
@@ -1102,7 +1125,9 @@ class GesturePerformer {
   /**
    * At the end of a phrase in continuous speech: a calm speaker may lower the hands (`retractShare`); otherwise the
    * next phrase takes its hands (`nextHands`) to a new place with a new theme. A hand that goes on prepares again from
-   * where it is, a joining hand from its rest, a hand that leaves retracts; the unit goes on without a new marker.
+   * where it is, a joining hand from its rest, a hand that leaves retracts; the unit goes on without a new marker. A
+   * phrase that hands the thought over to the other hand alone waits for the next stroking onset while that hand
+   * leans (`RISE`).
    */
   private nextPhrase(context: PerformanceContext, now: number): void {
     const { input } = context
@@ -1116,16 +1141,35 @@ class GesturePerformer {
     const free = SIDES.filter(side => unit.sides.includes(side) || this.free(side, input, context))
     const drawn = nextHands(this.phrases, unit.drive, unit.sides, free, this.dominant)
     const phrase = drawPhrase(this.phrases, unit.drive, drawn, current)
+    // A joining hand first needs a clear ready key on this rig, with no set hand until the new phrase's own theme
+    // stroke; where none solves, the hands that gestured go on.
+    const joining = drawn.filter(side => !unit.sides.includes(side)).filter((side) => {
+      const track = this.tracks[side]
+      this.captureHome(track, context)
+      return this.placeAt(track, unit.drive, phrase, drawn.length === 2, null, null)
+    })
+    if (!joining.length) {
+      this.beginPhrase(context, now, phrase, joining)
+      return
+    }
+    for (const side of joining) {
+      this.begin(this.tracks[side], now)
+      this.lean(this.tracks[side], now, gestureTempo(unit.drive))
+    }
+    this.handover = { phrase, joining }
+  }
+
+  /**
+   * Starts `phrase` in the unit: a hand that goes on prepares again from where it is to the new place, a joining hand
+   * prepares from its rest or rises from its lean, and a hand the phrase leaves out retracts.
+   */
+  private beginPhrase(context: PerformanceContext, now: number, phrase: GesturePhrase, joining: readonly BodySide[]): void {
+    const unit = this.unit
+    const drawn = phrase.sides
     const twoHand = drawn.length === 2
     const tempo = gestureTempo(unit.drive)
     // The new phrase's ready keys take no set hand until its own theme stroke.
     this.phraseSet = false
-    // A joining hand first needs a clear ready key on this rig; where none solves, the hands that gestured go on.
-    const joining = drawn.filter(side => !unit.sides.includes(side)).filter((side) => {
-      const track = this.tracks[side]
-      this.captureHome(track, context)
-      return this.placeAt(track, unit.drive, phrase, twoHand, null)
-    })
     const going = drawn.filter(side => unit.sides.includes(side))
     const sides = going.length || joining.length ? [...going, ...joining] : [...unit.sides]
     for (const side of SIDES) {
@@ -1144,20 +1188,24 @@ class GesturePerformer {
         // take it, so the stream's draw is kept for the hands that open a unit.
         track.prepSeconds = track.transit(track.ready, now, seconds, this.tension, placed)
         track.state = placed ? 'preparation' : 'recovery'
+        track.phaseEnd = now + track.prepSeconds
+      }
+      else if (track.leaning) {
+        this.rise(track, now)
       }
       else {
         this.begin(track, now)
         track.prepSeconds = track.transit(track.ready, now, (0.25 + 0.35 * this.travel(side, track.home, track.ready)) / tempo, this.tension, true)
         track.state = 'preparation'
+        track.phaseEnd = now + track.prepSeconds
       }
-      track.phaseEnd = now + track.prepSeconds
     }
     unit.sides = sides
     unit.twoHand = sides.length === 2
     this.phrase = { ...phrase, sides }
     this.phraseStrokes = 0
     this.report.hand = sides.length === 2 ? 'both' : sides[0]
-    this.aimBody(context, now, Math.max(...sides.map(side => this.tracks[side].prepSeconds)))
+    this.aimBody(context, now, Math.max(...sides.map(side => this.tracks[side].phaseEnd - now)))
   }
 
   /** A side's ready offset in `phrase`: its place, and the second hand of a two-hand phrase swung out a little further (4a). */
@@ -1166,10 +1214,13 @@ class GesturePerformer {
     return twoHand && side !== this.dominant ? addOffsets(place, { ...NO_OFFSET, swivel: AMPLITUDE.nonDominantSwivel }) : place
   }
 
-  /** Places the ready key at the phrase's place, or at the centre where that place has no clear key on this rig. */
-  private placeAt(track: ArmTrack, drive: number, phrase: GesturePhrase, twoHand: boolean, via: ArmPose | null): boolean {
-    return this.placeReady(track, drive, this.placeOffset(phrase, track.side, twoHand), via)
-      || (phrase.place !== 'centre' && this.placeReady(track, drive, this.placeOffset({ ...phrase, place: 'centre' }, track.side, twoHand), via))
+  /**
+   * Places the ready key at the phrase's place, or at the centre where that place has no clear key on this rig, with
+   * the hand `theme` has set (`SET`): the current phrase's unless given.
+   */
+  private placeAt(track: ArmTrack, drive: number, phrase: GesturePhrase, twoHand: boolean, via: ArmPose | null, theme = this.setTheme()): boolean {
+    return this.placeReady(track, drive, this.placeOffset(phrase, track.side, twoHand), via, theme)
+      || (phrase.place !== 'centre' && this.placeReady(track, drive, this.placeOffset({ ...phrase, place: 'centre' }, track.side, twoHand), via, theme))
   }
 
   /**
@@ -1178,11 +1229,10 @@ class GesturePerformer {
    * (Ellen's low ready keys sit between her skirt colliders below energy 0.85), the key that clears the margin is used,
    * so the unit still starts. False, with the ready key unchanged, when neither clears.
    */
-  private placeReady(track: ArmTrack, drive: number, offset: ReadyOffset, via: ArmPose | null): boolean {
+  private placeReady(track: ArmTrack, drive: number, offset: ReadyOffset, via: ArmPose | null, theme = this.setTheme()): boolean {
     const keys = this.keys
     if (!keys)
       return false
-    const theme = this.setTheme()
     const base = keys.readyKey(drive, offset)
     const spec = theme ? GESTURE_FORMS[theme] : null
     const key: ArmKey = spec ? { ...base, pron: base.pron + SET.share * (spec.pron - base.pron), wflex: SET.share * spec.wflex, wdev: SET.share * spec.wdev } : base
@@ -1255,24 +1305,24 @@ class GesturePerformer {
     this.riseFor(context, now)
     const form = this.chooseForm(input, now, major, unit.twoHand)
     const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
-    if (this.strokeReady(lead, now, GESTURE_FORMS[form].strokeSeconds / gestureTempo(unit.drive))) {
+    if (this.strokeReady(lead, now, GESTURE_FORMS[form].strokeSeconds / gestureTempo(unit.drive)) && this.prepared()) {
       this.deferred = null
       this.perform(context, now, form, major)
     }
-    // The hand is still rising: it strokes this onset as soon as its preparation lets it (`RISE`).
-    else if (lead.state === 'preparation') {
+    // A hand is still rising: the stroke leaves as soon as the preparations let it (`RISE`).
+    else if (unit.sides.some(side => this.tracks[side].state === 'preparation')) {
       this.deferred = { at: now, form, major: major || (this.deferred?.major ?? false) }
     }
   }
 
-  /** Plays an onset's stroke that waited for the lead hand's preparation (`RISE`), once that hand can stroke. */
+  /** Plays an onset's stroke that waited for the hands' preparations (`RISE`), once they let it leave. */
   private strokeDeferred(context: PerformanceContext, now: number): void {
     const deferred = this.deferred
     const unit = this.unit
     if (!deferred || unit.strokes >= TIMING.unitStrokes)
       return
     const lead = this.tracks[unit.twoHand ? this.dominant : unit.sides[0]]
-    if (!this.strokeReady(lead, now, GESTURE_FORMS[deferred.form].strokeSeconds / gestureTempo(unit.drive)))
+    if (!this.strokeReady(lead, now, GESTURE_FORMS[deferred.form].strokeSeconds / gestureTempo(unit.drive)) || !this.prepared())
       return
     this.deferred = null
     this.perform(context, now, deferred.form, deferred.major)
@@ -1284,7 +1334,10 @@ class GesturePerformer {
     const unit = this.unit
     const drive = unit.drive
     const tempo = gestureTempo(drive)
-    const lead = unit.twoHand ? this.dominant : unit.sides[0]
+    // A two-hand stroke is led by the dominant hand, unless that hand has only just risen beside the other: then the hand
+    // that was up leads, and the risen one, still carrying its rise, lands its 30 to 90 ms later.
+    const other: BodySide = this.dominant === 'left' ? 'right' : 'left'
+    const lead = !unit.twoHand ? unit.sides[0] : this.tracks[this.dominant].silent && !this.tracks[other].silent ? other : this.dominant
     const leadTrack = this.tracks[lead]
     const seconds = GESTURE_FORMS[form].strokeSeconds / tempo
     const walking = input.gait !== null && input.gait.mode !== 'idle'
@@ -1321,6 +1374,16 @@ class GesturePerformer {
       this.majors.push(now)
     this.formTimes.set(performed, now)
     leadTrack.watch = { form: performed, hand: both ? 'both' : lead, peak: 0, speed: 0, wrist: null, until: now + seconds + 0.3, after: now + 0.75 * (leadTrack.phaseEnd - now) }
+  }
+
+  /**
+   * Whether a two-hand stroke that takes along a hand that has not stroked since it rose (`perform`) can leave: only once
+   * every hand of the unit has prepared. Cutting a rise that had just begun, the hands' apexes fell together instead of
+   * 30 to 90 ms apart.
+   */
+  private prepared(): boolean {
+    const unit = this.unit
+    return !unit.twoHand || !unit.sides.some(side => this.tracks[side].silent) || unit.sides.every(side => this.tracks[side].state !== 'preparation')
   }
 
   /** A stroke leaves from the ready key, a hold or a recovery; from a preparation only if it would end first. */
@@ -1500,6 +1563,13 @@ class GesturePerformer {
       if (track.active && track.state !== 'retraction' && track.state !== 'form' && track.state !== 'stroke')
         this.retractTrack(track, now)
     }
+    // A hand that leaned into the phrase that waited for a stress goes home too.
+    for (const side of this.handover?.joining ?? []) {
+      const track = this.tracks[side]
+      if (track.active && track.state !== 'retraction' && track.state !== 'form')
+        this.retractTrack(track, now)
+    }
+    this.handover = null
     const seconds = Math.max(...unit.sides.map(side => TIMING.retractionScale * this.tracks[side].prepSeconds), TIMING.exit)
     this.aimBody(context, now, seconds)
     const standing = context.input.directive.stance === 'stand' && (context.input.gait === null || context.input.gait.mode === 'idle')
