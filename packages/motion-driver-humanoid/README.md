@@ -53,9 +53,9 @@ deterministic motion algorithms for reusable character motion drivers.
   (4e act 8) asks the gesture layer for `hair-touch` from 0.1 s, the combing
   fingertips at the side of the head at the tragion, the palm toward the head
   where the wrist allows it, then for `hair-sweep` from
-  0.8 s, one ear breadth further back, which the arm reaches from the held touch
+  0.9 s, one ear breadth further back, which the arm reaches from the held touch
   without going home, and lets go 0.9 s before the end; the head tilts 4 degrees
-  toward the hand. A
+  toward the hand (`TUCK_TILT`). A
   stretch's elbows fold to bring each hand along the straight line from where
   it hangs to where it reaches (Morasso 1981), the far arm 120 ms behind, fed
   through the relaxed arm followers' inverse (`followerInverse` with `used` 0);
@@ -1094,7 +1094,11 @@ tries the wrist a hand length from the fingertips in 600 directions, solves the
 arm to it, and turns pronation and palmar flexion so the hand ends at the
 fingertips; the first back-off step with a key clear of the proxies inside the
 limits wins, the touch by limit margin and the sweep by the smallest joint
-change from the touch. `capabilities.hairTouch` holds when both arms reach both
+change from the touch. Both keys clear the head rolled toward the hand as the
+act rolls it (`TUCK_TILT`): solved against the upright head, Aemeath's held
+hand met the rolled one and the corrector's push stepped the upper arm. The
+act asks for the sweep at 0.9 s, after the wrist has turned the fingertips onto
+the anchor. `capabilities.hairTouch` holds when both arms reach both
 keys: a key clear of the proxies at the side of the head, with its path from
 rest, is the head clearance 4e's precondition asks for, so the conservative
 `headClearance` probe (a wrist outside a sphere round every head proxy) no
