@@ -125,6 +125,8 @@ export function createWin32Sampler(binding: Win32Binding, isOwnProcess: (pid: nu
       exeName: exePath == null ? null : win32.basename(exePath),
       title: readTitle(hwnd),
       pid,
+      // Window hides are not offered on Windows yet: the platform has no checks (docs/ai/context/testing.md#platforms).
+      windowId: null,
       ownProcess: isOwnProcess(pid),
       busy: readBusy(),
       sampledAtMs: Date.now(),

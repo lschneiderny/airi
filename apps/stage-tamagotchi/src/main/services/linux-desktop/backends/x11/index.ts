@@ -5,7 +5,7 @@ import { Buffer } from 'node:buffer'
 import { X11BackendError, X11Binding } from './binding'
 import { parseUtf8Name, parseWmClass } from './parsers'
 
-export type X11ActiveWindow = Pick<NonNullable<Extract<KwinMessage, { method: 'Active' }>['payload']>, 'caption' | 'resourceClass' | 'pid' | 'fullScreen'>
+export type X11ActiveWindow = Pick<NonNullable<Extract<KwinMessage, { method: 'Active' }>['payload']>, 'windowId' | 'caption' | 'resourceClass' | 'pid' | 'fullScreen'>
 
 export interface X11EwmhBackendOptions {
   readonly sessionType: string
@@ -87,7 +87,7 @@ export class X11EwmhBackend {
       if (caption === null || resourceClass === null || pid === undefined || pid === 0 || (state !== null && state.format !== 32))
         return null
       const fullScreen = state?.format === 32 && state.data.includes(binding.atom('_NET_WM_STATE_FULLSCREEN'))
-      return { caption, resourceClass, pid, fullScreen }
+      return { windowId: String(window), caption, resourceClass, pid, fullScreen }
     }
     catch (error) {
       if (error instanceof X11BackendError && error.reason === 'property-invalid')

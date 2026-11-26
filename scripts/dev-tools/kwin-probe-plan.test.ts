@@ -46,8 +46,8 @@ describe('selectKwinProbeBus', () => {
 
 describe('formatKwinProbeLine', () => {
   it('replaces the active caption with its length', () => {
-    const line = formatKwinProbeLine({ method: 'Active', payload: { caption: 'secret.txt - Kate', resourceClass: 'kate', desktopFileName: 'org.kde.kate', pid: 7, fullScreen: false } })
-    expect(JSON.parse(line)).toEqual({ method: 'Active', payload: { captionLength: 17, resourceClass: 'kate', desktopFileName: 'org.kde.kate', pid: 7, fullScreen: false } })
+    const line = formatKwinProbeLine({ method: 'Active', payload: { windowId: '{w7}', caption: 'secret.txt - Kate', resourceClass: 'kate', desktopFileName: 'org.kde.kate', pid: 7, fullScreen: false } })
+    expect(JSON.parse(line)).toEqual({ method: 'Active', payload: { captionLength: 17, windowId: '{w7}', resourceClass: 'kate', desktopFileName: 'org.kde.kate', pid: 7, fullScreen: false } })
     expect(line).not.toContain('secret')
   })
 

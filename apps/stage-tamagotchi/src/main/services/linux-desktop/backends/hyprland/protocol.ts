@@ -50,6 +50,7 @@ export function parseActive(input: unknown) {
   const window = decode(active, input)
   return window
     ? {
+        windowId: window.address,
         caption: window.title,
         resourceClass: window.class,
         desktopFileName: '',

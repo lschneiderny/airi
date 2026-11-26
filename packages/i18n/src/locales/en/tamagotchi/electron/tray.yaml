@@ -1,4 +1,15 @@
 menu:
+  presence:
+    title: Hide from AIRI
+    no_app: No app to hide yet
+    this_window: This window, until the app quits
+    app_hour: The whole app for 1 hour
+    app_session: The whole app until AIRI restarts
+    pause_hour: Pause everything for 1 hour
+    show_window: 'Show the {app} window again'
+    show_app: 'Show {app} again'
+    end_pause: End the pause
+    settings: Presence settings...
   labels:
     label:
       show: Show

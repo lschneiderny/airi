@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { parseActive, parseCursor, parseHello, parseOutputs, parseOwnPids, parseOwnWindows } from './protocol'
 
-const active = { caption: 'untrusted window title', resourceClass: 'konsole', desktopFileName: 'org.kde.konsole', pid: 42, fullScreen: false }
+const active = { windowId: '{window-1}', caption: 'untrusted window title', resourceClass: 'konsole', desktopFileName: 'org.kde.konsole', pid: 42, fullScreen: false }
 const ownWindow = { id: '{window-1}', pid: 42, x: -100, y: 50, width: 800, height: 600, keepAbove: true, outputScale: 1.25, caption: 'airi-bind-1' }
 const output = { name: 'DP-1', x: -1920, y: 0, width: 1920, height: 1080, scale: 1.25 }
 

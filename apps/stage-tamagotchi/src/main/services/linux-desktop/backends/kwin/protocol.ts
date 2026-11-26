@@ -7,6 +7,8 @@ const coordinate = pipe(number(), finite())
 const pid = pipe(number(), safeInteger(), minValue(0))
 const hello = strictObject({ api: picklist(['plasma6', 'plasma5', 'unsupported']) })
 const active = nullable(strictObject({
+  /** The compositor's id for the window, which stays the same while the window lives. */
+  windowId: pipe(string(), minLength(1), maxLength(256)),
   caption: text,
   resourceClass: text,
   desktopFileName: text,

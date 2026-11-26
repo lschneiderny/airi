@@ -9,6 +9,7 @@ const fixture = (name: string) => readFile(new URL(`./__fixtures__/${name}`, imp
 describe('hyprland protocol', () => {
   it('maps the active JSON reply into the bridge Active shape', async () => {
     expect(parseActive(await fixture('activewindow.json'))).toEqual({
+      windowId: '0xabc',
       caption: 'Untrusted >> title, keep as data',
       resourceClass: 'org.kde.konsole',
       desktopFileName: '',

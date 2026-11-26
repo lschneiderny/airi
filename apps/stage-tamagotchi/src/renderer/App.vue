@@ -76,6 +76,7 @@ import { initializeStageThreeRuntimeTraceBridge } from './bridges/stage-three-ru
 import { useDevicePermissions } from './composables/use-device-permissions'
 import { useHostCapabilitiesProducer } from './composables/use-host-capabilities-producer'
 import { useLanguage } from './composables/use-language'
+import { usePresenceHidesPolicy } from './composables/use-presence-hides'
 import { useFullscreenStore } from './stores/fullscreen'
 import { useServerChannelSettingsStore } from './stores/settings/server-channel'
 import { useStageWindowLifecycleStore } from './stores/stage-window-lifecycle'
@@ -96,6 +97,7 @@ const router = useRouter()
 const route = useRoute()
 const context = useElectronEventaContext()
 useHostCapabilitiesProducer()
+usePresenceHidesPolicy()
 // Each window registers the same list. The stage window decides onboarding at startup, and the
 // onboarding and settings windows show the permissions.
 useDevicePermissionsStore().register(useDevicePermissions())

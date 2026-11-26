@@ -159,7 +159,7 @@ describe('x11 EWMH native boundary', () => {
     expect(backend.activeWindow()).toBeNull()
     await Promise.all([backend.start(), backend.start()])
 
-    expect(backend.activeWindow()).toEqual({ caption: '端末', resourceClass: 'konsole', pid: 1234, fullScreen: false })
+    expect(backend.activeWindow()).toEqual({ windowId: '20', caption: '端末', resourceClass: 'konsole', pid: 1234, fullScreen: false })
     expect(backend.activeWindow()?.pid).toBe(1234)
     expect(ffi.native.XOpenDisplay).toHaveBeenCalledTimes(1)
     expect(ffi.native.XOpenDisplay).toHaveBeenCalledWith(':199')
@@ -237,7 +237,7 @@ describe('x11 EWMH native boundary', () => {
   ])('reads Latin-1 WM_CLASS fields %s', async (hex, expected) => {
     ffi.set(20, 'WM_CLASS', 'STRING', 8, Buffer.from(hex, 'hex'))
     await backend.start()
-    expect(backend.activeWindow()).toEqual({ caption: '端末', resourceClass: expected, pid: 1234, fullScreen: false })
+    expect(backend.activeWindow()).toEqual({ windowId: '20', caption: '端末', resourceClass: expected, pid: 1234, fullScreen: false })
   })
 
   it.each([
