@@ -8,7 +8,7 @@ import { createRandomStream } from '../random'
 import { armResponse } from './arms'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, CHANNEL_GROUPS, channelIndex, DEG, freeShare, SIDES } from './channels'
 import { path } from './cues'
-import { GestureKeys } from './gesture-forms'
+import { GestureKeys, TUCK_TILT } from './gesture-forms'
 import { followerInverse } from './gestures'
 import { writeHandShape } from './hand-shapes'
 import { TRUNK_COUNTER_ROLL } from './posture'
@@ -95,11 +95,13 @@ const NO_STEPS: readonly BodyFootStep[] = []
 const CLASP = { reach: 0.1, firstOff: 1.5, lastOff: 1.1, rock: 0.012, rocks: [2, 4], band: 0.35, ease: 0.6 } as const
 /**
  * Architecture 4e act 8, the hair tuck: the hand reaches the tuck's anchor from 0.1 s (`hair-touch`), sweeps back from
- * 0.8 s (`hair-sweep`) and lets go 0.9 s before the end, as the temple reach did. 0.7 s is the longest rise the
- * gesture layer plans, (0.25 + 0.35) / 0.85 s for a hand travelling one arm length at the slowest tempo, so the sweep
- * starts from the anchor. 4e sets the anchor, the sweep and the tilt; the times are the layer's.
+ * 0.9 s (`hair-sweep`) and lets go 0.9 s before the end, as the temple reach did. 0.7 s is the longest rise the
+ * gesture layer plans, (0.25 + 0.35) / 0.85 s for a hand travelling one arm length at the slowest tempo, and the wrist
+ * turns the hand onto the hair after it: its channels take longer for a larger turn. From 0.8 s the sweep started while
+ * the fingertips were still 0.06 arm lengths short of the anchor on the Chisa test rig. 4e sets the anchor, the sweep
+ * and the tilt; the times are the layer's.
  */
-const TUCK = { reach: 0.1, sweep: 0.8, off: 0.9 } as const
+const TUCK = { reach: 0.1, sweep: 0.9, off: 0.9 } as const
 /** Architecture 4e act 7's finger flick: `open` for 0.15 s at each forward peak of the swing. */
 const FLICK = 0.15
 const SWING_PEAK = Math.atan(Math.SQRT2) / Math.PI
@@ -630,12 +632,13 @@ export function createActLayer(): PerformanceLayer {
       }
       case 'hair-touch': {
         // 4e act 8: the hand rises to the side of the head with the fingers at `comb`, sweeps back and returns (`TUCK`),
-        // the head tilted 4 deg toward it. A rig whose arm cannot reach the anchor keeps its hand hanging (6.3).
+        // the head tilted toward it (`TUCK_TILT`, which the keys clear). A rig whose arm cannot reach the anchor keeps
+        // its hand hanging (6.3).
         if (age >= TUCK.reach && age < TUCK.sweep)
           reach('hair-touch', sideOf(s))
         else if (age >= TUCK.sweep && age < D - TUCK.off)
           reach('hair-sweep', sideOf(s))
-        head(0, 0, 4 * s * trapezoid(age, 0.6, D - 1.5, 0.9))
+        head(0, 0, TUCK_TILT.degrees * s * trapezoid(age, 0.6, D - 1.5, 0.9), TUCK_TILT.neck)
         break
       }
       case 'heel-rock': {

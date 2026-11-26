@@ -5,7 +5,7 @@ import type { BodyArmForm, BodyGestureForm, BodyRigTraits } from './contracts'
 import type { HandShape } from './hand-shapes'
 
 import { solveArmKey } from './arm-key'
-import { ARM_START, DEG, JOINT_LIMITS, SIDES } from './channels'
+import { ARM_START, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision, KEY_HEADROOM } from './collision'
 import { writeHandShape } from './hand-shapes'
 import { BodySkeleton } from './skeleton'
@@ -186,6 +186,12 @@ const FRONT_LOW_HEIGHT = (98.01 - 84.54 - 7.82) / (84.54 - 6.27)
  */
 const TUCK = { headBreadth: 14.78, tragionTop: 12.65, earBreadth: 3.32 } as const
 /**
+ * Architecture 4e act 8's head tilt: the act layer rolls the head this many degrees toward the hand while the tuck holds,
+ * this share of it in the neck (`acts.ts`), and the tuck's keys are solved against the head so rolled. Solved against
+ * the upright head, the held hand met the rolled one, and the corrector's push stepped the upper arm (51 deg/s).
+ */
+export const TUCK_TILT = { degrees: 4, neck: 0.35 } as const
+/**
  * How far the tuck's palm may roll about the hand from facing the side of the head when the wrist turns it there in
  * full (`bentHand`). Keys whose palm faces the head go first (Moore 1985: the palm runs along the hair); by least joint
  * change alone the tuck chose hands held up beside the head palm forward, a salute rather than a touch.
@@ -197,9 +203,10 @@ const TUCK_PALM_ROLL = 50 * DEG
  * lead while the upper arm stays low, so the hand comes up in front of the chest and then out to the temple. Straight
  * from rest, every joint at once, the arm swung out to the side with the elbow high and the palm forward, a wave, the
  * wrist 0.3 to 0.4 arm lengths out beyond where the touch holds it; through this via, 0.15 to 0.24. A stronger lead
- * asks the elbow for more than the act layer's easing allows (0.25 degrees per tick per tick) in the reach's time.
+ * asks the elbow for more than the act layer's easing allows (0.25 degrees per tick per tick) in the reach's time:
+ * 0.62 did once the keys cleared the rolled head (`TUCK_TILT`).
  */
-const TUCK_VIA = { flex: 0.75, abduct: 0.2, twist: 0.2, elbow: 0.62, hand: 0.5 } as const
+const TUCK_VIA = { flex: 0.75, abduct: 0.2, twist: 0.2, elbow: 0.58, hand: 0.5 } as const
 /** Directions from the fingertips in which the tuck tries the wrist. */
 const WRIST_DIRECTIONS = 600
 /** No joint of an arm form sits within this of its limit. */
@@ -607,8 +614,26 @@ export class GestureKeys {
       return false
     const work = pose.slice()
     work.set(this.restArms[side].subarray(0, 2))
-    const touches = this.tuckCandidates(side, 'hair-touch', work, this.headSize)
-    const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', work, this.headSize) : []
+    // The act layer rolls the head toward the hand while it holds the tuck (`TUCK_TILT`), so the keys clear that head.
+    const tilted = this.rest.slice()
+    const roll = (side === 'left' ? -1 : 1) * TUCK_TILT.degrees * DEG
+    tilted[channelIndex('neckRoll')] += TUCK_TILT.neck * roll
+    tilted[channelIndex('headRoll')] += (1 - TUCK_TILT.neck) * roll
+    this.collision.prepare(tilted)
+    const pair = this.tuckPair(side, work, this.headSize)
+    this.collision.prepare(this.rest)
+    if (!pair)
+      return false
+    this.tucked.set(`${side}:hair-touch`, pair.touch.slice(2, 9))
+    this.tucked.set(`${side}:hair-sweep`, pair.sweep.slice(2, 9))
+    pose.set((form === 'hair-sweep' ? pair.sweep : pair.touch).subarray(2, 9), 2)
+    return true
+  }
+
+  /** The tuck's touch and sweep keys from `work`, the rest arm's clavicles and hand (`tuck`); null without a pair. */
+  private tuckPair(side: BodySide, work: ArmPose, head: { readonly top: number, readonly breadth: number }): { readonly touch: ArmPose, readonly sweep: ArmPose } | null {
+    const touches = this.tuckCandidates(side, 'hair-touch', work, head)
+    const sweeps = touches.length ? this.tuckCandidates(side, 'hair-sweep', work, head) : []
     const pairs: { readonly touch: ArmPose, readonly sweep: ArmPose, readonly change: number, readonly facing: boolean }[] = []
     for (const touch of touches) {
       for (const sweep of sweeps) {
@@ -623,17 +648,12 @@ export class GestureKeys {
     // one facing, a sweep that keeps twice the key's headroom goes first; a rig with none keeps the plain headroom.
     for (const facing of [true, false]) {
       for (const headroom of [2 * KEY_HEADROOM, KEY_HEADROOM]) {
-        for (const pair of pairs) {
-          if (pair.facing !== facing || this.deepest(side, pair.sweep, pair.touch, headroom) !== null)
-            continue
-          this.tucked.set(`${side}:hair-touch`, pair.touch.slice(2, 9))
-          this.tucked.set(`${side}:hair-sweep`, pair.sweep.slice(2, 9))
-          pose.set((form === 'hair-sweep' ? pair.sweep : pair.touch).subarray(2, 9), 2)
-          return true
-        }
+        const pair = pairs.find(pair => pair.facing === facing && this.deepest(side, pair.sweep, pair.touch, headroom) === null)
+        if (pair)
+          return pair
       }
     }
-    return false
+    return null
   }
 
   /**

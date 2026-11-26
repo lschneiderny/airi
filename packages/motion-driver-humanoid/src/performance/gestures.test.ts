@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { ARM_NOISE_DEGREES } from './arms'
 import { ARM_START, BODY_TICK, channelIndex, DEG, JOINT_LIMITS, SIDES } from './channels'
 import { BodyCollision, KEY_HEADROOM } from './collision'
-import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, writeArmFormHand, writeHandShare } from './gesture-forms'
+import { GESTURE_FORMS, gestureGain, GestureKeys, NO_OFFSET, TUCK_TILT, writeArmFormHand, writeHandShare } from './gesture-forms'
 import { createGestureLayers } from './gestures'
 import { writeHandShape } from './hand-shapes'
 import { BodySkeleton, createBodyPerformer } from './index'
@@ -1523,6 +1523,13 @@ describe('co-speech gestures', () => {
         return { x: hand[9] - arm.handLength * hand[1], y: hand[10] - arm.handLength * hand[4], z: hand[11] - arm.handLength * hand[7] }
       })
       const sigma = side === 'left' ? 1 : -1
+      // The keys clear the head as the act rolls it toward the hand (`TUCK_TILT`); against the upright head the held
+      // hand met the rolled one. The tragion's height and the depth stay the upright head's.
+      const tilted = rest.slice()
+      const roll = -sigma * TUCK_TILT.degrees * DEG
+      tilted[channelIndex('neckRoll')] += TUCK_TILT.neck * roll
+      tilted[channelIndex('headRoll')] += (1 - TUCK_TILT.neck) * roll
+      collision.prepare(tilted)
       for (const [tip, depth] of [[tips[0], rig.head.z], [tips[1], rig.head.z - back]] as const) {
         // At the side of the head, at the tragion's height and the anchor's depth, where 6.3's march stops: the hand
         // capsule's radius plus 0.01 A off the proxies.
@@ -1591,6 +1598,34 @@ describe('co-speech gestures', () => {
       raised[0] += 4 * DEG
       expect(new GestureKeys(chisaTraits, rest).armForm(side, 'hair-touch', raised), side).toBe(true)
       expect(Array.from(raised.subarray(2, 9)), side).toEqual(Array.from(fromRest.subarray(2, 9)))
+    }
+  })
+
+  it('solves the hair tuck\'s keys clear of the head rolled toward the hand as the act rolls it', () => {
+    // Solved against the upright head, the held hand met the rolled one, and the corrector's push stepped the upper
+    // arm at 51 deg/s.
+    for (const rig of [chisaTraits, ellenTraits]) {
+      const rest = createBodyPerformer({ traits: rig, seed: 1 }).restChannels()
+      const keys = new GestureKeys(rig, rest)
+      for (const side of SIDES) {
+        const start = ARM_START[side]
+        const touch = new Float64Array(rest.subarray(start, start + 26))
+        writeArmFormHand('hair-touch', side, touch)
+        expect(keys.armForm(side, 'hair-touch', touch), side).toBe(true)
+        const sweep = touch.slice()
+        expect(keys.armForm(side, 'hair-sweep', sweep), side).toBe(true)
+        const tilted = rest.slice()
+        const roll = (side === 'left' ? -1 : 1) * TUCK_TILT.degrees * DEG
+        tilted[channelIndex('neckRoll')] += TUCK_TILT.neck * roll
+        tilted[channelIndex('headRoll')] += (1 - TUCK_TILT.neck) * roll
+        const collision = new BodyCollision(rig, rest)
+        collision.prepare(tilted)
+        for (const key of [touch, sweep]) {
+          const channels = tilted.slice()
+          channels.set(key, start)
+          expect(collision.measure(side, channels, KEY_HEADROOM).depth, side).toBe(0)
+        }
+      }
     }
   })
 

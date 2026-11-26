@@ -376,9 +376,9 @@ describe('the act layer', () => {
       return best
     }
     // Natural's side 1 is her right hand: it reaches the anchor before the sweep starts, then the swept key, which lies
-    // one ear breadth behind it.
-    expect(nearest(touched, 0.1, 0.8)).toBeLessThan(0.05)
-    expect(nearest(swept, 0.8, D - 0.9)).toBeLessThan(0.05)
+    // one ear breadth behind it. The sweep starts at 0.9 s: from 0.8 s it left 0.06 arm lengths short of the anchor.
+    expect(nearest(touched, 0.1, 0.9)).toBeLessThan(0.05)
+    expect(nearest(swept, 0.9, D - 0.9)).toBeLessThan(0.05)
     expect(swept.z).toBeLessThan(touched.z - 0.05 * length)
     // The head rolls toward the hand: 4 deg shared 0.35 to the neck and 0.65 to the head.
     const roll = (acted.channels[Math.round((START + 1.3) / BODY_TICK) - 1][c('headRoll')] - still.channels[Math.round((START + 1.3) / BODY_TICK) - 1][c('headRoll')]) / DEG
