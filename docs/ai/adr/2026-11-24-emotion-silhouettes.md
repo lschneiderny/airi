@@ -58,3 +58,14 @@ A second animation audit reviewed emotions during speech and walks, the touch si
 6. **A held pet inclines the head into the hand.** The neck rolls 8 degrees toward the hand with a small bow, and the near shoulder lifts to meet it while the far one drops, replacing the drop of both shoulders.
 
 The touch reaction and sad now write neck channels. They add to Natural's head through the performer like every other layer term, and owned groups still receive none. Tests that pinned the earlier touch signs, the poke startle's arm share and the surprised held elbow were re-pinned.
+
+## Amendment (2026-11-25): love's hand clears the body model
+
+After the [body model](2026-11-25-body-model.md) replaced the trunk's authored bodies, a third audit checked the emotion poses against it.
+
+1. **The hand to chest sits 0.075 arm lengths up from the chest seed, with the settling headroom.** At 0.15 the held hand met the author's neck and hair bodies and the forearm the mid-chest volume as the trunk and head moved under the held key: `emotion-bands` read up to 983 guard scans and cap hits on five of eight rigs. The form now keeps `KEY_HEADROOM` as the stroke keys do, because the trunk breathes, sways and bends under it; the chin and front-low contacts still take none. The hand still rests on the upper chest beside the sternum, a little lower than before. This supersedes the anchor height in item 2 of the amendment above.
+
+### Consequences
+
+- On eight rigs (seed 1) `emotions`, `emotion-bands` and `emotion-compose` read zero guard scans and cap hits.
+- Each emotion's peak on four rigs matches the reviewed boards of the earlier amendment, except that love's chest hand rests lower. On the reference rig the emotion table still passes `pairs-from-neutral` (22/22); its smallest separation reads 2.120 instead of 2.162 because love's trials vary more and widen the pooled sigma (10.41 to 10.61 degrees), not because any two emotions came closer.
