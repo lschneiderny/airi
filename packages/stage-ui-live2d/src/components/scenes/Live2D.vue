@@ -41,6 +41,7 @@ import { createCursorExpiry } from './live2d/cursor-expiry'
 
 import '../../utils/live2d-zip-loader'
 import '../../utils/live2d-opfs-registration'
+import '../../utils/live2d-fixed-rate-physics-registration'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: Live2DEyeFocusSource
